@@ -112,3 +112,11 @@ export function DragHandleIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+export function RefreshIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.93-2M4 15a8 8 0 0014.93 2" />
+    </svg>
+  )
+}

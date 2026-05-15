@@ -29,7 +29,8 @@ import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdo
 import Select from './Select'
 import { Checkbox } from './Checkbox'
 import ViewportTooltip from './ViewportTooltip'
-import { ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TrashIcon, GithubIcon, ExportIcon, ImportIcon, DragHandleIcon, LinkIcon } from './icons'
+import { ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, RefreshIcon, TrashIcon, GithubIcon, ExportIcon, ImportIcon, DragHandleIcon, LinkIcon } from './icons'
+import { fetchOpenAICompatibleModels } from '../lib/modelList'
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -275,6 +276,8 @@ export default function SettingsModal() {
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
+  const modelListCache = useStore((s) => s.modelListCache)
+  const setModelListCache = useStore((s) => s.setModelListCache)
   const importInputRef = useRef<HTMLInputElement>(null)
   const profileMenuRef = useRef<HTMLDivElement>(null)
   const profileMenuTriggerRef = useRef<HTMLButtonElement>(null)
@@ -288,6 +291,9 @@ export default function SettingsModal() {
   const [draft, setDraft] = useState<AppSettings>(normalizeSettings(settings))
   const [timeoutInput, setTimeoutInput] = useState(String(getActiveApiProfile(settings).timeout))
   const [showApiKey, setShowApiKey] = useState(false)
+  const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
+  const [fetchingModels, setFetchingModels] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [profileMenuMaxHeight, setProfileMenuMaxHeight] = useState(DEFAULT_DROPDOWN_MAX_HEIGHT)
   const [showCustomProviderImport, setShowCustomProviderImport] = useState(false)
@@ -588,6 +594,31 @@ export default function SettingsModal() {
   const commitActiveProfilePatch = (patch: Partial<ApiProfile>) => {
     const nextDraft = getDraftWithActiveProfilePatch(patch)
     commitSettings(nextDraft)
+  }
+
+  const handleFetchModels = async () => {
+    if (fetchingModels) return
+    const profile = activeProfile
+    if (profile.provider === 'fal') {
+      showToast('fal.ai 暂不支持拉取模型列表', 'info')
+      return
+    }
+    if (!profile.baseUrl.trim() || !profile.apiKey.trim()) {
+      showToast('请先填写 API URL 和 API Key', 'error')
+      return
+    }
+    setFetchingModels(true)
+    try {
+      const { models } = await fetchOpenAICompatibleModels(profile)
+      setModelListCache(profile.id, models)
+      setShowModelDropdown(true)
+      showToast(`已拉取 ${models.length} 个模型`, 'success')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      showToast(`拉取失败：${message}`, 'error')
+    } finally {
+      setFetchingModels(false)
+    }
   }
 
   const handleClose = () => {
@@ -1528,14 +1559,96 @@ export default function SettingsModal() {
                 <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">
                   模型 ID
                 </span>
-                <input
-                  value={activeProfile.model}
-                  onChange={(e) => updateActiveProfile({ model: e.target.value })}
-                  onBlur={(e) => commitActiveProfilePatch({ model: e.target.value })}
-                  type="text"
-                  placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(activeProfile.apiMode ?? DEFAULT_SETTINGS.apiMode)}
-                  className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                />
+                <div className="relative">
+                  <input
+                    value={activeProfile.model}
+                    onChange={(e) => updateActiveProfile({ model: e.target.value })}
+                    onBlur={(e) => commitActiveProfilePatch({ model: e.target.value })}
+                    type="text"
+                    placeholder={activeProfile.provider === 'fal' ? DEFAULT_FAL_MODEL : getDefaultModelForMode(activeProfile.apiMode ?? DEFAULT_SETTINGS.apiMode)}
+                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleFetchModels}
+                    disabled={
+                      activeProfile.provider === 'fal' ||
+                      !activeProfile.apiKey.trim() ||
+                      !activeProfile.baseUrl.trim() ||
+                      fetchingModels
+                    }
+                    title={
+                      activeProfile.provider === 'fal'
+                        ? 'fal.ai 暂不支持拉取模型列表'
+                        : (!activeProfile.apiKey.trim() || !activeProfile.baseUrl.trim())
+                          ? '请先填写 API URL 与 API Key'
+                          : '拉取模型列表'
+                    }
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed dark:hover:text-gray-200"
+                    tabIndex={-1}
+                  >
+                    <RefreshIcon className={`w-4 h-4 ${fetchingModels ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                {showModelDropdown && (modelListCache[activeProfile.id]?.models?.length ?? 0) > 0 && (
+                  <div className="relative mt-2">
+                    <div
+                      className="rounded-xl border border-gray-200/60 bg-white/95 p-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] ring-1 ring-black/5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10"
+                    >
+                      <div className="flex items-center gap-2 px-2 py-1.5">
+                        <input
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                          placeholder="搜索模型…"
+                          className="flex-1 rounded-md bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setShowModelDropdown(false); setModelSearch('') }}
+                          className="text-gray-400 hover:text-gray-600 transition-colors dark:hover:text-gray-200"
+                          title="关闭"
+                        >
+                          <CloseIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                        {(() => {
+                          const cached = modelListCache[activeProfile.id]?.models ?? []
+                          const filter = modelSearch.trim().toLowerCase()
+                          const filtered = filter
+                            ? cached.filter((id) => id.toLowerCase().includes(filter))
+                            : cached
+                          if (!filtered.length) {
+                            return (
+                              <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+                                未找到匹配的模型
+                              </div>
+                            )
+                          }
+                          return filtered.map((id) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => {
+                                commitActiveProfilePatch({ model: id })
+                                setShowModelDropdown(false)
+                                setModelSearch('')
+                              }}
+                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors ${
+                                id === activeProfile.model
+                                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 font-medium'
+                                  : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <span className="truncate">{id}</span>
+                            </button>
+                          ))
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div data-selectable-text className="mt-1.5 text-xs text-gray-500 dark:text-gray-500">
                   {activeProfile.provider === 'fal' ? (
                     <>当前适配 <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-white/[0.06]">{DEFAULT_FAL_MODEL}</code>。</>

@@ -34,6 +34,7 @@ import { callImageApi } from './lib/api'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getFalErrorMessage, getFalQueuedImageResult } from './lib/falAiImageApi'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
+import { fetchOpenAICompatibleModels } from './lib/modelList'
 import { validateMaskMatchesImage } from './lib/canvasImage'
 import { orderInputImagesForMask } from './lib/mask'
 import { getChangedParams, normalizeParamsForSettings } from './lib/paramCompatibility'
@@ -321,6 +322,7 @@ export function getPersistedState(state: AppState) {
     supportPromptDismissed: state.supportPromptDismissed,
     supportPromptOpen: state.supportPromptOpen,
     supportPromptSkippedForImportedData: state.supportPromptSkippedForImportedData,
+    modelListCache: state.modelListCache,
   }
 }
 
@@ -338,6 +340,10 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     supportPromptSkippedForImportedData: Boolean(persisted.supportPromptSkippedForImportedData),
     prompt: settings.persistInputOnRestart && typeof persisted.prompt === 'string' ? persisted.prompt : '',
     inputImages: settings.persistInputOnRestart && Array.isArray(persisted.inputImages) ? persisted.inputImages : [],
+    modelListCache: (persisted.modelListCache && typeof persisted.modelListCache === 'object'
+      ? persisted.modelListCache
+      : currentState.modelListCache) as AppState['modelListCache'],
+    fetchingModelsProfileIds: [],
   }
 }
 
@@ -424,6 +430,13 @@ interface AppState {
     cancelAction?: () => void
   } | null
   setConfirmDialog: (d: AppState['confirmDialog']) => void
+
+  // Model list cache (per profile)
+  modelListCache: Record<string, { models: string[]; fetchedAt: number }>
+  fetchingModelsProfileIds: string[]
+  setModelListCache: (profileId: string, models: string[]) => void
+  setFetchingModels: (profileId: string, inFlight: boolean) => void
+  fetchModelsForActiveProfile: () => Promise<void>
 }
 
 export const useStore = create<AppState>()(
@@ -633,6 +646,46 @@ export const useStore = create<AppState>()(
       setConfirmDialog: (confirmDialog) => {
         if (confirmDialog) dismissAllTooltips()
         set({ confirmDialog })
+      },
+
+      // Model list cache
+      modelListCache: {},
+      fetchingModelsProfileIds: [],
+      setModelListCache: (profileId, models) => set((s) => ({
+        modelListCache: {
+          ...s.modelListCache,
+          [profileId]: { models, fetchedAt: Date.now() },
+        },
+      })),
+      setFetchingModels: (profileId, inFlight) => set((s) => {
+        const has = s.fetchingModelsProfileIds.includes(profileId)
+        if (inFlight && !has) return { fetchingModelsProfileIds: [...s.fetchingModelsProfileIds, profileId] }
+        if (!inFlight && has) return { fetchingModelsProfileIds: s.fetchingModelsProfileIds.filter((id) => id !== profileId) }
+        return {}
+      }),
+      fetchModelsForActiveProfile: async () => {
+        const state = get()
+        const profile = getActiveApiProfile(state.settings)
+        if (profile.provider === 'fal') {
+          state.showToast('fal.ai 暂不支持拉取模型列表', 'info')
+          return
+        }
+        if (!profile.baseUrl.trim() || !profile.apiKey.trim()) {
+          state.showToast('请先填写 API URL 和 API Key', 'error')
+          return
+        }
+        if (state.fetchingModelsProfileIds.includes(profile.id)) return
+        state.setFetchingModels(profile.id, true)
+        try {
+          const { models } = await fetchOpenAICompatibleModels(profile)
+          state.setModelListCache(profile.id, models)
+          state.showToast(`已拉取 ${models.length} 个模型`, 'success')
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          state.showToast(`拉取失败：${message}`, 'error')
+        } finally {
+          get().setFetchingModels(profile.id, false)
+        }
       },
     }),
     {

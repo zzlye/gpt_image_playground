@@ -283,6 +283,10 @@ export default function InputBar() {
   const setLightboxImageId = useStore((s) => s.setLightboxImageId)
   const showToast = useStore((s) => s.showToast)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
+  const setSettings = useStore((s) => s.setSettings)
+  const modelListCache = useStore((s) => s.modelListCache)
+  const fetchingModelsProfileIds = useStore((s) => s.fetchingModelsProfileIds)
+  const fetchModelsForActiveProfile = useStore((s) => s.fetchModelsForActiveProfile)
   const selectedTaskIds = useStore((s) => s.selectedTaskIds)
   const setSelectedTaskIds = useStore((s) => s.setSelectedTaskIds)
   const clearSelection = useStore((s) => s.clearSelection)
@@ -461,6 +465,44 @@ export default function InputBar() {
       ? settings
       : normalizeSettings({ ...settings, activeProfileId: activeProfile.id })
   ), [activeProfile.id, currentActiveProfile.id, settings])
+
+  const isFetchingActiveModels = fetchingModelsProfileIds.includes(activeProfile.id)
+  const FETCH_MODEL_OPTION_VALUE = '__fetch_models__'
+  const modelOptions = useMemo(() => {
+    const cached = modelListCache[activeProfile.id]?.models ?? []
+    const actionLabel = activeProfile.provider === 'fal'
+      ? '🔄 fal.ai 不支持拉取'
+      : isFetchingActiveModels
+        ? '🔄 拉取中…'
+        : '🔄 拉取模型列表'
+    const opts: Array<{ label: string; value: string; variant?: 'action' }> = [
+      { label: actionLabel, value: FETCH_MODEL_OPTION_VALUE, variant: 'action' },
+    ]
+    const seen = new Set<string>()
+    for (const id of cached) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        opts.push({ label: id, value: id })
+      }
+    }
+    if (activeProfile.model && !seen.has(activeProfile.model)) {
+      opts.push({ label: activeProfile.model, value: activeProfile.model })
+    }
+    return opts
+  }, [modelListCache, activeProfile.id, activeProfile.model, activeProfile.provider, isFetchingActiveModels])
+
+  const handleModelSelect = useCallback((value: string) => {
+    if (value === FETCH_MODEL_OPTION_VALUE) {
+      void fetchModelsForActiveProfile()
+      return
+    }
+    if (!value || value === activeProfile.model) return
+    setSettings({
+      profiles: settings.profiles.map((profile) =>
+        profile.id === activeProfile.id ? { ...profile, model: value } : profile,
+      ),
+    })
+  }, [activeProfile.id, activeProfile.model, fetchModelsForActiveProfile, setSettings, settings.profiles])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig)
   const activeProvider = activeProfile.provider
@@ -1461,6 +1503,15 @@ export default function InputBar() {
 
   const renderParams = (cols: string) => (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
+      <label className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-gray-400 dark:text-gray-500 ml-1">模型</span>
+        <Select
+          value={activeProfile.model}
+          onChange={(val) => handleModelSelect(val as string)}
+          options={modelOptions}
+          className={selectClass}
+        />
+      </label>
       <label
         className="relative flex flex-col gap-0.5"
         onMouseEnter={showSizeHint}
@@ -1839,7 +1890,7 @@ export default function InputBar() {
           <div className="mt-3">
             {/* 桌面端布局 */}
             <div className="hidden sm:flex items-end justify-between gap-3">
-              {renderParams('grid-cols-6')}
+              {renderParams('grid-cols-7')}
 
               <div className="flex gap-2 flex-shrink-0 mb-0.5">
                 <div
