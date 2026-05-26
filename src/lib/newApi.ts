@@ -10,6 +10,14 @@ export interface NewApiNoticeResult {
   content: string
   updatedAt: number
   publishedAt?: string
+  items: NewApiNoticeItem[]
+}
+
+export interface NewApiNoticeItem {
+  id?: string | number
+  content: string
+  publishedAt?: string
+  type?: string
 }
 
 export interface NewApiModelUnitCostResult {
@@ -25,7 +33,9 @@ interface NewApiStatusInfo {
 
 const DEFAULT_CURRENCY_SYMBOL = 'HUHN'
 const DEFAULT_QUOTA_PER_UNIT = 500_000
-const FALLBACK_MODEL_UNIT_COST = `单次 ${DEFAULT_CURRENCY_SYMBOL} 0.06`
+const FALLBACK_MODEL_UNIT_COST = `${DEFAULT_CURRENCY_SYMBOL} 0.06`
+const PUBLIC_FETCH_TIMEOUT_MS = 6000
+const WENYUN_PUBLIC_PROXY_PREFIX = '/wy-public/wenyun'
 
 function trimTrailingSlash(value: string): string {
   return value.trim().replace(/\/+$/, '')
@@ -58,16 +68,53 @@ async function fetchJson(url: string, apiKey?: string): Promise<unknown> {
   return response.json()
 }
 
-async function fetchPublicJsonWithCorsFallback(url: string): Promise<unknown> {
+async function fetchJsonWithTimeout(url: string, apiKey?: string, timeoutMs = PUBLIC_FETCH_TIMEOUT_MS): Promise<unknown> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    return await fetchJson(url)
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: apiKey?.trim()
+        ? { Authorization: `Bearer ${apiKey.trim()}` }
+        : undefined,
+    })
+    if (!response.ok) throw new Error(`请求失败：${response.status}`)
+    return response.json()
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function fetchPublicJsonWithCorsFallback(url: string, timeoutMs = PUBLIC_FETCH_TIMEOUT_MS): Promise<unknown> {
+  const sameOriginProxyUrl = getWenyunPublicProxyUrl(url)
+  if (sameOriginProxyUrl) {
+    try {
+      return await fetchJsonWithTimeout(sameOriginProxyUrl, undefined, timeoutMs)
+    } catch {
+      // 同源代理在部分静态部署不可用时，继续尝试直连和公共代理。
+    }
+  }
+
+  try {
+    return await fetchJsonWithTimeout(url, undefined, timeoutMs)
   } catch (err) {
     const proxiedUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
     try {
-      return await fetchJson(proxiedUrl)
+      return await fetchJsonWithTimeout(proxiedUrl, undefined, timeoutMs)
     } catch {
       throw err
     }
+  }
+}
+
+function getWenyunPublicProxyUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.origin !== 'https://zzlye.xyz:60') return null
+    return `${WENYUN_PUBLIC_PROXY_PREFIX}${parsed.pathname}${parsed.search}`
+  } catch {
+    return null
   }
 }
 
@@ -299,31 +346,82 @@ function getNoticeItemDate(input: unknown): string | undefined {
   return readString(input, ['publishDate', 'published_at', 'publishedAt', 'created_at', 'createdAt', 'updated_at', 'updatedAt', 'time', 'date']) ?? undefined
 }
 
+function getNoticeItemId(input: unknown): string | number | undefined {
+  if (!isRecord(input)) return undefined
+  const id = input.id ?? input.notice_id ?? input.noticeId
+  return typeof id === 'string' || typeof id === 'number' ? id : undefined
+}
+
+function getNoticeItemType(input: unknown): string | undefined {
+  if (!isRecord(input)) return undefined
+  return readString(input, ['type', 'status', 'level']) ?? undefined
+}
+
+function toNoticeItem(input: unknown): NewApiNoticeItem | null {
+  const content = getNoticeItemText(input)
+  if (!content) return null
+  return {
+    id: getNoticeItemId(input),
+    content,
+    publishedAt: getNoticeItemDate(input),
+    type: getNoticeItemType(input),
+  }
+}
+
+function findNoticeArray(input: unknown, depth = 0): unknown[] | null {
+  if (depth > 5 || !input || typeof input !== 'object') return null
+  if (Array.isArray(input)) return input
+
+  const record = input as Record<string, unknown>
+  for (const key of ['announcements', 'notices', 'notice', 'items', 'list']) {
+    const value = record[key]
+    if (Array.isArray(value)) return value
+  }
+
+  for (const value of Object.values(record)) {
+    const found = findNoticeArray(value, depth + 1)
+    if (found) return found
+  }
+
+  return null
+}
+
+function sortNoticeItems(items: NewApiNoticeItem[]) {
+  return [...items].sort((a, b) => {
+    const left = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
+    const right = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
+    return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0)
+  })
+}
+
 function parseNoticePayload(payload: unknown): NewApiNoticeResult {
   const updatedAt = Date.now()
-  if (typeof payload === 'string') return { content: payload.trim(), updatedAt }
+  if (typeof payload === 'string') {
+    const content = payload.trim()
+    return { content, updatedAt, items: content ? [{ content }] : [] }
+  }
   const data = isRecord(payload) && 'data' in payload ? payload.data : payload
-  if (Array.isArray(data)) {
+  const noticeArray = findNoticeArray(data)
+  if (noticeArray) {
+    const items = sortNoticeItems(noticeArray.map(toNoticeItem).filter((item): item is NewApiNoticeItem => Boolean(item))).slice(0, 20)
     return {
-      content: data.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n'),
+      content: items.map((item) => item.content).join('\n\n---\n\n'),
       updatedAt,
-      publishedAt: data.map(getNoticeItemDate).find(Boolean),
+      publishedAt: items.map((item) => item.publishedAt).find(Boolean),
+      items,
     }
   }
-  if (typeof data === 'string') return { content: data.trim(), updatedAt }
-  if (!isRecord(data)) return { content: '', updatedAt }
+  if (typeof data === 'string') {
+    const content = data.trim()
+    return { content, updatedAt, items: content ? [{ content }] : [] }
+  }
+  if (!isRecord(data)) return { content: '', updatedAt, items: [] }
 
   for (const key of ['notices', 'notice', 'content', 'message', 'announcement', 'announcements', 'items', 'list']) {
     const value = data[key]
     if (typeof value === 'string' && value.trim()) {
-      return { content: value.trim(), updatedAt, publishedAt: getNoticeItemDate(data) }
-    }
-    if (Array.isArray(value)) {
-      return {
-        content: value.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n'),
-        updatedAt,
-        publishedAt: value.map(getNoticeItemDate).find(Boolean),
-      }
+      const item = toNoticeItem({ ...data, content: value.trim() })
+      return { content: value.trim(), updatedAt, publishedAt: item?.publishedAt, items: item ? [item] : [{ content: value.trim() }] }
     }
     if (isRecord(value)) {
       const nested = parseNoticePayload(value)
@@ -331,28 +429,24 @@ function parseNoticePayload(payload: unknown): NewApiNoticeResult {
     }
   }
 
-  return { content: getNoticeItemText(data), updatedAt, publishedAt: getNoticeItemDate(data) }
+  const item = toNoticeItem(data)
+  return {
+    content: item?.content ?? '',
+    updatedAt,
+    publishedAt: item?.publishedAt,
+    items: item ? [item] : [],
+  }
 }
 
 export async function fetchNewApiNotice(baseUrl: string): Promise<NewApiNoticeResult> {
   const origin = getApiOrigin(baseUrl)
   if (!origin) throw new Error('API URL 无效')
-  const attempts = [`${origin}/api/status`, `${origin}/api/notice`, `${origin}/api/announcements`, `${origin}/api/system/notice`]
-  let lastError: unknown = null
-  let hasSuccessfulResponse = false
-  for (const url of attempts) {
-    try {
-      hasSuccessfulResponse = true
-      const notice = parseNoticePayload(await fetchPublicJsonWithCorsFallback(url))
-      if (notice.content) return notice
-    } catch (err) {
-      lastError = err
-    }
-  }
-  if (lastError && !hasSuccessfulResponse) throw new Error(lastError instanceof Error ? lastError.message : '公告加载失败')
+  const notice = parseNoticePayload(await fetchPublicJsonWithCorsFallback(`${origin}/api/status`, 5000))
+  if (notice.content || notice.items.length > 0) return notice
   return {
     content: '',
     updatedAt: Date.now(),
+    items: [],
   }
 }
 
@@ -415,7 +509,7 @@ function readModelPriceValue(input: unknown, model: string): number | null {
 
 function formatModelUnitCost(value: number, status: NewApiStatusInfo): string {
   const amount = value > 1000 ? quotaToCurrency(value, status) : value
-  return `单次 ${formatCurrency(amount, status.currencySymbol)}`
+  return formatCurrency(amount, status.currencySymbol)
 }
 
 export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<NewApiModelUnitCostResult> {

@@ -151,7 +151,18 @@ function normalizeAppearanceBlur(value: unknown): number {
 }
 
 function normalizeAppearanceUrl(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+  if (typeof value !== 'string') return ''
+  const url = value.trim()
+  // 旧版本曾保存随机入口本身，会导致刷新或打开设置时重新随机，这里直接迁移清空。
+  if (/^https:\/\/i\.mukyu\.ru\/random(?:\?|$)/i.test(url)) return ''
+  return url
+}
+
+function normalizeModelUnitCostText(value: unknown): string {
+  if (typeof value !== 'string') return 'HUHN 0.06'
+  const text = value.trim()
+  if (!text) return 'HUHN 0.06'
+  return text.replace(/^单次\s*/u, '')
 }
 
 function lockOpenAIProfile(profile: ApiProfile): ApiProfile {
@@ -576,9 +587,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
     apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
-    apiModelUnitCostText: typeof record.apiModelUnitCostText === 'string' && record.apiModelUnitCostText.trim()
-      ? record.apiModelUnitCostText
-      : '单次 HUHN 0.06',
+    apiModelUnitCostText: normalizeModelUnitCostText(record.apiModelUnitCostText),
     apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
     apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),
     announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
@@ -874,7 +883,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   appearanceBackgroundOpacity: 0.28,
   appearanceBackgroundBlur: 18,
   appearanceNightMode: false,
-  apiModelUnitCostText: '单次 HUHN 0.06',
+  apiModelUnitCostText: 'HUHN 0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,

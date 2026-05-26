@@ -19,6 +19,20 @@ function loadDevProxyConfig() {
 
 export default defineConfig(({ command }) => {
   const devProxyConfig = command === 'serve' ? loadDevProxyConfig() : null
+  const publicProxy = {
+    '/wy-public/wenyun': {
+      target: 'https://zzlye.xyz:60',
+      changeOrigin: true,
+      secure: true,
+      rewrite: (path: string) => path.replace(/^\/wy-public\/wenyun/, ''),
+    },
+    '/wy-public/mukyu': {
+      target: 'https://i.mukyu.ru',
+      changeOrigin: true,
+      secure: true,
+      rewrite: (path: string) => path.replace(/^\/wy-public\/mukyu/, ''),
+    },
+  }
 
   return {
     plugins: [react()],
@@ -29,8 +43,9 @@ export default defineConfig(({ command }) => {
     },
     server: {
       host: true,
-      proxy:
-        devProxyConfig?.enabled
+      proxy: {
+        ...publicProxy,
+        ...(devProxyConfig?.enabled
           ? {
               [devProxyConfig.prefix]: {
                 target: devProxyConfig.target,
@@ -43,7 +58,8 @@ export default defineConfig(({ command }) => {
                   ),
               },
             }
-          : undefined,
+          : {}),
+      },
     },
   }
 })

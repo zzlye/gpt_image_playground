@@ -110,11 +110,11 @@ export interface AppSettings {
   apiBalanceUpdatedAt?: number
   /** 最近一次查询余额对应的固定配置 ID */
   apiBalanceProfileId?: string
-  /** 当前模型单次调用费用展示文本 */
+  /** 当前模型调用费用展示文本 */
   apiModelUnitCostText: string
-  /** 当前模型单次调用费用对应的固定配置 ID */
+  /** 当前模型调用费用对应的固定配置 ID */
   apiModelUnitCostProfileId?: string
-  /** 当前模型单次调用费用更新时间戳 */
+  /** 当前模型调用费用更新时间戳 */
   apiModelUnitCostUpdatedAt?: number
   /** 公告当天不再提醒日期，格式为 YYYY-MM-DD */
   announcementDismissedDate?: string

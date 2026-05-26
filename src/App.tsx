@@ -4,7 +4,7 @@ import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
 import { LOCKED_WENYUN_BASE_URL, mergeImportedSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, loadCustomProviderSettingsFromUrl } from './lib/customProviderConfigUrl'
-import { fetchNewApiNotice } from './lib/newApi'
+import { fetchNewApiNotice, type NewApiNoticeItem } from './lib/newApi'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import Header from './components/Header'
 import SearchBar from './components/SearchBar'
@@ -41,6 +41,7 @@ export default function App() {
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementContent, setAnnouncementContent] = useState('')
   const [announcementPublishedAt, setAnnouncementPublishedAt] = useState<string | undefined>(undefined)
+  const [announcementItems, setAnnouncementItems] = useState<NewApiNoticeItem[]>([])
   const [announcementLoading, setAnnouncementLoading] = useState(false)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
@@ -51,6 +52,7 @@ export default function App() {
       const notice = await fetchNewApiNotice(LOCKED_WENYUN_BASE_URL)
       setAnnouncementContent(notice.content)
       setAnnouncementPublishedAt(notice.publishedAt)
+      setAnnouncementItems(notice.items)
 
       if (autoOpen) {
         const latestSettings = useStore.getState().settings
@@ -64,6 +66,7 @@ export default function App() {
       console.warn('Failed to load announcement:', error)
       setAnnouncementContent('')
       setAnnouncementPublishedAt(undefined)
+      setAnnouncementItems([])
     } finally {
       setAnnouncementLoading(false)
     }
@@ -184,6 +187,7 @@ export default function App() {
           <AnnouncementModal
             content={announcementContent}
             dismissForever={settings.announcementDismissedForever}
+            items={announcementItems}
             loading={announcementLoading}
             publishedAt={announcementPublishedAt}
             onClose={() => setAnnouncementOpen(false)}

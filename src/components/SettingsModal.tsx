@@ -196,7 +196,85 @@ function isProfileApiProxyEligible(settings: AppSettings, profile: ApiProfile) {
 }
 
 const RANDOM_BACKGROUND_API_URL = 'https://i.mukyu.ru/random'
+const RANDOM_BACKGROUND_IMAGE_ORIGIN = 'https://i.mukyu.ru'
+const RANDOM_BACKGROUND_PROXY_PREFIX = '/wy-public/mukyu'
+const RANDOM_BACKGROUND_FETCH_TIMEOUT_MS = 8000
 const BACKGROUND_IMAGE_LOAD_TIMEOUT_MS = 8000
+
+function readBackgroundImageUrl(input: unknown): string | null {
+  if (typeof input === 'string' && /^(https?:\/\/|\/i\/)/i.test(input.trim())) return input.trim()
+  if (!input || typeof input !== 'object') return null
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      const found = readBackgroundImageUrl(item)
+      if (found) return found
+    }
+    return null
+  }
+
+  const record = input as Record<string, unknown>
+  for (const key of ['proxy', 'origin', 'imgproxy', 'url', 'image', 'imageUrl', 'src']) {
+    const found = readBackgroundImageUrl(record[key])
+    if (found) return found
+  }
+
+  for (const value of Object.values(record)) {
+    const found = readBackgroundImageUrl(value)
+    if (found) return found
+  }
+
+  return null
+}
+
+function normalizeRandomBackgroundImageUrl(value: string) {
+  if (value.startsWith('/')) return `${RANDOM_BACKGROUND_IMAGE_ORIGIN}${value}`
+  return value
+}
+
+async function fetchJsonWithTimeout(requestUrl: string, timeoutMs = RANDOM_BACKGROUND_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(requestUrl, { cache: 'no-store', signal: controller.signal })
+    if (!response.ok) throw new Error(`背景接口请求失败：${response.status}`)
+    return response.json()
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+async function fetchBackgroundJson(requestUrl: string) {
+  const sameOriginProxyUrl = getRandomBackgroundProxyUrl(requestUrl)
+  if (sameOriginProxyUrl) {
+    try {
+      return await fetchJsonWithTimeout(sameOriginProxyUrl)
+    } catch {
+      // 部分静态部署可能没有公开代理，失败时继续走直连和公共代理兜底。
+    }
+  }
+
+  try {
+    return await fetchJsonWithTimeout(requestUrl)
+  } catch (err) {
+    const proxiedUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(requestUrl)}`
+    try {
+      return await fetchJsonWithTimeout(proxiedUrl, RANDOM_BACKGROUND_FETCH_TIMEOUT_MS)
+    } catch {
+      throw err
+    }
+  }
+}
+
+function getRandomBackgroundProxyUrl(requestUrl: string): string | null {
+  try {
+    const parsed = new URL(requestUrl)
+    if (parsed.origin !== RANDOM_BACKGROUND_IMAGE_ORIGIN) return null
+    return `${RANDOM_BACKGROUND_PROXY_PREFIX}${parsed.pathname}${parsed.search}`
+  } catch {
+    return null
+  }
+}
 
 function preloadBackgroundImageUrl(imageUrl: string, timeoutMs = BACKGROUND_IMAGE_LOAD_TIMEOUT_MS) {
   if (/^(data:image\/|blob:)/i.test(imageUrl)) return Promise.resolve(imageUrl)
@@ -227,10 +305,10 @@ function preloadBackgroundImageUrl(imageUrl: string, timeoutMs = BACKGROUND_IMAG
   })
 }
 
-function getRandomBackgroundImageUrl() {
+function getRandomBackgroundApiUrl() {
   const url = new URL(RANDOM_BACKGROUND_API_URL)
-  // 直接出图可以避开 JSON 跨域问题，同时限制横图和最低分辨率，减少小图铺满后的模糊。
-  url.searchParams.set('redirect', '1')
+  // 点击随机时才请求接口，并保存最终固定图地址，避免刷新或打开设置时重新随机。
+  url.searchParams.set('format', 'simple_json')
   url.searchParams.set('r18', '0')
   url.searchParams.set('ai_type', '0')
   url.searchParams.set('illust_type', 'illust')
@@ -243,6 +321,13 @@ function getRandomBackgroundImageUrl() {
   url.searchParams.set('pximg_mirror_host', 're')
   url.searchParams.set('t', Date.now().toString())
   return url.toString()
+}
+
+async function getRandomBackgroundImageUrl() {
+  const payload = await fetchBackgroundJson(getRandomBackgroundApiUrl())
+  const imageUrl = readBackgroundImageUrl(payload)
+  if (!imageUrl) throw new Error('背景接口没有返回图片地址')
+  return normalizeRandomBackgroundImageUrl(imageUrl)
 }
 
 const CUSTOM_PROVIDER_LLM_PROMPT = `# 角色
@@ -1101,7 +1186,7 @@ export default function SettingsModal() {
   const randomizeBackgroundFromApi = async () => {
     setIsRandomizingBackground(true)
     try {
-      const imageUrl = await preloadBackgroundImageUrl(getRandomBackgroundImageUrl())
+      const imageUrl = await preloadBackgroundImageUrl(await getRandomBackgroundImageUrl())
       commitSettings({ ...draft, appearanceBackgroundImageUrl: imageUrl })
       showToast('背景已更新', 'success')
     } catch (err) {
