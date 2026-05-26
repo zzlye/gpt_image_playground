@@ -454,3 +454,12 @@ JSON 结构示例：
     </picture>
   </a>
 </div>
+自用
+export GHCR_TOKEN='你的 GitHub PAT'
+echo "$GHCR_TOKEN" | docker login ghcr.io -u zzlye --password-stdin
+
+docker pull ghcr.io/zzlye/gpt_image_playground:0.4.10
+
+docker run -d -p 8080:80 \
+  --name gpt-image-playground \
+  ghcr.io/zzlye/gpt_image_playground:0.4.10
