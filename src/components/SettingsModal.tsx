@@ -196,7 +196,11 @@ function isProfileApiProxyEligible(settings: AppSettings, profile: ApiProfile) {
   return !isAsyncCustomProvider(customProvider)
 }
 
-const BACKGROUND_IMAGE_URL_KEYS = new Set(['url', 'image', 'imageUrl', 'img', 'src', 'original', 'large', 'regular', 'small'])
+const BACKGROUND_IMAGE_URL_KEYS = new Set(['url', 'image', 'imageUrl', 'img', 'src', 'small', 'regular', 'large', 'original'])
+const BACKGROUND_FETCH_TIMEOUT_MS = 3500
+const BACKGROUND_PROXY_FETCH_TIMEOUT_MS = 4500
+const BACKGROUND_IMAGE_LOAD_TIMEOUT_MS = 2200
+const PIXIV_BACKGROUND_IMAGE_MIRRORS = ['https://i.pixiv.re', 'https://i.pixiv.cat']
 
 function isBackgroundImageUrl(value: string) {
   return /^(https?:\/\/|data:image\/|blob:)/i.test(value.trim())
@@ -228,23 +232,212 @@ function collectBackgroundImageUrls(input: unknown, output: string[] = []): stri
   return output
 }
 
-function pickBackgroundImageUrl(payload: unknown): string | null {
+function getBackgroundImageUrlCandidates(payload: unknown): string[] {
   if (typeof payload === 'string') {
     const trimmed = payload.trim()
-    if (!trimmed) return null
+    if (!trimmed) return []
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
-        return pickBackgroundImageUrl(JSON.parse(trimmed))
+        return getBackgroundImageUrlCandidates(JSON.parse(trimmed))
       } catch {
-        return isBackgroundImageUrl(trimmed) ? trimmed : null
+        return isBackgroundImageUrl(trimmed) ? [trimmed] : []
       }
     }
-    return isBackgroundImageUrl(trimmed) ? trimmed : null
+    return isBackgroundImageUrl(trimmed) ? [trimmed] : []
   }
 
-  const urls = collectBackgroundImageUrls(payload)
-  if (urls.length === 0) return null
-  return urls[Math.floor(Math.random() * urls.length)]
+  return expandBackgroundImageMirrors(collectBackgroundImageUrls(payload))
+}
+
+function expandBackgroundImageMirrors(urls: string[]) {
+  const output: string[] = []
+  const seen = new Set<string>()
+
+  const add = (url: string) => {
+    if (!isBackgroundImageUrl(url) || seen.has(url)) return
+    seen.add(url)
+    output.push(url)
+  }
+
+  urls.forEach((url) => {
+    add(url)
+    try {
+      const parsed = new URL(url)
+      const mirror = PIXIV_BACKGROUND_IMAGE_MIRRORS.find((candidate) => parsed.origin !== candidate)
+      if (mirror && PIXIV_BACKGROUND_IMAGE_MIRRORS.includes(parsed.origin)) {
+        const mirrorUrl = new URL(mirror)
+        mirrorUrl.pathname = parsed.pathname
+        mirrorUrl.search = parsed.search
+        mirrorUrl.hash = parsed.hash
+        add(mirrorUrl.toString())
+      }
+    } catch {
+      // 非标准 URL 已经在原地址候选里保留，这里不用中断随机流程。
+    }
+  })
+
+  return output
+}
+
+function shuffleBackgroundUrls(urls: string[]) {
+  return [...urls].sort(() => Math.random() - 0.5)
+}
+
+function buildPixivBackgroundApiUrl(proxyBaseUrl: string) {
+  const url = new URL(PIXIV_RANDOM_BACKGROUND_API_URL)
+  url.searchParams.set('num', '3')
+  url.searchParams.delete('size')
+  url.searchParams.append('size', 'small')
+  url.searchParams.append('size', 'regular')
+  url.searchParams.set('proxy', proxyBaseUrl)
+  return url.toString()
+}
+
+function getBackgroundRequestBatches() {
+  const apiUrl = buildPixivBackgroundApiUrl('https://i.pixiv.re')
+  const directUrls = shuffleBackgroundUrls([
+    apiUrl,
+    buildPixivBackgroundApiUrl('https://i.pixiv.cat'),
+  ])
+  const proxyUrls = shuffleBackgroundUrls(
+    directUrls.flatMap((url) => {
+      const encodedUrl = encodeURIComponent(url)
+      return [
+        `https://corsproxy.io/?${encodedUrl}`,
+        `https://api.allorigins.win/raw?url=${encodedUrl}`,
+      ]
+    }),
+  ).slice(0, 2)
+
+  // 先走最快的直连接口；只有直连失败时再尝试公共代理，避免慢代理拖住大多数点击。
+  return [
+    directUrls.map((url) => ({ url, timeoutMs: BACKGROUND_FETCH_TIMEOUT_MS })),
+    proxyUrls.map((url) => ({ url, timeoutMs: BACKGROUND_PROXY_FETCH_TIMEOUT_MS })),
+  ].filter((batch) => batch.length > 0)
+}
+
+async function fetchBackgroundImageCandidates(requestUrl: string, timeoutMs = BACKGROUND_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(requestUrl, { cache: 'no-store', signal: controller.signal })
+    if (!response.ok) throw new Error(`背景 API 请求失败：${response.status}`)
+    const text = await response.text()
+    const payload = (() => {
+      try {
+        return JSON.parse(text)
+      } catch {
+        return text
+      }
+    })()
+    const imageUrls = getBackgroundImageUrlCandidates(payload)
+    if (imageUrls.length === 0) throw new Error('背景 API 没有返回可识别的图片地址')
+    return shuffleBackgroundUrls(imageUrls)
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+function preloadBackgroundImageUrl(imageUrl: string, timeoutMs = BACKGROUND_IMAGE_LOAD_TIMEOUT_MS) {
+  if (/^(data:image\/|blob:)/i.test(imageUrl)) return Promise.resolve(imageUrl)
+
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image()
+    const timer = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('背景图片加载超时'))
+    }, timeoutMs)
+    const cleanup = () => {
+      window.clearTimeout(timer)
+      image.onload = null
+      image.onerror = null
+    }
+
+    image.onload = () => {
+      cleanup()
+      resolve(imageUrl)
+    }
+    image.onerror = () => {
+      cleanup()
+      reject(new Error('背景图片加载失败'))
+    }
+    image.decoding = 'async'
+    image.referrerPolicy = 'no-referrer'
+    image.src = imageUrl
+  })
+}
+
+function raceLoadableBackgroundImageUrl(imageUrls: string[]): Promise<string> {
+  const candidates = imageUrls.slice(0, 8)
+  if (candidates.length === 0) return Promise.reject(new Error('背景 API 没有返回可识别的图片地址'))
+
+  return new Promise((resolve, reject) => {
+    let finished = 0
+    let settled = false
+    const errors: unknown[] = []
+    const fallbackTimer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(candidates[0])
+    }, BACKGROUND_IMAGE_LOAD_TIMEOUT_MS)
+
+    candidates.forEach((imageUrl) => {
+      void preloadBackgroundImageUrl(imageUrl)
+        .then((loadedUrl) => {
+          if (settled) return
+          settled = true
+          window.clearTimeout(fallbackTimer)
+          resolve(loadedUrl)
+        })
+        .catch((err) => {
+          errors.push(err)
+          finished += 1
+          if (!settled && finished === candidates.length) {
+            window.clearTimeout(fallbackTimer)
+            reject(errors.find((error) => error instanceof Error) ?? new Error('背景图片加载失败'))
+          }
+        })
+    })
+  })
+}
+
+function raceBackgroundImageUrl(requests: Array<{ url: string, timeoutMs: number }>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let finished = 0
+    const errors: unknown[] = []
+
+    requests.forEach(({ url, timeoutMs }) => {
+      void fetchBackgroundImageCandidates(url, timeoutMs)
+        .then((imageUrls) => raceLoadableBackgroundImageUrl(imageUrls))
+        .then((imageUrl) => {
+          if (settled) return
+          settled = true
+          resolve(imageUrl)
+        })
+        .catch((err) => {
+          errors.push(err)
+          finished += 1
+          if (!settled && finished === requests.length) {
+            reject(errors.find((error) => error instanceof Error) ?? new Error('随机背景失败'))
+          }
+        })
+    })
+  })
+}
+
+async function getRandomBackgroundImageUrl() {
+  const errors: unknown[] = []
+  for (const requests of getBackgroundRequestBatches()) {
+    try {
+      return await raceBackgroundImageUrl(requests)
+    } catch (err) {
+      errors.push(err)
+    }
+  }
+
+  throw errors.find((error) => error instanceof Error) ?? new Error('随机背景失败，请稍后重试')
 }
 
 const CUSTOM_PROVIDER_LLM_PROMPT = `# 角色
@@ -1103,21 +1296,7 @@ export default function SettingsModal() {
   const randomizeBackgroundFromApi = async () => {
     setIsRandomizingBackground(true)
     try {
-      const proxiedUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(PIXIV_RANDOM_BACKGROUND_API_URL)}`
-      const response = await fetch(PIXIV_RANDOM_BACKGROUND_API_URL, { cache: 'no-store' }).catch(() =>
-        fetch(proxiedUrl, { cache: 'no-store' }),
-      )
-      if (!response.ok) throw new Error(`背景 API 请求失败：${response.status}`)
-      const text = await response.text()
-      const payload = (() => {
-        try {
-          return JSON.parse(text)
-        } catch {
-          return text
-        }
-      })()
-      const imageUrl = pickBackgroundImageUrl(payload)
-      if (!imageUrl) throw new Error('背景 API 没有返回可识别的图片地址')
+      const imageUrl = await getRandomBackgroundImageUrl()
       commitSettings({ ...draft, appearanceBackgroundImageUrl: imageUrl })
       showToast('背景已更新', 'success')
     } catch (err) {
@@ -1166,6 +1345,7 @@ export default function SettingsModal() {
       commitSettings({
         ...draft,
         apiBalanceText: balance.text,
+        apiBalanceCurrency: balance.currency,
         apiBalanceUpdatedAt: balance.updatedAt,
         apiBalanceProfileId: activeProfile.id,
       })

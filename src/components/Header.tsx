@@ -2,18 +2,43 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
+import { getActiveApiProfile } from '../lib/apiProfiles'
+import { queryNewApiBalance } from '../lib/newApi'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
 import { HelpCircleIcon, SettingsIcon } from './icons'
 
 export default function Header() {
   const setShowSettings = useStore((s) => s.setShowSettings)
+  const setSettings = useStore((s) => s.setSettings)
+  const showToast = useStore((s) => s.showToast)
+  const settings = useStore((s) => s.settings)
+  const activeProfile = getActiveApiProfile(settings)
   const apiBalanceText = useStore((s) =>
     s.settings.apiBalanceProfileId === s.settings.activeProfileId ? s.settings.apiBalanceText : '',
   )
+  const [isQueryingBalance, setIsQueryingBalance] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const helpTooltip = useTooltip()
   const settingsTooltip = useTooltip()
+
+  const queryActiveProfileBalance = async () => {
+    setIsQueryingBalance(true)
+    try {
+      const balance = await queryNewApiBalance(activeProfile)
+      setSettings({
+        apiBalanceText: balance.text,
+        apiBalanceCurrency: balance.currency,
+        apiBalanceUpdatedAt: balance.updatedAt,
+        apiBalanceProfileId: activeProfile.id,
+      })
+      showToast('余额已更新', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '余额查询失败', 'error')
+    } finally {
+      setIsQueryingBalance(false)
+    }
+  }
 
   return (
     <>
@@ -26,9 +51,19 @@ export default function Header() {
               </span>
             </h1>
           </div>
-          <div className="pointer-events-none absolute left-1/2 top-1/2 hidden max-w-[42vw] -translate-x-1/2 -translate-y-1/2 sm:block">
-            <div className="truncate rounded-full border border-gray-200/70 bg-white/70 px-3 py-1 text-xs font-medium text-gray-600 shadow-sm backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-300">
-              余额：{apiBalanceText || '未查询'}
+          <div className="absolute left-1/2 top-1/2 hidden max-w-[48vw] -translate-x-1/2 -translate-y-1/2 sm:block">
+            <div className="flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/75 py-1 pl-3 pr-1 text-xs font-medium text-gray-600 shadow-sm backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-300">
+              <span className="min-w-0 truncate">
+                {activeProfile.name}：{apiBalanceText || '未查询'}
+              </span>
+              <button
+                type="button"
+                onClick={queryActiveProfileBalance}
+                disabled={isQueryingBalance}
+                className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[11px] font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isQueryingBalance ? '查询中' : '查询'}
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
-import { getActiveApiProfile, mergeImportedSettings } from './lib/apiProfiles'
+import { LOCKED_WENYUN_BASE_URL, mergeImportedSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, loadCustomProviderSettingsFromUrl } from './lib/customProviderConfigUrl'
 import { fetchNewApiNotice } from './lib/newApi'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
@@ -22,6 +22,14 @@ import AnnouncementModal from './components/AnnouncementModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 
 let customProviderConfigUrlImportStarted = false
+
+function getAnnouncementHash(content: string) {
+  let hash = 0
+  for (let index = 0; index < content.length; index += 1) {
+    hash = ((hash << 5) - hash + content.charCodeAt(index)) | 0
+  }
+  return String(hash)
+}
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
@@ -85,14 +93,12 @@ export default function App() {
     const loadNotice = async () => {
       setAnnouncementLoading(true)
       try {
-        const activeProfile = getActiveApiProfile(useStore.getState().settings)
-        const notice = await fetchNewApiNotice(activeProfile.baseUrl)
+        const notice = await fetchNewApiNotice(LOCKED_WENYUN_BASE_URL)
         if (disposed) return
         setAnnouncementContent(notice.content)
 
         const latestSettings = useStore.getState().settings
-        const shouldAutoOpen = !latestSettings.announcementDismissedForever &&
-          latestSettings.announcementDismissedDate !== today
+        const shouldAutoOpen = !latestSettings.announcementDismissedForever && Boolean(notice.content.trim())
         if (shouldAutoOpen) setAnnouncementOpen(true)
       } catch (error) {
         console.warn('Failed to load announcement:', error)
@@ -107,17 +113,20 @@ export default function App() {
     return () => {
       disposed = true
     }
-  }, [settings.activeProfileId])
+  }, [settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
 
   const dismissAnnouncementToday = () => {
-    setSettings({ announcementDismissedDate: new Date().toISOString().slice(0, 10) })
+    setSettings({
+      announcementDismissedDate: new Date().toISOString().slice(0, 10),
+      announcementDismissedHash: getAnnouncementHash(announcementContent),
+    })
     setAnnouncementOpen(false)
   }
 
   const toggleAnnouncementForever = (checked: boolean) => {
     setSettings({
       announcementDismissedForever: checked,
-      ...(checked ? { announcementDismissedDate: undefined } : {}),
+      ...(checked ? { announcementDismissedDate: undefined, announcementDismissedHash: undefined } : {}),
     })
   }
 

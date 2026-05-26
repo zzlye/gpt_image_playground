@@ -104,12 +104,22 @@ export interface AppSettings {
   appearanceNightMode: boolean
   /** 最近一次查询到的 Key 余额展示文本 */
   apiBalanceText: string
+  /** 最近一次余额展示使用的货币符号 */
+  apiBalanceCurrency?: string
   /** 最近一次查询 Key 余额的时间戳 */
   apiBalanceUpdatedAt?: number
   /** 最近一次查询余额对应的固定配置 ID */
   apiBalanceProfileId?: string
+  /** 当前模型单次调用费用展示文本 */
+  apiModelUnitCostText: string
+  /** 当前模型单次调用费用对应的固定配置 ID */
+  apiModelUnitCostProfileId?: string
+  /** 当前模型单次调用费用更新时间戳 */
+  apiModelUnitCostUpdatedAt?: number
   /** 公告当天不再提醒日期，格式为 YYYY-MM-DD */
   announcementDismissedDate?: string
+  /** 当天不再提醒对应的公告内容指纹，公告更新后会重新弹出 */
+  announcementDismissedHash?: string
   /** 公告永久不再提醒 */
   announcementDismissedForever: boolean
   agentScrollToBottomAfterSubmit: boolean

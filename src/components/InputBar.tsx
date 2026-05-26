@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
 import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
+import { queryNewApiModelUnitCost } from '../lib/newApi'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeImageSize } from '../lib/size'
@@ -588,6 +589,9 @@ export default function InputBar() {
   ), [activeProfile.id, currentActiveProfile.id, settings])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
+  const modelUnitCostText = settings.apiModelUnitCostProfileId === activeProfile.id
+    ? settings.apiModelUnitCostText
+    : '单次 $0.06'
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
     : hasSubmitApiConfig
@@ -595,6 +599,32 @@ export default function InputBar() {
     : '请先配置 API'
   const submitTooltipText = activeAgentIsRunning ? '停止生成' : '尚未完成 API 配置，请在右上角设置中进行'
   const promptPlaceholder = '描述你想生成的图片，可输入 @ 来指定参考图...'
+
+  useEffect(() => {
+    let cancelled = false
+    if (!activeProfile.id) return
+
+    void queryNewApiModelUnitCost(activeProfile).then((result) => {
+      if (cancelled) return
+      setSettings({
+        apiModelUnitCostText: result.text,
+        apiModelUnitCostProfileId: activeProfile.id,
+        apiModelUnitCostUpdatedAt: result.updatedAt,
+      })
+    }).catch(() => {
+      if (cancelled) return
+      setSettings({
+        apiModelUnitCostText: '单次 $0.06',
+        apiModelUnitCostProfileId: activeProfile.id,
+        apiModelUnitCostUpdatedAt: Date.now(),
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeProfile.id, activeProfile.baseUrl, activeProfile.model, setSettings])
+
   const submitCurrentMode = useCallback(() => {
     if (appMode === 'agent') {
       void submitAgentMessage()
@@ -2030,6 +2060,11 @@ export default function InputBar() {
                   onMouseLeave={() => setSubmitHover(false)}
                 >
                   <ButtonTooltip visible={(activeAgentIsRunning || !hasSubmitApiConfig) && submitHover} text={submitTooltipText} />
+                  {!activeAgentIsRunning && (
+                    <div className="absolute -top-6 right-0 whitespace-nowrap rounded-full border border-gray-200/70 bg-white/85 px-2 py-0.5 text-[11px] font-medium text-gray-500 shadow-sm backdrop-blur dark:border-white/[0.08] dark:bg-gray-900/85 dark:text-gray-300">
+                      {modelUnitCostText}
+                    </div>
+                  )}
                   <button
                     onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
                     disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}
@@ -2138,6 +2173,11 @@ export default function InputBar() {
                   onMouseLeave={() => setSubmitHover(false)}
                 >
                   <ButtonTooltip visible={(activeAgentIsRunning || !hasSubmitApiConfig) && submitHover} text={submitTooltipText} />
+                  {!activeAgentIsRunning && (
+                    <div className="mb-1 text-right text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                      {modelUnitCostText}
+                    </div>
+                  )}
                   <button
                     onClick={() => activeAgentIsRunning ? stopActiveAgentResponse() : hasSubmitApiConfig ? submitCurrentMode() : setShowSettings(true)}
                     disabled={activeAgentIsRunning ? false : hasSubmitApiConfig ? !canSubmit : false}

@@ -23,7 +23,7 @@ export const LOCKED_PUBLIC_PROFILE_ID = 'public-site'
 export const LOCKED_WENYUN_BASE_URL = 'https://zzlye.xyz:60/v1'
 export const LOCKED_PUBLIC_BASE_URL = 'https://1520635.xyz:3901/v1'
 export const LOCKED_OPENAI_BASE_URL = LOCKED_WENYUN_BASE_URL
-export const PIXIV_RANDOM_BACKGROUND_API_URL = 'https://api.lolicon.app/setu/v2?r18=0&num=1&size=regular&excludeAI=true'
+export const PIXIV_RANDOM_BACKGROUND_API_URL = 'https://api.lolicon.app/setu/v2?r18=0&num=1&size=regular&excludeAI=true&proxy=https://i.pixiv.re'
 const OPENAI_DEFAULT_BASE_URL = LOCKED_OPENAI_BASE_URL
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
 const DEFAULT_OPENAI_API_PROXY = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
@@ -565,9 +565,16 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     appearanceBackgroundBlur: normalizeAppearanceBlur(record.appearanceBackgroundBlur),
     appearanceNightMode: typeof record.appearanceNightMode === 'boolean' ? record.appearanceNightMode : false,
     apiBalanceText: typeof record.apiBalanceText === 'string' ? record.apiBalanceText : '',
+    apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
     apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
+    apiModelUnitCostText: typeof record.apiModelUnitCostText === 'string' && record.apiModelUnitCostText.trim()
+      ? record.apiModelUnitCostText
+      : '单次 $0.06',
+    apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
+    apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),
     announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
+    announcementDismissedHash: typeof record.announcementDismissedHash === 'string' ? record.announcementDismissedHash : undefined,
     announcementDismissedForever: typeof record.announcementDismissedForever === 'boolean' ? record.announcementDismissedForever : false,
     agentScrollToBottomAfterSubmit: typeof record.agentScrollToBottomAfterSubmit === 'boolean' ? record.agentScrollToBottomAfterSubmit : true,
     agentMaxToolRounds: normalizeAgentMaxToolRounds(record.agentMaxToolRounds),
@@ -859,6 +866,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   appearanceBackgroundOpacity: 0.28,
   appearanceBackgroundBlur: 18,
   appearanceNightMode: false,
+  apiModelUnitCostText: '单次 $0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,
