@@ -180,6 +180,15 @@ $env:VITE_DEFAULT_API_URL="https://api.openai.com/v1"; npm run deploy:cf
 
 官方镜像已发布至 GitHub Container Registry。Docker 部署支持在运行时注入默认配置。
 
+如果使用本仓库的私有镜像，可以在 GitHub Actions 中手动运行 **Build and Publish Docker Image** 工作流，`image_tag` 填写固定标签（如 `wenyun`），`update_latest` 勾选后会同时更新 `latest`。镜像地址为 `ghcr.io/zzlye/gpt_image_playground:<tag>`。
+
+私有镜像不需要公开也能部署到自己的服务器：在服务器上创建一个带 `read:packages` 权限的 GitHub personal access token classic，然后登录 GHCR 再拉取镜像。
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u zzlye --password-stdin
+docker pull ghcr.io/zzlye/gpt_image_playground:wenyun
+```
+
 **环境变量说明：**
 
 - `DEFAULT_API_URL`：设置页面上默认显示的 API 地址（如 `https://api.openai.com/v1`）。也支持填写 `.json` 配置 URL 或带 `settings` 参数的分享 URL 来导入自定义服务商配置（详见下方说明）。
@@ -211,7 +220,7 @@ docker run -d -p 8080:80 \
   -e ENABLE_API_PROXY=true \
   -e LOCK_API_PROXY=true \
   -e API_PROXY_URL=https://api.openai.com/v1 \
-  ghcr.io/cooksleep/gpt_image_playground:latest
+  ghcr.io/zzlye/gpt_image_playground:latest
 ```
 
 **隐藏真实 API 地址示例（OpenAI 兼容接口）：**
@@ -222,7 +231,7 @@ docker run -d -p 8080:80 \
   -e API_PROXY_URL=https://real-api.example.com/v1 \
   -e ENABLE_API_PROXY=true \
   -e LOCK_API_PROXY=true \
-  ghcr.io/cooksleep/gpt_image_playground:latest
+  ghcr.io/zzlye/gpt_image_playground:latest
 ```
 
 > 上例中设置页的 API URL 为空，实际请求通过代理转发到 `API_PROXY_URL`。
@@ -235,7 +244,7 @@ docker run -d -p 8080:80 \
   -e API_PROXY_URL=https://real-api.example.com/v1 \
   -e ENABLE_API_PROXY=true \
   -e LOCK_API_PROXY=true \
-  ghcr.io/cooksleep/gpt_image_playground:latest
+  ghcr.io/zzlye/gpt_image_playground:latest
 ```
 
 > 上例中 `DEFAULT_API_URL` 为同步自定义服务商配置分享 URL，profile 的 `baseUrl` 留空且 `apiProxy:true`；真实 API 地址仅在 `API_PROXY_URL` 中配置，前端不可见。异步任务自定义服务商暂不支持开启代理。
@@ -247,7 +256,7 @@ docker run -d -p 8080:80 \
 ```yaml
 services:
   gpt-image-playground:
-    image: ghcr.io/cooksleep/gpt_image_playground:latest
+    image: ghcr.io/zzlye/gpt_image_playground:latest
     environment:
       - DEFAULT_API_URL=https://api.openai.com/v1
     ports:
