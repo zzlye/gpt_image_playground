@@ -21,7 +21,6 @@ import {
   normalizeCustomProviderDefinition,
   normalizeSettings,
   normalizeStreamPartialImages,
-  PIXIV_RANDOM_BACKGROUND_API_URL,
   switchApiProfileProvider,
 } from '../lib/apiProfiles'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
@@ -196,148 +195,8 @@ function isProfileApiProxyEligible(settings: AppSettings, profile: ApiProfile) {
   return !isAsyncCustomProvider(customProvider)
 }
 
-const BACKGROUND_IMAGE_URL_KEYS = new Set(['url', 'image', 'imageUrl', 'img', 'src', 'small', 'regular', 'large', 'original'])
-const BACKGROUND_FETCH_TIMEOUT_MS = 3500
-const BACKGROUND_PROXY_FETCH_TIMEOUT_MS = 4500
-const BACKGROUND_IMAGE_LOAD_TIMEOUT_MS = 2200
-const PIXIV_BACKGROUND_IMAGE_MIRRORS = ['https://i.pixiv.re', 'https://i.pixiv.cat']
-
-function isBackgroundImageUrl(value: string) {
-  return /^(https?:\/\/|data:image\/|blob:)/i.test(value.trim())
-}
-
-function collectBackgroundImageUrls(input: unknown, output: string[] = []): string[] {
-  if (typeof input === 'string') {
-    const trimmed = input.trim()
-    if (isBackgroundImageUrl(trimmed)) output.push(trimmed)
-    return output
-  }
-  if (!input || typeof input !== 'object') return output
-
-  if (Array.isArray(input)) {
-    input.forEach((item) => collectBackgroundImageUrls(item, output))
-    return output
-  }
-
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    // 兼容常见随机图 API：纯 URL、{url}、{image}、{data:{url}}、{urls:[...]}。
-    if (typeof value === 'string' && (BACKGROUND_IMAGE_URL_KEYS.has(key) || isBackgroundImageUrl(value))) {
-      const trimmed = value.trim()
-      if (isBackgroundImageUrl(trimmed)) output.push(trimmed)
-      continue
-    }
-    collectBackgroundImageUrls(value, output)
-  }
-
-  return output
-}
-
-function getBackgroundImageUrlCandidates(payload: unknown): string[] {
-  if (typeof payload === 'string') {
-    const trimmed = payload.trim()
-    if (!trimmed) return []
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      try {
-        return getBackgroundImageUrlCandidates(JSON.parse(trimmed))
-      } catch {
-        return isBackgroundImageUrl(trimmed) ? [trimmed] : []
-      }
-    }
-    return isBackgroundImageUrl(trimmed) ? [trimmed] : []
-  }
-
-  return expandBackgroundImageMirrors(collectBackgroundImageUrls(payload))
-}
-
-function expandBackgroundImageMirrors(urls: string[]) {
-  const output: string[] = []
-  const seen = new Set<string>()
-
-  const add = (url: string) => {
-    if (!isBackgroundImageUrl(url) || seen.has(url)) return
-    seen.add(url)
-    output.push(url)
-  }
-
-  urls.forEach((url) => {
-    add(url)
-    try {
-      const parsed = new URL(url)
-      const mirror = PIXIV_BACKGROUND_IMAGE_MIRRORS.find((candidate) => parsed.origin !== candidate)
-      if (mirror && PIXIV_BACKGROUND_IMAGE_MIRRORS.includes(parsed.origin)) {
-        const mirrorUrl = new URL(mirror)
-        mirrorUrl.pathname = parsed.pathname
-        mirrorUrl.search = parsed.search
-        mirrorUrl.hash = parsed.hash
-        add(mirrorUrl.toString())
-      }
-    } catch {
-      // 非标准 URL 已经在原地址候选里保留，这里不用中断随机流程。
-    }
-  })
-
-  return output
-}
-
-function shuffleBackgroundUrls(urls: string[]) {
-  return [...urls].sort(() => Math.random() - 0.5)
-}
-
-function buildPixivBackgroundApiUrl(proxyBaseUrl: string) {
-  const url = new URL(PIXIV_RANDOM_BACKGROUND_API_URL)
-  url.searchParams.set('num', '3')
-  url.searchParams.delete('size')
-  url.searchParams.append('size', 'small')
-  url.searchParams.append('size', 'regular')
-  url.searchParams.set('proxy', proxyBaseUrl)
-  return url.toString()
-}
-
-function getBackgroundRequestBatches() {
-  const apiUrl = buildPixivBackgroundApiUrl('https://i.pixiv.re')
-  const directUrls = shuffleBackgroundUrls([
-    apiUrl,
-    buildPixivBackgroundApiUrl('https://i.pixiv.cat'),
-  ])
-  const proxyUrls = shuffleBackgroundUrls(
-    directUrls.flatMap((url) => {
-      const encodedUrl = encodeURIComponent(url)
-      return [
-        `https://corsproxy.io/?${encodedUrl}`,
-        `https://api.allorigins.win/raw?url=${encodedUrl}`,
-      ]
-    }),
-  ).slice(0, 2)
-
-  // 先走最快的直连接口；只有直连失败时再尝试公共代理，避免慢代理拖住大多数点击。
-  return [
-    directUrls.map((url) => ({ url, timeoutMs: BACKGROUND_FETCH_TIMEOUT_MS })),
-    proxyUrls.map((url) => ({ url, timeoutMs: BACKGROUND_PROXY_FETCH_TIMEOUT_MS })),
-  ].filter((batch) => batch.length > 0)
-}
-
-async function fetchBackgroundImageCandidates(requestUrl: string, timeoutMs = BACKGROUND_FETCH_TIMEOUT_MS) {
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    const response = await fetch(requestUrl, { cache: 'no-store', signal: controller.signal })
-    if (!response.ok) throw new Error(`背景 API 请求失败：${response.status}`)
-    const text = await response.text()
-    const payload = (() => {
-      try {
-        return JSON.parse(text)
-      } catch {
-        return text
-      }
-    })()
-    const imageUrls = getBackgroundImageUrlCandidates(payload)
-    if (imageUrls.length === 0) throw new Error('背景 API 没有返回可识别的图片地址')
-    return shuffleBackgroundUrls(imageUrls)
-  } finally {
-    window.clearTimeout(timer)
-  }
-}
+const RANDOM_BACKGROUND_API_URL = 'https://i.mukyu.ru/random'
+const BACKGROUND_IMAGE_LOAD_TIMEOUT_MS = 8000
 
 function preloadBackgroundImageUrl(imageUrl: string, timeoutMs = BACKGROUND_IMAGE_LOAD_TIMEOUT_MS) {
   if (/^(data:image\/|blob:)/i.test(imageUrl)) return Promise.resolve(imageUrl)
@@ -368,76 +227,22 @@ function preloadBackgroundImageUrl(imageUrl: string, timeoutMs = BACKGROUND_IMAG
   })
 }
 
-function raceLoadableBackgroundImageUrl(imageUrls: string[]): Promise<string> {
-  const candidates = imageUrls.slice(0, 8)
-  if (candidates.length === 0) return Promise.reject(new Error('背景 API 没有返回可识别的图片地址'))
-
-  return new Promise((resolve, reject) => {
-    let finished = 0
-    let settled = false
-    const errors: unknown[] = []
-    const fallbackTimer = window.setTimeout(() => {
-      if (settled) return
-      settled = true
-      resolve(candidates[0])
-    }, BACKGROUND_IMAGE_LOAD_TIMEOUT_MS)
-
-    candidates.forEach((imageUrl) => {
-      void preloadBackgroundImageUrl(imageUrl)
-        .then((loadedUrl) => {
-          if (settled) return
-          settled = true
-          window.clearTimeout(fallbackTimer)
-          resolve(loadedUrl)
-        })
-        .catch((err) => {
-          errors.push(err)
-          finished += 1
-          if (!settled && finished === candidates.length) {
-            window.clearTimeout(fallbackTimer)
-            reject(errors.find((error) => error instanceof Error) ?? new Error('背景图片加载失败'))
-          }
-        })
-    })
-  })
-}
-
-function raceBackgroundImageUrl(requests: Array<{ url: string, timeoutMs: number }>): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let settled = false
-    let finished = 0
-    const errors: unknown[] = []
-
-    requests.forEach(({ url, timeoutMs }) => {
-      void fetchBackgroundImageCandidates(url, timeoutMs)
-        .then((imageUrls) => raceLoadableBackgroundImageUrl(imageUrls))
-        .then((imageUrl) => {
-          if (settled) return
-          settled = true
-          resolve(imageUrl)
-        })
-        .catch((err) => {
-          errors.push(err)
-          finished += 1
-          if (!settled && finished === requests.length) {
-            reject(errors.find((error) => error instanceof Error) ?? new Error('随机背景失败'))
-          }
-        })
-    })
-  })
-}
-
-async function getRandomBackgroundImageUrl() {
-  const errors: unknown[] = []
-  for (const requests of getBackgroundRequestBatches()) {
-    try {
-      return await raceBackgroundImageUrl(requests)
-    } catch (err) {
-      errors.push(err)
-    }
-  }
-
-  throw errors.find((error) => error instanceof Error) ?? new Error('随机背景失败，请稍后重试')
+function getRandomBackgroundImageUrl() {
+  const url = new URL(RANDOM_BACKGROUND_API_URL)
+  // 直接出图可以避开 JSON 跨域问题，同时限制横图和最低分辨率，减少小图铺满后的模糊。
+  url.searchParams.set('redirect', '1')
+  url.searchParams.set('r18', '0')
+  url.searchParams.set('ai_type', '0')
+  url.searchParams.set('illust_type', 'illust')
+  url.searchParams.set('orientation', 'landscape')
+  url.searchParams.set('min_width', '1920')
+  url.searchParams.set('min_height', '1080')
+  url.searchParams.set('min_pixels', '2500000')
+  url.searchParams.set('attempts', '3')
+  url.searchParams.set('pixiv_cat', '1')
+  url.searchParams.set('pximg_mirror_host', 're')
+  url.searchParams.set('t', Date.now().toString())
+  return url.toString()
 }
 
 const CUSTOM_PROVIDER_LLM_PROMPT = `# 角色
@@ -1296,7 +1101,7 @@ export default function SettingsModal() {
   const randomizeBackgroundFromApi = async () => {
     setIsRandomizingBackground(true)
     try {
-      const imageUrl = await getRandomBackgroundImageUrl()
+      const imageUrl = await preloadBackgroundImageUrl(getRandomBackgroundImageUrl())
       commitSettings({ ...draft, appearanceBackgroundImageUrl: imageUrl })
       showToast('背景已更新', 'success')
     } catch (err) {
@@ -1426,15 +1231,6 @@ export default function SettingsModal() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                 </svg>
                 数据管理
-              </button>
-              <button
-                onClick={() => setActiveTab('about')}
-                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'about' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                公告
               </button>
             </nav>
           </div>
@@ -2065,17 +1861,6 @@ export default function SettingsModal() {
             
             {activeTab === 'appearance' && (
               <div className="space-y-5">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">背景 API</span>
-                  <input
-                    value={PIXIV_RANDOM_BACKGROUND_API_URL}
-                    type="text"
-                    readOnly
-                    onFocus={(event) => event.currentTarget.select()}
-                    className="w-full cursor-text rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                  />
-                </label>
-
                 <div className="block">
                   <div className="mb-1.5 flex items-center justify-between gap-3">
                     <span className="block text-sm text-gray-600 dark:text-gray-300">当前背景</span>
@@ -2301,9 +2086,6 @@ export default function SettingsModal() {
               </div>
             )}
 
-            {activeTab === 'about' && (
-              <div className="min-h-[300px]" />
-            )}
           </div>
         </div>
       </div>

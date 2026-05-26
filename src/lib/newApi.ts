@@ -9,6 +9,7 @@ export interface NewApiBalanceResult {
 export interface NewApiNoticeResult {
   content: string
   updatedAt: number
+  publishedAt?: string
 }
 
 export interface NewApiModelUnitCostResult {
@@ -22,9 +23,9 @@ interface NewApiStatusInfo {
   raw: unknown
 }
 
-const DEFAULT_CURRENCY_SYMBOL = '$'
+const DEFAULT_CURRENCY_SYMBOL = 'HUHN'
 const DEFAULT_QUOTA_PER_UNIT = 500_000
-const FALLBACK_MODEL_UNIT_COST = `单次 ${DEFAULT_CURRENCY_SYMBOL}0.06`
+const FALLBACK_MODEL_UNIT_COST = `单次 ${DEFAULT_CURRENCY_SYMBOL} 0.06`
 
 function trimTrailingSlash(value: string): string {
   return value.trim().replace(/\/+$/, '')
@@ -157,7 +158,7 @@ function getCurrencySymbolFromCode(code: string | null): string {
 
 function parseNewApiStatus(payload: unknown): NewApiStatusInfo {
   const data = getPayloadData(payload)
-  const currencyValue = findValueByNormalizedKeys(data, [
+  const currencyKeys = [
     'custom_currency_symbol',
     'customCurrencySymbol',
     'CustomCurrencySymbol',
@@ -168,7 +169,10 @@ function parseNewApiStatus(payload: unknown): NewApiStatusInfo {
     'currency',
     'display_currency',
     'DisplayCurrency',
-  ])
+  ]
+  const currencyValue = currencyKeys
+    .map((key) => findValueByNormalizedKeys(data, [key]))
+    .find((value) => typeof value === 'string' && value.trim())
   const currencyText = typeof currencyValue === 'string' ? currencyValue.trim() : ''
   const quotaPerUnitValue = findValueByNormalizedKeys(data, ['quota_per_unit', 'QuotaPerUnit'])
   const quotaPerUnit = typeof quotaPerUnitValue === 'number'
@@ -190,7 +194,7 @@ async function fetchNewApiStatus(apiRoot: string, origin: string): Promise<NewAp
   let lastError: unknown = null
   for (const url of attempts) {
     try {
-      return parseNewApiStatus(await fetchJson(url))
+      return parseNewApiStatus(await fetchPublicJsonWithCorsFallback(url))
     } catch (err) {
       lastError = err
     }
@@ -254,6 +258,7 @@ export async function queryNewApiBalance(profile: ApiProfile): Promise<NewApiBal
   const status = await fetchNewApiStatus(apiRoot, origin)
 
   const attempts: Array<() => Promise<string | null>> = [
+    async () => parseUserBalance(await fetchJson(`${origin}/api/user/self`, profile.apiKey), status),
     async () => {
       const [subscription, usage] = await Promise.all([
         fetchJson(`${apiRoot}/dashboard/billing/subscription`, profile.apiKey),
@@ -262,7 +267,6 @@ export async function queryNewApiBalance(profile: ApiProfile): Promise<NewApiBal
       return parseSubscriptionBalance(subscription, usage, status)
     },
     async () => parseCreditGrantBalance(await fetchJson(`${apiRoot}/dashboard/billing/credit_grants`, profile.apiKey), status),
-    async () => parseUserBalance(await fetchJson(`${origin}/api/user/self`, profile.apiKey), status),
   ]
 
   let lastError: unknown = null
@@ -283,48 +287,64 @@ function getNoticeItemText(input: unknown): string {
   if (!isRecord(input)) return ''
   const title = readString(input, ['title', 'name', 'subject']) ?? ''
   const content = readString(input, ['content', 'message', 'text', 'description', 'body']) ?? ''
-  const createdAt = readString(input, ['created_at', 'createdAt', 'time', 'date']) ?? ''
   const parts = [
     title ? `### ${title}` : '',
-    createdAt ? `_${createdAt}_` : '',
     content,
   ].filter(Boolean)
   return parts.join('\n\n').trim()
 }
 
-function parseNoticePayload(payload: unknown): string {
-  if (typeof payload === 'string') return payload.trim()
+function getNoticeItemDate(input: unknown): string | undefined {
+  if (!isRecord(input)) return undefined
+  return readString(input, ['publishDate', 'published_at', 'publishedAt', 'created_at', 'createdAt', 'updated_at', 'updatedAt', 'time', 'date']) ?? undefined
+}
+
+function parseNoticePayload(payload: unknown): NewApiNoticeResult {
+  const updatedAt = Date.now()
+  if (typeof payload === 'string') return { content: payload.trim(), updatedAt }
   const data = isRecord(payload) && 'data' in payload ? payload.data : payload
   if (Array.isArray(data)) {
-    return data.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n')
+    return {
+      content: data.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n'),
+      updatedAt,
+      publishedAt: data.map(getNoticeItemDate).find(Boolean),
+    }
   }
-  if (typeof data === 'string') return data.trim()
-  if (!isRecord(data)) return ''
+  if (typeof data === 'string') return { content: data.trim(), updatedAt }
+  if (!isRecord(data)) return { content: '', updatedAt }
 
   for (const key of ['notices', 'notice', 'content', 'message', 'announcement', 'announcements', 'items', 'list']) {
     const value = data[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-    if (Array.isArray(value)) return value.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n')
+    if (typeof value === 'string' && value.trim()) {
+      return { content: value.trim(), updatedAt, publishedAt: getNoticeItemDate(data) }
+    }
+    if (Array.isArray(value)) {
+      return {
+        content: value.map(getNoticeItemText).filter(Boolean).join('\n\n---\n\n'),
+        updatedAt,
+        publishedAt: value.map(getNoticeItemDate).find(Boolean),
+      }
+    }
     if (isRecord(value)) {
       const nested = parseNoticePayload(value)
-      if (nested) return nested
+      if (nested.content) return nested
     }
   }
 
-  return getNoticeItemText(data)
+  return { content: getNoticeItemText(data), updatedAt, publishedAt: getNoticeItemDate(data) }
 }
 
 export async function fetchNewApiNotice(baseUrl: string): Promise<NewApiNoticeResult> {
   const origin = getApiOrigin(baseUrl)
   if (!origin) throw new Error('API URL 无效')
-  const attempts = [`${origin}/api/notice`, `${origin}/api/status`, `${origin}/api/announcements`, `${origin}/api/system/notice`]
+  const attempts = [`${origin}/api/status`, `${origin}/api/notice`, `${origin}/api/announcements`, `${origin}/api/system/notice`]
   let lastError: unknown = null
   let hasSuccessfulResponse = false
   for (const url of attempts) {
     try {
       hasSuccessfulResponse = true
-      const content = parseNoticePayload(await fetchPublicJsonWithCorsFallback(url))
-      if (content) return { content, updatedAt: Date.now() }
+      const notice = parseNoticePayload(await fetchPublicJsonWithCorsFallback(url))
+      if (notice.content) return notice
     } catch (err) {
       lastError = err
     }

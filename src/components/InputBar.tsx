@@ -591,7 +591,7 @@ export default function InputBar() {
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
   const modelUnitCostText = settings.apiModelUnitCostProfileId === activeProfile.id
     ? settings.apiModelUnitCostText
-    : '单次 $0.06'
+    : '单次 HUHN 0.06'
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
     : hasSubmitApiConfig
@@ -614,7 +614,7 @@ export default function InputBar() {
     }).catch(() => {
       if (cancelled) return
       setSettings({
-        apiModelUnitCostText: '单次 $0.06',
+        apiModelUnitCostText: '单次 HUHN 0.06',
         apiModelUnitCostProfileId: activeProfile.id,
         apiModelUnitCostUpdatedAt: Date.now(),
       })

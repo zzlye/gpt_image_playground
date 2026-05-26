@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
@@ -40,9 +40,34 @@ export default function App() {
   const appearanceNightMode = useStore((s) => s.settings.appearanceNightMode)
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementContent, setAnnouncementContent] = useState('')
+  const [announcementPublishedAt, setAnnouncementPublishedAt] = useState<string | undefined>(undefined)
   const [announcementLoading, setAnnouncementLoading] = useState(false)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
+
+  const loadAnnouncement = useCallback(async (autoOpen = false) => {
+    setAnnouncementLoading(true)
+    try {
+      const notice = await fetchNewApiNotice(LOCKED_WENYUN_BASE_URL)
+      setAnnouncementContent(notice.content)
+      setAnnouncementPublishedAt(notice.publishedAt)
+
+      if (autoOpen) {
+        const latestSettings = useStore.getState().settings
+        const today = new Date().toISOString().slice(0, 10)
+        const noticeHash = getAnnouncementHash(notice.content)
+        const dismissedToday = latestSettings.announcementDismissedDate === today && latestSettings.announcementDismissedHash === noticeHash
+        const shouldAutoOpen = !latestSettings.announcementDismissedForever && !dismissedToday && Boolean(notice.content.trim())
+        if (shouldAutoOpen) setAnnouncementOpen(true)
+      }
+    } catch (error) {
+      console.warn('Failed to load announcement:', error)
+      setAnnouncementContent('')
+      setAnnouncementPublishedAt(undefined)
+    } finally {
+      setAnnouncementLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -87,33 +112,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    let disposed = false
-    const today = new Date().toISOString().slice(0, 10)
-
-    const loadNotice = async () => {
-      setAnnouncementLoading(true)
-      try {
-        const notice = await fetchNewApiNotice(LOCKED_WENYUN_BASE_URL)
-        if (disposed) return
-        setAnnouncementContent(notice.content)
-
-        const latestSettings = useStore.getState().settings
-        const shouldAutoOpen = !latestSettings.announcementDismissedForever && Boolean(notice.content.trim())
-        if (shouldAutoOpen) setAnnouncementOpen(true)
-      } catch (error) {
-        console.warn('Failed to load announcement:', error)
-        if (!disposed) setAnnouncementContent('')
-      } finally {
-        if (!disposed) setAnnouncementLoading(false)
-      }
-    }
-
-    void loadNotice()
-
-    return () => {
-      disposed = true
-    }
-  }, [settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
+    void loadAnnouncement(true)
+  }, [loadAnnouncement, settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
 
   const dismissAnnouncementToday = () => {
     setSettings({
@@ -172,7 +172,10 @@ export default function App() {
         <ImageContextMenu />
         <button
           type="button"
-          onClick={() => setAnnouncementOpen(true)}
+          onClick={() => {
+            setAnnouncementOpen(true)
+            void loadAnnouncement(false)
+          }}
           className="fixed bottom-4 left-4 z-50 rounded-full border border-gray-200/70 bg-white/85 px-3 py-2 text-xs font-medium text-gray-700 shadow-lg backdrop-blur transition hover:bg-white hover:text-gray-900 dark:border-white/[0.08] dark:bg-gray-900/85 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           公告
@@ -182,6 +185,7 @@ export default function App() {
             content={announcementContent}
             dismissForever={settings.announcementDismissedForever}
             loading={announcementLoading}
+            publishedAt={announcementPublishedAt}
             onClose={() => setAnnouncementOpen(false)}
             onDismissToday={dismissAnnouncementToday}
             onToggleDismissForever={toggleAnnouncementForever}

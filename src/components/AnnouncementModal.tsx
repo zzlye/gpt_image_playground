@@ -5,25 +5,43 @@ interface AnnouncementModalProps {
   content: string
   dismissForever: boolean
   loading?: boolean
+  publishedAt?: string
   onClose: () => void
   onDismissToday: () => void
   onToggleDismissForever: (checked: boolean) => void
+}
+
+function formatAnnouncementDate(value: string | undefined) {
+  if (!value?.trim()) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
 export default function AnnouncementModal({
   content,
   dismissForever,
   loading = false,
+  publishedAt,
   onClose,
   onDismissToday,
   onToggleDismissForever,
 }: AnnouncementModalProps) {
+  const displayDate = formatAnnouncementDate(publishedAt)
+
   return (
     <div data-no-drag-select className="fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/45 backdrop-blur-sm animate-overlay-in" onClick={onClose} />
       <div className="relative z-10 flex max-h-[82vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/50 bg-white/95 shadow-2xl ring-1 ring-black/5 animate-modal-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-100 p-5 dark:border-white/[0.08]">
-          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">公告</h3>
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">公告</h3>
+            {displayDate && (
+              <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                {displayDate}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}

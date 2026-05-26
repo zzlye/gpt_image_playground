@@ -23,7 +23,7 @@ export const LOCKED_PUBLIC_PROFILE_ID = 'public-site'
 export const LOCKED_WENYUN_BASE_URL = 'https://zzlye.xyz:60/v1'
 export const LOCKED_PUBLIC_BASE_URL = 'https://1520635.xyz:3901/v1'
 export const LOCKED_OPENAI_BASE_URL = LOCKED_WENYUN_BASE_URL
-export const PIXIV_RANDOM_BACKGROUND_API_URL = 'https://api.lolicon.app/setu/v2?r18=0&num=1&size=regular&excludeAI=true&proxy=https://i.pixiv.re'
+export const PIXIV_RANDOM_BACKGROUND_API_URL = 'https://i.mukyu.ru/random?redirect=1&r18=0&ai_type=0&illust_type=illust&orientation=landscape&min_width=1920&min_height=1080&min_pixels=2500000&attempts=3&pixiv_cat=1&pximg_mirror_host=re'
 const OPENAI_DEFAULT_BASE_URL = LOCKED_OPENAI_BASE_URL
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
 const DEFAULT_OPENAI_API_PROXY = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
@@ -93,6 +93,14 @@ function normalizeApiTimeout(value: unknown, fallback = DEFAULT_API_TIMEOUT): nu
 function normalizeApiBalanceUpdatedAt(value: unknown): number | undefined {
   const numeric = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined
+}
+
+function normalizeApiBalanceText(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const text = value.trim()
+  if (!text) return ''
+  // 迁移旧缓存，避免刷新后在自动查询完成前短暂显示旧美元符号。
+  return text.replace(/\$(\d)/g, 'HUHN $1')
 }
 
 function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFINITIONS[number], overrides: Partial<ApiProfile> = {}): ApiProfile {
@@ -564,13 +572,13 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     appearanceBackgroundOpacity: normalizeAppearanceOpacity(record.appearanceBackgroundOpacity),
     appearanceBackgroundBlur: normalizeAppearanceBlur(record.appearanceBackgroundBlur),
     appearanceNightMode: typeof record.appearanceNightMode === 'boolean' ? record.appearanceNightMode : false,
-    apiBalanceText: typeof record.apiBalanceText === 'string' ? record.apiBalanceText : '',
+    apiBalanceText: normalizeApiBalanceText(record.apiBalanceText),
     apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
     apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
     apiModelUnitCostText: typeof record.apiModelUnitCostText === 'string' && record.apiModelUnitCostText.trim()
       ? record.apiModelUnitCostText
-      : '单次 $0.06',
+      : '单次 HUHN 0.06',
     apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
     apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),
     announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
@@ -866,7 +874,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   appearanceBackgroundOpacity: 0.28,
   appearanceBackgroundBlur: 18,
   appearanceNightMode: false,
-  apiModelUnitCostText: '单次 $0.06',
+  apiModelUnitCostText: '单次 HUHN 0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,
