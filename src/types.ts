@@ -92,6 +92,26 @@ export interface AppSettings {
   alwaysShowRetryButton: boolean
   enterSubmit: boolean
   referenceImageEditAction: ReferenceImageEditAction
+  /** 背景随机图 API 地址，可接入 P站随机图接口 */
+  appearanceBackgroundApiUrl: string
+  /** 当前展示的背景图片地址 */
+  appearanceBackgroundImageUrl: string
+  /** 背景图片透明度，范围 0 到 1 */
+  appearanceBackgroundOpacity: number
+  /** 背景毛玻璃强度，单位 px */
+  appearanceBackgroundBlur: number
+  /** 夜间外观模式，开启后使用深色界面配色 */
+  appearanceNightMode: boolean
+  /** 最近一次查询到的 Key 余额展示文本 */
+  apiBalanceText: string
+  /** 最近一次查询 Key 余额的时间戳 */
+  apiBalanceUpdatedAt?: number
+  /** 最近一次查询余额对应的固定配置 ID */
+  apiBalanceProfileId?: string
+  /** 公告当天不再提醒日期，格式为 YYYY-MM-DD */
+  announcementDismissedDate?: string
+  /** 公告永久不再提醒 */
+  announcementDismissedForever: boolean
   agentScrollToBottomAfterSubmit: boolean
   agentMaxToolRounds: number
   agentWebSearch: boolean
@@ -111,7 +131,7 @@ export interface TaskParams {
 }
 
 export const DEFAULT_PARAMS: TaskParams = {
-  size: 'auto',
+  size: '1024x1024',
   quality: 'auto',
   output_format: 'png',
   output_compression: null,

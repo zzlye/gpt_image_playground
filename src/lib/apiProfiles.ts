@@ -18,7 +18,13 @@ import { shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
 
-const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+export const LOCKED_WENYUN_PROFILE_ID = 'wenyun-site'
+export const LOCKED_PUBLIC_PROFILE_ID = 'public-site'
+export const LOCKED_WENYUN_BASE_URL = 'https://zzlye.xyz:60/v1'
+export const LOCKED_PUBLIC_BASE_URL = 'https://1520635.xyz:3901/v1'
+export const LOCKED_OPENAI_BASE_URL = LOCKED_WENYUN_BASE_URL
+export const PIXIV_RANDOM_BACKGROUND_API_URL = 'https://api.lolicon.app/setu/v2?r18=0&num=1&size=regular&excludeAI=true'
+const OPENAI_DEFAULT_BASE_URL = LOCKED_OPENAI_BASE_URL
 const RAW_DEFAULT_API_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL)
 const DEFAULT_OPENAI_API_PROXY = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
 const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT) === 'true'
@@ -29,8 +35,15 @@ export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
-export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
+export const DEFAULT_OPENAI_PROFILE_ID = LOCKED_WENYUN_PROFILE_ID
 export const DEFAULT_API_TIMEOUT = 600
+
+const LOCKED_OPENAI_PROFILE_DEFINITIONS = [
+  { id: LOCKED_WENYUN_PROFILE_ID, name: '文运站', baseUrl: LOCKED_WENYUN_BASE_URL },
+  { id: LOCKED_PUBLIC_PROFILE_ID, name: '公益站', baseUrl: LOCKED_PUBLIC_BASE_URL },
+] as const
+
+export const LOCKED_OPENAI_API_PROFILES = LOCKED_OPENAI_PROFILE_DEFINITIONS
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
@@ -59,6 +72,84 @@ const DEFAULT_EDIT_FILES: CustomProviderFileMapping[] = [
 ]
 
 type ApiProfileProviderDraft = NonNullable<ApiProfile['providerDrafts']>[ApiProvider]
+
+function normalizeLockedBaseUrl(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/\/+$/, '').toLowerCase() : ''
+}
+
+function getLockedOpenAIProfileDefinition(input?: Partial<ApiProfile> | null) {
+  const id = typeof input?.id === 'string' ? input.id : ''
+  const baseUrl = normalizeLockedBaseUrl(input?.baseUrl)
+  return LOCKED_OPENAI_PROFILE_DEFINITIONS.find((definition) => definition.id === id)
+    ?? LOCKED_OPENAI_PROFILE_DEFINITIONS.find((definition) => normalizeLockedBaseUrl(definition.baseUrl) === baseUrl)
+    ?? LOCKED_OPENAI_PROFILE_DEFINITIONS[0]
+}
+
+function normalizeApiTimeout(value: unknown, fallback = DEFAULT_API_TIMEOUT): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) ? numeric : fallback
+}
+
+function normalizeApiBalanceUpdatedAt(value: unknown): number | undefined {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined
+}
+
+function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFINITIONS[number], overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return {
+    id: definition.id,
+    name: definition.name,
+    provider: 'openai',
+    baseUrl: definition.baseUrl,
+    apiKey: typeof overrides.apiKey === 'string' ? overrides.apiKey : '',
+    model: DEFAULT_IMAGES_MODEL,
+    timeout: normalizeApiTimeout(overrides.timeout),
+    apiMode: 'images',
+    codexCli: true,
+    apiProxy: false,
+    responseFormatB64Json: undefined,
+    streamImages: false,
+    streamPartialImages: 0,
+    providerDrafts: undefined,
+  }
+}
+
+function createLockedOpenAIProfiles(input: unknown, legacyProfile: ApiProfile): ApiProfile[] {
+  const profileRecords = Array.isArray(input) ? input : []
+  const byDefinition = new Map<string, ApiProfile>()
+  const legacyFallback = lockOpenAIProfile(legacyProfile)
+
+  for (const item of profileRecords) {
+    const normalized = normalizeApiProfile(item)
+    byDefinition.set(normalized.id, normalized)
+  }
+
+  return LOCKED_OPENAI_PROFILE_DEFINITIONS.map((definition, index) =>
+    byDefinition.get(definition.id)
+      ?? createLockedOpenAIProfile(definition, index === 0 ? legacyFallback : {}),
+  )
+}
+
+function normalizeAppearanceOpacity(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return 0.28
+  return Math.min(1, Math.max(0, numeric))
+}
+
+function normalizeAppearanceBlur(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return 18
+  return Math.min(60, Math.max(0, Math.trunc(numeric)))
+}
+
+function normalizeAppearanceUrl(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function lockOpenAIProfile(profile: ApiProfile): ApiProfile {
+  const definition = getLockedOpenAIProfileDefinition(profile)
+  return createLockedOpenAIProfile(definition, profile)
+}
 
 export function normalizeStreamPartialImages(value: unknown, fallback: number | undefined = DEFAULT_STREAM_PARTIAL_IMAGES): number {
   const fallbackValue = fallback ?? DEFAULT_STREAM_PARTIAL_IMAGES
@@ -283,21 +374,11 @@ export function normalizeCustomProviderDefinitions(input: unknown): CustomProvid
 }
 
 export function createDefaultOpenAIProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
-  return {
-    id: DEFAULT_OPENAI_PROFILE_ID,
-    name: '默认',
-    provider: 'openai',
-    baseUrl: DEFAULT_BASE_URL,
-    apiKey: '',
-    model: DEFAULT_IMAGES_MODEL,
-    timeout: DEFAULT_API_TIMEOUT,
-    apiMode: 'images',
-    codexCli: false,
-    apiProxy: DEFAULT_OPENAI_API_PROXY,
-    streamImages: true,
-    streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
-    ...overrides,
-  }
+  const definition = getLockedOpenAIProfileDefinition({
+    id: overrides.id ?? DEFAULT_OPENAI_PROFILE_ID,
+    baseUrl: overrides.baseUrl ?? DEFAULT_BASE_URL,
+  })
+  return createLockedOpenAIProfile(definition, overrides)
 }
 
 export function createDefaultFalProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
@@ -416,29 +497,14 @@ function normalizeProviderDrafts(input: unknown, customProviderIds: Set<string>)
 
 export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfile>, customProviderIds = new Set<string>()): ApiProfile {
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-  const rawProvider = typeof record.provider === 'string' ? record.provider : ''
-  const provider: ApiProvider = rawProvider === 'fal' || customProviderIds.has(rawProvider) ? rawProvider : 'openai'
-  const defaults = provider === 'fal' ? createDefaultFalProfile(fallback) : createDefaultOpenAIProfile(fallback)
-  const apiMode: ApiMode = record.apiMode === 'responses' ? 'responses' : 'images'
-  const rawBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : defaults.baseUrl
-
-  return {
-    ...defaults,
-    id: typeof record.id === 'string' && record.id.trim() ? record.id : defaults.id,
-    name: typeof record.name === 'string' && record.name.trim() ? record.name : defaults.name,
-    provider,
-    baseUrl: provider === 'fal' ? rawBaseUrl.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL : rawBaseUrl,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : defaults.apiKey,
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : defaults.model,
-    timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : defaults.timeout,
-    apiMode,
-    codexCli: Boolean(record.codexCli),
-    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : defaults.apiProxy,
-    responseFormatB64Json: record.responseFormatB64Json === true ? true : undefined,
-    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : defaults.streamImages,
-    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, defaults.streamPartialImages),
-    providerDrafts: normalizeProviderDrafts(record.providerDrafts, customProviderIds),
-  }
+  const definition = getLockedOpenAIProfileDefinition({
+    id: typeof record.id === 'string' ? record.id : fallback?.id,
+    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : fallback?.baseUrl,
+  })
+  return createLockedOpenAIProfile(definition, {
+    apiKey: typeof record.apiKey === 'string' ? record.apiKey : fallback?.apiKey,
+    timeout: normalizeApiTimeout(record.timeout, fallback?.timeout ?? DEFAULT_API_TIMEOUT),
+  })
 }
 
 function validateImportedProfileRecord(input: unknown) {
@@ -457,22 +523,19 @@ function validateImportedProfileRecord(input: unknown) {
 export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSettings {
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const customProviders = normalizeCustomProviderDefinitions(record.customProviders)
-  const customProviderIds = new Set(customProviders.map((provider) => provider.id))
   const legacyProfile = createDefaultOpenAIProfile({
-    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL,
+    baseUrl: LOCKED_OPENAI_BASE_URL,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : '',
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
+    model: DEFAULT_IMAGES_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
-    apiMode: record.apiMode === 'responses' ? 'responses' : 'images',
-    codexCli: Boolean(record.codexCli),
-    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : DEFAULT_OPENAI_API_PROXY,
-    responseFormatB64Json: record.responseFormatB64Json === true ? true : undefined,
-    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : true,
-    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages),
+    apiMode: 'images',
+    codexCli: true,
+    apiProxy: false,
+    responseFormatB64Json: undefined,
+    streamImages: false,
+    streamPartialImages: 0,
   })
-  const profiles = Array.isArray(record.profiles) && record.profiles.length
-    ? record.profiles.map((profile) => normalizeApiProfile(profile, undefined, customProviderIds))
-    : [legacyProfile]
+  const profiles = createLockedOpenAIProfiles(record.profiles, legacyProfile)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -481,13 +544,13 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   return {
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
-    model: active.model,
+    model: DEFAULT_IMAGES_MODEL,
     timeout: active.timeout,
-    apiMode: active.apiMode,
-    codexCli: active.codexCli,
-    apiProxy: active.apiProxy,
-    streamImages: active.streamImages,
-    streamPartialImages: active.streamPartialImages,
+    apiMode: 'images',
+    codexCli: true,
+    apiProxy: false,
+    streamImages: false,
+    streamPartialImages: 0,
     customProviders,
     providerOrder: Array.isArray(record.providerOrder) ? record.providerOrder.map(String) : undefined,
     clearInputAfterSubmit: typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : false,
@@ -496,6 +559,16 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
     enterSubmit: typeof record.enterSubmit === 'boolean' ? record.enterSubmit : false,
     referenceImageEditAction: normalizeReferenceImageEditAction(record.referenceImageEditAction),
+    appearanceBackgroundApiUrl: PIXIV_RANDOM_BACKGROUND_API_URL,
+    appearanceBackgroundImageUrl: normalizeAppearanceUrl(record.appearanceBackgroundImageUrl),
+    appearanceBackgroundOpacity: normalizeAppearanceOpacity(record.appearanceBackgroundOpacity),
+    appearanceBackgroundBlur: normalizeAppearanceBlur(record.appearanceBackgroundBlur),
+    appearanceNightMode: typeof record.appearanceNightMode === 'boolean' ? record.appearanceNightMode : false,
+    apiBalanceText: typeof record.apiBalanceText === 'string' ? record.apiBalanceText : '',
+    apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
+    apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
+    announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
+    announcementDismissedForever: typeof record.announcementDismissedForever === 'boolean' ? record.announcementDismissedForever : false,
     agentScrollToBottomAfterSubmit: typeof record.agentScrollToBottomAfterSubmit === 'boolean' ? record.agentScrollToBottomAfterSubmit : true,
     agentMaxToolRounds: normalizeAgentMaxToolRounds(record.agentMaxToolRounds),
     agentWebSearch: typeof record.agentWebSearch === 'boolean' ? record.agentWebSearch : false,
@@ -584,18 +657,17 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
   const normalized = normalizeSettings(settings)
   const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultOpenAIProfile()
 
-  return {
+  return lockOpenAIProfile({
     ...profile,
-    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : profile.apiKey,
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
+    model: DEFAULT_IMAGES_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
-    apiMode: record.apiMode === 'images' || record.apiMode === 'responses' ? record.apiMode : profile.apiMode,
-    codexCli: typeof record.codexCli === 'boolean' ? record.codexCli : profile.codexCli,
-    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
-    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
-    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
-  }
+    apiMode: 'images',
+    codexCli: true,
+    apiProxy: false,
+    streamImages: false,
+    streamPartialImages: 0,
+  })
 }
 
 export function validateApiProfile(profile: ApiProfile): string | null {
@@ -610,15 +682,15 @@ function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
   return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
     profile.name === '默认' &&
     profile.provider === 'openai' &&
-    profile.baseUrl === DEFAULT_BASE_URL &&
+    profile.baseUrl === LOCKED_OPENAI_BASE_URL &&
     profile.apiKey === '' &&
     profile.model === DEFAULT_IMAGES_MODEL &&
     profile.timeout === DEFAULT_API_TIMEOUT &&
     profile.apiMode === 'images' &&
-    profile.codexCli === false &&
-    profile.apiProxy === DEFAULT_OPENAI_API_PROXY &&
-    profile.streamImages === true &&
-    profile.streamPartialImages === DEFAULT_STREAM_PARTIAL_IMAGES
+    profile.codexCli === true &&
+    profile.apiProxy === false &&
+    profile.streamImages === false &&
+    profile.streamPartialImages === 0
 }
 
 function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
@@ -766,15 +838,15 @@ export function mergeImportedSettings(currentSettings: Partial<AppSettings> | un
 }
 
 export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
-  baseUrl: DEFAULT_BASE_URL,
+  baseUrl: LOCKED_OPENAI_BASE_URL,
   apiKey: '',
   model: DEFAULT_IMAGES_MODEL,
   timeout: DEFAULT_API_TIMEOUT,
   apiMode: 'images',
-  codexCli: false,
-  apiProxy: DEFAULT_OPENAI_API_PROXY,
-  streamImages: true,
-  streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
+  codexCli: true,
+  apiProxy: false,
+  streamImages: false,
+  streamPartialImages: 0,
   customProviders: [],
   clearInputAfterSubmit: false,
   persistInputOnRestart: true,
@@ -782,6 +854,11 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   alwaysShowRetryButton: false,
   enterSubmit: false,
   referenceImageEditAction: 'ask',
+  appearanceBackgroundApiUrl: PIXIV_RANDOM_BACKGROUND_API_URL,
+  appearanceBackgroundImageUrl: '',
+  appearanceBackgroundOpacity: 0.28,
+  appearanceBackgroundBlur: 18,
+  appearanceNightMode: false,
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,

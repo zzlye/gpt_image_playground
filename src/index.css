@@ -103,6 +103,55 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* 夜间外观模式：用深色表面、边框和输入态统一可读性，而不是只改文字颜色。 */
+.appearance-night {
+  color: #e5e7eb;
+  color-scheme: dark;
+}
+
+.appearance-night :where(header, [class*="bg-white"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gray-200"]) {
+  background-color: rgba(15, 23, 42, 0.86) !important;
+}
+
+.appearance-night :where([class*="border-gray-"], [class*="border-white"], [class*="ring-black"]) {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.appearance-night :where([class*="shadow-"], [class*="ring-1"]) {
+  --tw-ring-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.appearance-night :where([class*="text-gray-800"], [class*="text-gray-900"], [class*="text-zinc-800"], [class*="text-zinc-900"]) {
+  color: #f8fafc !important;
+}
+
+.appearance-night :where([class*="text-gray-600"], [class*="text-gray-700"], [class*="text-zinc-600"], [class*="text-zinc-700"]) {
+  color: #d1d5db !important;
+}
+
+.appearance-night :where([class*="text-gray-400"], [class*="text-gray-500"], [class*="text-zinc-400"], [class*="text-zinc-500"]) {
+  color: #9ca3af !important;
+}
+
+.appearance-night :where(input, textarea, select, [contenteditable="true"]) {
+  background-color: rgba(15, 23, 42, 0.78) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  color: #f8fafc !important;
+}
+
+.appearance-night :where(input::placeholder, textarea::placeholder, .prompt-placeholder) {
+  color: rgba(203, 213, 225, 0.62) !important;
+}
+
+.appearance-night :where(code) {
+  background-color: rgba(30, 41, 59, 0.92) !important;
+  color: #dbeafe !important;
+}
+
+.appearance-night :where(.custom-scrollbar) {
+  scrollbar-color: #64748b transparent;
+}
+
 @media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar-thumb { background: #3f3f46; }
   ::-webkit-scrollbar-thumb:hover { background: #52525b; }
