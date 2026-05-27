@@ -39,6 +39,28 @@ export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = LOCKED_WENYUN_PROFILE_ID
 export const DEFAULT_API_TIMEOUT = 600
 
+export const FIXED_IMAGE_MODEL_OPTIONS = [
+  { value: DEFAULT_IMAGES_MODEL, label: 'GPT 出图' },
+  { value: 'Nano-Banana', label: 'Nano Banana' },
+  { value: 'Nano-Banana-2', label: 'Nano Banana 2' },
+  { value: 'Nano-Banana-Pro', label: 'Nano Banana Pro' },
+] as const
+
+const FIXED_IMAGE_MODEL_VALUES = new Set<string>(FIXED_IMAGE_MODEL_OPTIONS.map((option) => option.value))
+
+export function isBananaImageModel(model: string): boolean {
+  return /^Nano-Banana(?:-|$)/i.test(model.trim())
+}
+
+function normalizeFixedImageModel(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_IMAGES_MODEL
+  const model = value.trim()
+  if (/^Nano-Banana-Pro-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-Pro'
+  if (/^Nano-Banana-2-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'
+  if (/^Nano-Banana-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana'
+  return FIXED_IMAGE_MODEL_VALUES.has(model) ? model : DEFAULT_IMAGES_MODEL
+}
+
 const LOCKED_OPENAI_PROFILE_DEFINITIONS = [
   { id: LOCKED_WENYUN_PROFILE_ID, name: '文运站', baseUrl: LOCKED_WENYUN_BASE_URL },
   { id: LOCKED_PUBLIC_PROFILE_ID, name: '公益站', baseUrl: LOCKED_PUBLIC_BASE_URL },
@@ -170,13 +192,13 @@ function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFI
     provider: 'openai',
     baseUrl: definition.baseUrl,
     apiKey: typeof overrides.apiKey === 'string' ? overrides.apiKey : '',
-    model: DEFAULT_IMAGES_MODEL,
+    model: normalizeFixedImageModel(overrides.model),
     timeout: normalizeApiTimeout(overrides.timeout),
     apiMode: 'images',
     codexCli: false,
     apiProxy: false,
     responseFormatB64Json: undefined,
-    streamImages: false,
+    streamImages: true,
     streamPartialImages: 0,
     providerDrafts: undefined,
   }
@@ -582,6 +604,7 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
   })
   return createLockedOpenAIProfile(definition, {
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : fallback?.apiKey,
+    model: typeof record.model === 'string' ? record.model : fallback?.model,
     timeout: normalizeApiTimeout(record.timeout, fallback?.timeout ?? DEFAULT_API_TIMEOUT),
   })
 }
@@ -625,12 +648,12 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   return {
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
-    model: DEFAULT_IMAGES_MODEL,
+    model: normalizeFixedImageModel(active.model),
     timeout: active.timeout,
     apiMode: 'images',
     codexCli: false,
     apiProxy: false,
-    streamImages: false,
+    streamImages: true,
     streamPartialImages: 0,
     customProviders,
     providerOrder: Array.isArray(record.providerOrder) ? record.providerOrder.map(String) : undefined,
@@ -747,12 +770,12 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
   return lockOpenAIProfile({
     ...profile,
     apiKey: typeof record.apiKey === 'string' ? record.apiKey : profile.apiKey,
-    model: DEFAULT_IMAGES_MODEL,
+    model: typeof record.model === 'string' ? record.model : profile.model,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
     apiMode: 'images',
     codexCli: false,
     apiProxy: false,
-    streamImages: false,
+    streamImages: true,
     streamPartialImages: 0,
   })
 }
@@ -776,7 +799,7 @@ function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
     profile.apiMode === 'images' &&
     profile.codexCli === false &&
     profile.apiProxy === false &&
-    profile.streamImages === false &&
+    profile.streamImages === true &&
     profile.streamPartialImages === 0
 }
 
@@ -932,7 +955,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   apiMode: 'images',
   codexCli: false,
   apiProxy: false,
-  streamImages: false,
+  streamImages: true,
   streamPartialImages: 0,
   customProviders: [],
   clearInputAfterSubmit: false,

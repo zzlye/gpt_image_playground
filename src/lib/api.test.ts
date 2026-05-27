@@ -344,6 +344,64 @@ describe('callImageApi', () => {
     })
   })
 
+  it('routes Banana image models through streaming chat completions', async () => {
+    const streamBody = [
+      'data: {"choices":[{"delta":{"content":"![image](https://cdn.example.com/final.png)"}}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(streamBody, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    })).mockResolvedValueOnce(new Response(new Blob(['final'], { type: 'image/png' }), {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    }))
+
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      apiKey: 'test-key',
+      model: 'Nano-Banana-Pro',
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        apiKey: 'test-key',
+        model: 'Nano-Banana-Pro',
+      })),
+    }
+
+    const result = await callImageApi({
+      settings,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS },
+      inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
+    } as any)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String((init as RequestInit).body))
+    expect(String(url)).toBe('https://zzlye.xyz:60/v1/chat/completions')
+    expect(body).toMatchObject({
+      model: 'Nano-Banana-Pro',
+      stream: true,
+      size: DEFAULT_PARAMS.size,
+      generationConfig: {
+        imageConfig: {
+          aspectRatio: '1:1',
+          imageSize: '1K',
+        },
+      },
+      messages: [{
+        role: 'user',
+      }],
+    })
+    expect(body.messages[0].content).toEqual([
+      expect.objectContaining({ type: 'text' }),
+      expect.objectContaining({ type: 'image_url' }),
+    ])
+    expect(result.images).toEqual(['data:image/png;base64,ZmluYWw='])
+    expect(result.rawImageUrls).toEqual(['https://cdn.example.com/final.png'])
+  })
+
   it('parses Responses API image result objects in gallery mode', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       output: [{

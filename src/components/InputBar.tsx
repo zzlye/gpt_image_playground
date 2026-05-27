@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
+import { FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, isBananaImageModel, normalizeSettings } from '../lib/apiProfiles'
 import { queryNewApiModelUnitCost } from '../lib/newApi'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
@@ -589,9 +589,16 @@ export default function InputBar() {
   ), [activeProfile.id, currentActiveProfile.id, settings])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
-  const modelUnitCostText = settings.apiModelUnitCostProfileId === activeProfile.id
+  const bananaModelUnitCostText = activeProfile.model === 'Nano-Banana'
+    ? 'HUHN 0.07'
+    : activeProfile.model === 'Nano-Banana-2'
+    ? 'HUHN 0.09'
+    : activeProfile.model === 'Nano-Banana-Pro'
+    ? 'HUHN 0.14'
+    : ''
+  const modelUnitCostText = bananaModelUnitCostText || (settings.apiModelUnitCostProfileId === activeProfile.id
     ? settings.apiModelUnitCostText
-    : 'HUHN 0.06'
+    : 'HUHN 0.06')
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
     : hasSubmitApiConfig
@@ -603,6 +610,9 @@ export default function InputBar() {
   useEffect(() => {
     let cancelled = false
     if (!activeProfile.id) return
+    if (isBananaImageModel(activeProfile.model)) {
+      return
+    }
 
     void queryNewApiModelUnitCost(activeProfile).then((result) => {
       if (cancelled) return
@@ -658,6 +668,7 @@ export default function InputBar() {
     : `OpenAI 最大请求数量为 ${outputImageLimit}`
   const normalizedDisplaySize = normalizeImageSize(params.size)
   const displaySize = normalizedDisplaySize === 'auto' ? DEFAULT_PARAMS.size : normalizedDisplaySize || DEFAULT_PARAMS.size
+  const selectedModelOption = FIXED_IMAGE_MODEL_OPTIONS.find((option) => option.value === activeProfile.model)
 
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
@@ -1723,6 +1734,15 @@ export default function InputBar() {
 
   const renderParams = (cols: string) => (
     <div className={`grid ${cols} gap-2 text-xs flex-1`}>
+      <label className="relative flex flex-col gap-0.5">
+        <span className="text-gray-400 dark:text-gray-500 ml-1">模型</span>
+        <Select
+          value={selectedModelOption?.value ?? FIXED_IMAGE_MODEL_OPTIONS[0].value}
+          onChange={(model) => setSettings({ model: String(model) })}
+          options={[...FIXED_IMAGE_MODEL_OPTIONS]}
+          className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] focus:outline-none text-xs transition-all duration-200 shadow-sm"
+        />
+      </label>
       <label
         className="relative flex flex-col gap-0.5"
       >
@@ -2031,7 +2051,7 @@ export default function InputBar() {
           <div className="mt-3">
             {/* 桌面端布局 */}
             <div className="hidden sm:flex items-end justify-between gap-3">
-              {renderParams('grid-cols-2')}
+              {renderParams('grid-cols-3')}
 
               <div className="flex gap-2 flex-shrink-0 mb-0.5">
                 <div
@@ -2095,7 +2115,7 @@ export default function InputBar() {
             <div className="sm:hidden flex flex-col gap-2">
               <div className={`collapse-section${mobileCollapsed ? ' collapsed' : ''}`}>
                 <div className="collapse-inner">
-                  {renderParams('grid-cols-2')}
+                  {renderParams('grid-cols-3')}
                   <div className="h-2" />
                 </div>
               </div>
