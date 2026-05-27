@@ -589,9 +589,7 @@ export default function InputBar() {
   ), [activeProfile.id, currentActiveProfile.id, settings])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
-  const bananaModelUnitCostText = activeProfile.model === 'Nano-Banana'
-    ? 'HUHN 0.07'
-    : activeProfile.model === 'Nano-Banana-2'
+  const bananaModelUnitCostText = activeProfile.model === 'Nano-Banana-2'
     ? 'HUHN 0.09'
     : activeProfile.model === 'Nano-Banana-Pro'
     ? 'HUHN 0.14'

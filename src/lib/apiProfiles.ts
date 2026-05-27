@@ -40,8 +40,7 @@ export const DEFAULT_OPENAI_PROFILE_ID = LOCKED_WENYUN_PROFILE_ID
 export const DEFAULT_API_TIMEOUT = 600
 
 export const FIXED_IMAGE_MODEL_OPTIONS = [
-  { value: DEFAULT_IMAGES_MODEL, label: 'GPT 出图' },
-  { value: 'Nano-Banana', label: 'Nano Banana' },
+  { value: DEFAULT_IMAGES_MODEL, label: DEFAULT_IMAGES_MODEL },
   { value: 'Nano-Banana-2', label: 'Nano Banana 2' },
   { value: 'Nano-Banana-Pro', label: 'Nano Banana Pro' },
 ] as const
@@ -55,9 +54,10 @@ export function isBananaImageModel(model: string): boolean {
 function normalizeFixedImageModel(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_IMAGES_MODEL
   const model = value.trim()
+  if (/^Nano-Banana$/i.test(model)) return 'Nano-Banana-2'
   if (/^Nano-Banana-Pro-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-Pro'
   if (/^Nano-Banana-2-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'
-  if (/^Nano-Banana-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana'
+  if (/^Nano-Banana-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'
   return FIXED_IMAGE_MODEL_VALUES.has(model) ? model : DEFAULT_IMAGES_MODEL
 }
 
