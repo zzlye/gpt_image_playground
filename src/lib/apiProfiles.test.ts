@@ -8,10 +8,14 @@ import {
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
   findEquivalentApiProfile,
+  getApiBalanceSnapshot,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
+  LOCKED_PUBLIC_PROFILE_ID,
+  LOCKED_WENYUN_PROFILE_ID,
   mergeImportedSettings,
   normalizeSettings,
+  setApiBalanceSnapshot,
   switchApiProfileProvider,
   validateApiProfile,
 } from './apiProfiles'
@@ -586,6 +590,28 @@ describe('custom providers', () => {
     expect(DEFAULT_SETTINGS.agentScrollToBottomAfterSubmit).toBe(true)
     expect(normalizeSettings({}).agentScrollToBottomAfterSubmit).toBe(true)
     expect(normalizeSettings({ agentScrollToBottomAfterSubmit: false }).agentScrollToBottomAfterSubmit).toBe(false)
+  })
+
+  it('keeps queried balances cached per locked profile', () => {
+    const withWenyun = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      ...setApiBalanceSnapshot(DEFAULT_SETTINGS, LOCKED_WENYUN_PROFILE_ID, {
+        text: 'HUHN 12.00',
+        currency: 'HUHN',
+        updatedAt: 1000,
+      }),
+    })
+    const withBoth = normalizeSettings({
+      ...withWenyun,
+      ...setApiBalanceSnapshot(withWenyun, LOCKED_PUBLIC_PROFILE_ID, {
+        text: 'HUHN 3.50',
+        currency: 'HUHN',
+        updatedAt: 2000,
+      }),
+    })
+
+    expect(getApiBalanceSnapshot(withBoth, LOCKED_WENYUN_PROFILE_ID)).toMatchObject({ text: 'HUHN 12.00' })
+    expect(getApiBalanceSnapshot(withBoth, LOCKED_PUBLIC_PROFILE_ID)).toMatchObject({ text: 'HUHN 3.50' })
   })
 
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {

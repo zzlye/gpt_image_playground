@@ -73,6 +73,12 @@ export interface ApiProfile {
   providerDrafts?: Partial<Record<ApiProvider, Partial<Pick<ApiProfile, 'baseUrl' | 'model' | 'apiMode' | 'codexCli' | 'apiProxy' | 'responseFormatB64Json' | 'streamImages' | 'streamPartialImages'>>>>
 }
 
+export interface ApiBalanceSnapshot {
+  text: string
+  currency?: string
+  updatedAt?: number
+}
+
 export interface AppSettings {
   /** 旧版单配置字段：保留用于导入/查询参数兼容，实际请求以 active profile 为准 */
   baseUrl: string
@@ -110,6 +116,8 @@ export interface AppSettings {
   apiBalanceUpdatedAt?: number
   /** 最近一次查询余额对应的固定配置 ID */
   apiBalanceProfileId?: string
+  /** 各固定站点最近一次查询到的 Key 余额 */
+  apiBalanceByProfileId: Record<string, ApiBalanceSnapshot>
   /** 当前模型调用费用展示文本 */
   apiModelUnitCostText: string
   /** 当前模型调用费用对应的固定配置 ID */

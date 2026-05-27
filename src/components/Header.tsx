@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useStore } from '../store'
 import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
-import { getActiveApiProfile } from '../lib/apiProfiles'
+import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot } from '../lib/apiProfiles'
 import { queryNewApiBalance } from '../lib/newApi'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
@@ -14,9 +14,7 @@ export default function Header() {
   const showToast = useStore((s) => s.showToast)
   const settings = useStore((s) => s.settings)
   const activeProfile = getActiveApiProfile(settings)
-  const apiBalanceText = useStore((s) =>
-    s.settings.apiBalanceProfileId === s.settings.activeProfileId ? s.settings.apiBalanceText : '',
-  )
+  const apiBalanceText = getApiBalanceSnapshot(settings, activeProfile.id)?.text ?? ''
   const [isQueryingBalance, setIsQueryingBalance] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const helpTooltip = useTooltip()
@@ -26,12 +24,7 @@ export default function Header() {
     setIsQueryingBalance(true)
     try {
       const balance = await queryNewApiBalance(activeProfile)
-      setSettings({
-        apiBalanceText: balance.text,
-        apiBalanceCurrency: balance.currency,
-        apiBalanceUpdatedAt: balance.updatedAt,
-        apiBalanceProfileId: activeProfile.id,
-      })
+      setSettings(setApiBalanceSnapshot(useStore.getState().settings, activeProfile.id, balance))
       showToast('余额已更新', 'success')
     } catch (err) {
       showToast(err instanceof Error ? err.message : '余额查询失败', 'error')

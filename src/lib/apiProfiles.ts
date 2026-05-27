@@ -1,5 +1,6 @@
 import type {
   ApiMode,
+  ApiBalanceSnapshot,
   ApiProfile,
   ApiProvider,
   AppSettings,
@@ -101,6 +102,65 @@ function normalizeApiBalanceText(value: unknown): string {
   if (!text) return ''
   // 迁移旧缓存，避免刷新后在自动查询完成前短暂显示旧美元符号。
   return text.replace(/\$(\d)/g, 'HUHN $1')
+}
+
+function normalizeApiBalanceSnapshot(value: unknown): ApiBalanceSnapshot | null {
+  if (!isRecord(value)) return null
+  const text = normalizeApiBalanceText(value.text)
+  if (!text) return null
+  return {
+    text,
+    currency: typeof value.currency === 'string' ? value.currency : undefined,
+    updatedAt: normalizeApiBalanceUpdatedAt(value.updatedAt),
+  }
+}
+
+function normalizeApiBalanceByProfileId(record: Record<string, unknown>, profileIds: Set<string>): Record<string, ApiBalanceSnapshot> {
+  const balances: Record<string, ApiBalanceSnapshot> = {}
+  if (isRecord(record.apiBalanceByProfileId)) {
+    for (const [profileId, value] of Object.entries(record.apiBalanceByProfileId)) {
+      if (!profileIds.has(profileId)) continue
+      const snapshot = normalizeApiBalanceSnapshot(value)
+      if (snapshot) balances[profileId] = snapshot
+    }
+  }
+
+  const legacyProfileId = typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : ''
+  if (profileIds.has(legacyProfileId) && !balances[legacyProfileId]) {
+    const legacySnapshot = normalizeApiBalanceSnapshot({
+      text: record.apiBalanceText,
+      currency: record.apiBalanceCurrency,
+      updatedAt: record.apiBalanceUpdatedAt,
+    })
+    if (legacySnapshot) balances[legacyProfileId] = legacySnapshot
+  }
+
+  return balances
+}
+
+export function getApiBalanceSnapshot(settings: Pick<AppSettings, 'apiBalanceByProfileId' | 'apiBalanceProfileId' | 'apiBalanceText' | 'apiBalanceCurrency' | 'apiBalanceUpdatedAt'>, profileId: string): ApiBalanceSnapshot | null {
+  return settings.apiBalanceByProfileId[profileId] ?? (
+    settings.apiBalanceProfileId === profileId && settings.apiBalanceText
+      ? {
+          text: settings.apiBalanceText,
+          currency: settings.apiBalanceCurrency,
+          updatedAt: settings.apiBalanceUpdatedAt,
+        }
+      : null
+  )
+}
+
+export function setApiBalanceSnapshot(settings: AppSettings, profileId: string, snapshot: ApiBalanceSnapshot): Partial<AppSettings> {
+  return {
+    apiBalanceText: snapshot.text,
+    apiBalanceCurrency: snapshot.currency,
+    apiBalanceUpdatedAt: snapshot.updatedAt,
+    apiBalanceProfileId: profileId,
+    apiBalanceByProfileId: {
+      ...settings.apiBalanceByProfileId,
+      [profileId]: snapshot,
+    },
+  }
 }
 
 function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFINITIONS[number], overrides: Partial<ApiProfile> = {}): ApiProfile {
@@ -555,6 +615,8 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     streamPartialImages: 0,
   })
   const profiles = createLockedOpenAIProfiles(record.profiles, legacyProfile)
+  const profileIds = new Set(profiles.map((profile) => profile.id))
+  const apiBalanceByProfileId = normalizeApiBalanceByProfileId(record, profileIds)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -587,6 +649,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
     apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
+    apiBalanceByProfileId,
     apiModelUnitCostText: normalizeModelUnitCostText(record.apiModelUnitCostText),
     apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
     apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),

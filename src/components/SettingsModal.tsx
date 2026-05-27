@@ -13,6 +13,7 @@ import {
   DEFAULT_SETTINGS,
   findEquivalentApiProfile,
   getApiProviderLabel,
+  getApiBalanceSnapshot,
   getActiveApiProfile,
   importCustomProviderSettingsFromJson,
   isOpenAICompatibleProvider,
@@ -21,6 +22,7 @@ import {
   normalizeCustomProviderDefinition,
   normalizeSettings,
   normalizeStreamPartialImages,
+  setApiBalanceSnapshot,
   switchApiProfileProvider,
 } from '../lib/apiProfiles'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
@@ -489,9 +491,9 @@ export default function SettingsModal() {
   const activeCustomProviderAsync = isAsyncCustomProvider(activeCustomProvider)
   const apiProxyChecked = activeProfileApiProxyEligible && (apiProxyLocked || activeProfile.apiProxy)
   const apiProxyEnabled = apiProxyAvailable && activeProfileApiProxyEligible && apiProxyChecked
-  const activeProfileHasBalance = draft.apiBalanceProfileId === activeProfile.id
-  const activeProfileBalanceText = activeProfileHasBalance ? draft.apiBalanceText : ''
-  const activeProfileBalanceUpdatedAt = activeProfileHasBalance ? draft.apiBalanceUpdatedAt : undefined
+  const activeProfileBalance = getApiBalanceSnapshot(draft, activeProfile.id)
+  const activeProfileBalanceText = activeProfileBalance?.text ?? ''
+  const activeProfileBalanceUpdatedAt = activeProfileBalance?.updatedAt
   const defaultProviderOrder = ['openai', 'fal', ...draft.customProviders.map(p => p.id)]
   const providerOrder = draft.providerOrder || defaultProviderOrder
 
@@ -1234,10 +1236,7 @@ export default function SettingsModal() {
       const balance = await queryNewApiBalance(activeProfile)
       commitSettings({
         ...draft,
-        apiBalanceText: balance.text,
-        apiBalanceCurrency: balance.currency,
-        apiBalanceUpdatedAt: balance.updatedAt,
-        apiBalanceProfileId: activeProfile.id,
+        ...setApiBalanceSnapshot(draft, activeProfile.id, balance),
       })
       showToast('余额已更新', 'success')
     } catch (err) {
