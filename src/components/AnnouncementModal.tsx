@@ -76,7 +76,7 @@ export default function AnnouncementModal({
           </button>
         </div>
 
-        <div className="min-h-[180px] flex-1 overflow-y-auto p-5 custom-scrollbar">
+        <div data-selectable-text className="min-h-[180px] flex-1 overflow-y-auto p-5 custom-scrollbar select-text">
           {loading ? (
             <div className="text-sm text-gray-500 dark:text-gray-400">公告加载中...</div>
           ) : displayItems.length > 0 ? (

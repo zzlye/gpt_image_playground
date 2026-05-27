@@ -441,7 +441,10 @@ function parseNoticePayload(payload: unknown): NewApiNoticeResult {
 export async function fetchNewApiNotice(baseUrl: string): Promise<NewApiNoticeResult> {
   const origin = getApiOrigin(baseUrl)
   if (!origin) throw new Error('API URL 无效')
-  const notice = parseNoticePayload(await fetchPublicJsonWithCorsFallback(`${origin}/api/status`, 5000))
+  const statusUrl = new URL(`${origin}/api/status`)
+  // 公告需要跟随后台实时变化，增加时间戳避免反代或浏览器复用旧状态响应。
+  statusUrl.searchParams.set('_t', String(Date.now()))
+  const notice = parseNoticePayload(await fetchPublicJsonWithCorsFallback(statusUrl.toString(), 5000))
   if (notice.content || notice.items.length > 0) return notice
   return {
     content: '',
