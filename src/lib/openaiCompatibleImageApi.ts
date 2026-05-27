@@ -181,6 +181,27 @@ function getBananaImageSizeTier(size: string): '1K' | '2K' | '4K' {
   return '1K'
 }
 
+function getBananaImageRatioVariant(size: string): 'landscape' | 'portrait' | 'square' | 'four-three' | 'three-four' {
+  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
+  if (!match) return 'square'
+  const width = Number(match[1])
+  const height = Number(match[2])
+  const ratio = formatImageRatio(width, height).replace(/^≈/, '')
+  if (ratio === '1:1') return 'square'
+  if (ratio === '4:3') return 'four-three'
+  if (ratio === '3:4') return 'three-four'
+  return width >= height ? 'landscape' : 'portrait'
+}
+
+function getBananaRequestModel(model: string, size: string): string {
+  const baseModel = model === 'Nano-Banana-Pro'
+    ? 'gemini-3.0-pro-image'
+    : 'gemini-3.1-flash-image'
+  const tier = getBananaImageSizeTier(size)
+  const tierSuffix = tier === '1K' ? '' : `-${tier.toLowerCase()}`
+  return `${baseModel}-${getBananaImageRatioVariant(size)}${tierSuffix}`
+}
+
 function createBananaGenerationConfig(params: TaskParams) {
   const normalizedSize = normalizeImageSize(params.size)
   const match = normalizedSize.match(/^(\d+)x(\d+)$/)
@@ -648,7 +669,7 @@ async function callBananaChatImageApi(opts: CallApiOptions, profile: ApiProfile)
     )
 
     const body = {
-      model: profile.model,
+      model: getBananaRequestModel(profile.model, params.size),
       stream: true,
       size: params.size,
       generationConfig: createBananaGenerationConfig(params),
