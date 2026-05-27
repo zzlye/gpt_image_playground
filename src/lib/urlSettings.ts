@@ -109,7 +109,7 @@ export function buildSettingsFromUrlParams(currentSettings: Partial<AppSettings>
     if (apiUrlParam !== null) profile.baseUrl = normalizeBaseUrl(apiUrlParam.trim())
     if (apiKeyParam !== null) profile.apiKey = apiKeyParam.trim()
     if (modelParam !== null && modelParam.trim()) profile.model = modelParam.trim()
-    if (codexCliParam !== null) profile.codexCli = codexCliParam.trim().toLowerCase() === 'true'
+    if (codexCliParam !== null) profile.codexCli = false
     if (streamImagesParam !== null) profile.streamImages = streamImagesParam.trim().toLowerCase() === 'true'
     if (streamPartialImagesParam !== null) profile.streamPartialImages = normalizeStreamPartialImages(streamPartialImagesParam)
 

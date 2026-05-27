@@ -173,7 +173,7 @@ function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFI
     model: DEFAULT_IMAGES_MODEL,
     timeout: normalizeApiTimeout(overrides.timeout),
     apiMode: 'images',
-    codexCli: true,
+    codexCli: false,
     apiProxy: false,
     responseFormatB64Json: undefined,
     streamImages: false,
@@ -533,7 +533,7 @@ export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvi
     baseUrl: savedDraft?.baseUrl ?? DEFAULT_BASE_URL,
     model: savedDraft?.model ?? DEFAULT_IMAGES_MODEL,
     apiMode: savedDraft?.apiMode ?? profile.apiMode,
-    codexCli: savedDraft?.codexCli ?? profile.codexCli,
+    codexCli: false,
     apiProxy: savedDraft?.apiProxy ?? DEFAULT_OPENAI_API_PROXY,
     responseFormatB64Json: savedDraft?.responseFormatB64Json,
     streamImages: savedDraft?.streamImages ?? (profile.provider === 'openai' ? profile.streamImages : true),
@@ -557,7 +557,7 @@ function normalizeProviderDraft(input: unknown, provider: ApiProvider, customPro
       : baseUrl,
     model,
     apiMode,
-    codexCli: typeof input.codexCli === 'boolean' ? input.codexCli : fallback.codexCli,
+    codexCli: false,
     apiProxy: typeof input.apiProxy === 'boolean' ? input.apiProxy : fallback.apiProxy,
     responseFormatB64Json: input.responseFormatB64Json === true ? true : undefined,
     streamImages: typeof input.streamImages === 'boolean' ? input.streamImages : fallback.streamImages,
@@ -608,7 +608,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     model: DEFAULT_IMAGES_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
     apiMode: 'images',
-    codexCli: true,
+    codexCli: false,
     apiProxy: false,
     responseFormatB64Json: undefined,
     streamImages: false,
@@ -628,7 +628,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     model: DEFAULT_IMAGES_MODEL,
     timeout: active.timeout,
     apiMode: 'images',
-    codexCli: true,
+    codexCli: false,
     apiProxy: false,
     streamImages: false,
     streamPartialImages: 0,
@@ -750,7 +750,7 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
     model: DEFAULT_IMAGES_MODEL,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
     apiMode: 'images',
-    codexCli: true,
+    codexCli: false,
     apiProxy: false,
     streamImages: false,
     streamPartialImages: 0,
@@ -774,7 +774,7 @@ function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
     profile.model === DEFAULT_IMAGES_MODEL &&
     profile.timeout === DEFAULT_API_TIMEOUT &&
     profile.apiMode === 'images' &&
-    profile.codexCli === true &&
+    profile.codexCli === false &&
     profile.apiProxy === false &&
     profile.streamImages === false &&
     profile.streamPartialImages === 0
@@ -930,7 +930,7 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   model: DEFAULT_IMAGES_MODEL,
   timeout: DEFAULT_API_TIMEOUT,
   apiMode: 'images',
-  codexCli: true,
+  codexCli: false,
   apiProxy: false,
   streamImages: false,
   streamPartialImages: 0,

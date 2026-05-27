@@ -651,7 +651,7 @@ export default function SettingsModal() {
         model: profile.model.trim() || defaultModel,
         timeout: Number(profile.timeout) || DEFAULT_SETTINGS.timeout,
         apiProxy: nextApiProxy,
-        codexCli: profile.provider === 'openai' ? profile.codexCli : false,
+        codexCli: false,
         streamImages: profile.provider === 'openai' ? profile.streamImages : false,
         streamPartialImages: profile.provider === 'openai' ? normalizeStreamPartialImages(profile.streamPartialImages) : DEFAULT_STREAM_PARTIAL_IMAGES,
       }

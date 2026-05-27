@@ -614,6 +614,23 @@ describe('custom providers', () => {
     expect(getApiBalanceSnapshot(withBoth, LOCKED_PUBLIC_PROFILE_ID)).toMatchObject({ text: 'HUHN 3.50' })
   })
 
+  it('keeps Codex CLI compatibility disabled for locked profiles', () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      codexCli: true,
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        codexCli: true,
+        providerDrafts: {
+          openai: { codexCli: true },
+        },
+      })),
+    })
+
+    expect(settings.codexCli).toBe(false)
+    expect(settings.profiles.every((profile) => profile.codexCli === false)).toBe(true)
+  })
+
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {
     const openaiProfile = createDefaultOpenAIProfile({
       baseUrl: 'https://api.compat.example.com/v1',
