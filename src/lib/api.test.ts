@@ -377,12 +377,15 @@ describe('callImageApi', () => {
       model: 'nano-banana-pro',
       stream: true,
       size: DEFAULT_PARAMS.size,
+      aspectRatio: '1:1',
+      imageSize: '1K',
+      replyType: 'json',
       prompt: 'prompt',
     })
     expect(result.images).toEqual(['data:image/png;base64,ZmluYWw='])
   })
 
-  it('maps Banana model and size selections to tier-priced NewAPI model aliases', async () => {
+  it('adds Banana native image size fields to NewAPI requests', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: [{ b64_json: 'ZmluYWw=' }],
     }), {
@@ -404,14 +407,17 @@ describe('callImageApi', () => {
     await callImageApi({
       settings,
       prompt: 'prompt',
-      params: { ...DEFAULT_PARAMS, size: '2560x1440' },
+      params: { ...DEFAULT_PARAMS, size: '3840x2160' },
       inputImageDataUrls: [],
     } as any)
 
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
     expect(body.model).toBe('nano-banana-2')
-    expect(body.size).toBe('2560x1440')
+    expect(body.size).toBe('3840x2160')
+    expect(body.aspectRatio).toBe('16:9')
+    expect(body.imageSize).toBe('4K')
+    expect(body.replyType).toBe('json')
   })
 
   it('parses Responses API image result objects in gallery mode', async () => {

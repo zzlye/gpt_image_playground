@@ -2,6 +2,7 @@ import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefi
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
 import { getBananaPricedImageModel, isBananaImageModel } from './apiProfiles'
 import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
+import { formatImageRatio, normalizeImageSize } from './size'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
@@ -23,6 +24,36 @@ const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prom
 
 function getStreamPartialImages(profile: ApiProfile): number {
   return profile.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES
+}
+
+function getBananaImageSize(size: string): '1K' | '2K' | '4K' {
+  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
+  if (!match) return '1K'
+  const maxEdge = Math.max(Number(match[1]), Number(match[2]))
+  if (maxEdge >= 3200) return '4K'
+  if (maxEdge >= 1800) return '2K'
+  return '1K'
+}
+
+function getBananaAspectRatio(size: string): string {
+  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
+  if (!match) return '1:1'
+  return formatImageRatio(Number(match[1]), Number(match[2])).replace(/^≈/, '') || '1:1'
+}
+
+function appendBananaGenerationFields(target: Record<string, unknown>, profile: ApiProfile, params: TaskParams) {
+  if (!isBananaImageModel(profile.model)) return
+  // 香蕉上游不按 OpenAI 的 size 字段判断清晰度，需要同步传它的原生字段。
+  target.aspectRatio = getBananaAspectRatio(params.size)
+  target.imageSize = getBananaImageSize(params.size)
+  target.replyType = 'json'
+}
+
+function appendBananaGenerationFormFields(formData: FormData, profile: ApiProfile, params: TaskParams) {
+  if (!isBananaImageModel(profile.model)) return
+  formData.append('aspectRatio', getBananaAspectRatio(params.size))
+  formData.append('imageSize', getBananaImageSize(params.size))
+  formData.append('replyType', 'json')
 }
 
 function appendQuery(path: string, query?: Record<string, string>): string {
@@ -582,6 +613,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         formData.append('stream', 'true')
         formData.append('partial_images', String(getStreamPartialImages(profile)))
       }
+      appendBananaGenerationFormFields(formData, profile, params)
 
       const imageBlobs: Blob[] = []
       for (let i = 0; i < inputImageDataUrls.length; i++) {
@@ -644,6 +676,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         body.stream = true
         body.partial_images = getStreamPartialImages(profile)
       }
+      appendBananaGenerationFields(body, profile, params)
 
       response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
         method: 'POST',
