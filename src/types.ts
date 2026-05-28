@@ -342,7 +342,8 @@ export interface ImageResponseItem {
 }
 
 export interface ImageApiResponse {
-  data: ImageResponseItem[]
+  data?: ImageResponseItem[]
+  results?: ImageResponseItem[]
   size?: string
   quality?: string
   output_format?: string

@@ -633,7 +633,15 @@ export default function InputBar() {
     return () => {
       cancelled = true
     }
-  }, [activeProfile.model, modelUnitCostProfile, modelUnitCostFallbackText, modelUnitCostKey, setSettings])
+  }, [
+    modelUnitCostProfile.id,
+    modelUnitCostProfile.baseUrl,
+    modelUnitCostProfile.apiKey,
+    modelUnitCostProfile.model,
+    modelUnitCostFallbackText,
+    modelUnitCostKey,
+    setSettings,
+  ])
 
   const submitCurrentMode = useCallback(() => {
     if (appMode === 'agent') {

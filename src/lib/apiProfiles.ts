@@ -41,7 +41,6 @@ export const DEFAULT_API_TIMEOUT = 600
 
 export const FIXED_IMAGE_MODEL_OPTIONS = [
   { value: DEFAULT_IMAGES_MODEL, label: DEFAULT_IMAGES_MODEL },
-  { value: 'gpt-image-2-4k', label: 'gpt-image-2-4k' },
   { value: 'Nano-Banana-2', label: 'Nano Banana 2' },
   { value: 'Nano-Banana-Pro', label: 'Nano Banana Pro' },
 ] as const

@@ -420,6 +420,37 @@ describe('callImageApi', () => {
     expect(body.replyType).toBe('json')
   })
 
+  it('parses Grsai Banana native result URLs relayed by NewAPI custom channels', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      id: 'task-1',
+      status: 'succeeded',
+      results: [{ url: 'data:image/png;base64,ZmluYWw=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      apiKey: 'test-key',
+      model: 'Nano-Banana-2',
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        apiKey: 'test-key',
+        model: 'Nano-Banana-2',
+      })),
+    }
+
+    const result = await callImageApi({
+      settings,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS, size: '3840x2160' },
+      inputImageDataUrls: [],
+    } as any)
+
+    expect(result.images).toEqual(['data:image/png;base64,ZmluYWw='])
+  })
+
   it('parses Responses API image result objects in gallery mode', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       output: [{

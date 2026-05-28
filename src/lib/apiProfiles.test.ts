@@ -632,7 +632,7 @@ describe('custom providers', () => {
     expect(settings.profiles.every((profile) => profile.codexCli === false)).toBe(true)
   })
 
-  it('keeps the fixed 4K GPT image model on the Wenyun profile only', () => {
+  it('normalizes removed fixed GPT image models to the default model', () => {
     const settings = normalizeSettings({
       ...DEFAULT_SETTINGS,
       profiles: [
@@ -641,8 +641,8 @@ describe('custom providers', () => {
       ],
     })
 
-    expect(FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === 'gpt-image-2-4k')).toBe(true)
-    expect(settings.profiles[0].model).toBe('gpt-image-2-4k')
+    expect(FIXED_IMAGE_MODEL_OPTIONS.map((option) => String(option.value))).not.toContain('gpt-image-2-4k')
+    expect(settings.profiles[0].model).toBe(DEFAULT_IMAGES_MODEL)
     expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
   })
 

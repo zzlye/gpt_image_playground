@@ -71,7 +71,7 @@ async function fetchJson(url: string, apiKey?: string): Promise<unknown> {
 
 async function fetchJsonWithTimeout(url: string, apiKey?: string, timeoutMs = PUBLIC_FETCH_TIMEOUT_MS): Promise<unknown> {
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(url, {
       cache: 'no-store',
@@ -83,7 +83,7 @@ async function fetchJsonWithTimeout(url: string, apiKey?: string, timeoutMs = PU
     if (!response.ok) throw new Error(`请求失败：${response.status}`)
     return response.json()
   } finally {
-    window.clearTimeout(timer)
+    globalThis.clearTimeout(timer)
   }
 }
 
@@ -516,6 +516,11 @@ function formatModelUnitCost(value: number, status: NewApiStatusInfo): string {
   return formatCurrency(amount, status.currencySymbol)
 }
 
+function readModelUnitCostFromPayload(payload: unknown, model: string): number | null {
+  return readModelPriceValue(findModelPricePayload(payload), model)
+    ?? readModelPriceValue(getPayloadData(payload), model)
+}
+
 export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<NewApiModelUnitCostResult> {
   const apiRoot = getApiRoot(profile.baseUrl)
   const origin = getApiOrigin(profile.baseUrl)
@@ -523,7 +528,15 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
 
   try {
     const status = await fetchNewApiStatus(apiRoot, origin)
-    const pricePayloads: unknown[] = [status.raw]
+    const statusPrice = readModelUnitCostFromPayload(status.raw, profile.model)
+    if (statusPrice != null) {
+      return {
+        text: formatModelUnitCost(statusPrice, status),
+        updatedAt: Date.now(),
+        found: true,
+      }
+    }
+
     const priceAttempts = [
       `${origin}/api/ratio_config`,
       `${apiRoot}/api/ratio_config`,
@@ -539,13 +552,9 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
         return undefined
       }
     }))
-    pricePayloads.push(...fetchedPricePayloads.filter((payload) => payload !== undefined))
 
-    const price = pricePayloads
-      .map((payload) =>
-        readModelPriceValue(findModelPricePayload(payload), profile.model)
-          ?? readModelPriceValue(getPayloadData(payload), profile.model),
-      )
+    const price = fetchedPricePayloads
+      .map((payload) => readModelUnitCostFromPayload(payload, profile.model))
       .find((value): value is number => value != null)
 
     return {

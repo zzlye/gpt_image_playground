@@ -316,7 +316,8 @@ function getResponsesImageResultBase64(result: ResponsesOutputItem['result']): s
 }
 
 async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, signal?: AbortSignal): Promise<CallApiResult> {
-  const data = payload.data
+  // Grsai Banana 原生接口返回 results，NewAPI 自定义渠道会原样透传。
+  const data = Array.isArray(payload.data) && payload.data.length ? payload.data : payload.results
   if (!Array.isArray(data) || !data.length) {
     const err = new Error('接口没有返回图片数据，请查看原始响应内容确认服务商实际返回的数据结构。如果使用的是中转或兼容接口，建议创建并使用「自定义服务商」配置。')
     ;(err as any).rawResponsePayload = JSON.stringify(payload, null, 2)
