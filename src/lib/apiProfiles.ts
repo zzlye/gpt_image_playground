@@ -63,8 +63,12 @@ export function getBananaImageSizeTier(size: string): '1k' | '2k' | '4k' {
 
 export function getBananaPricedImageModel(model: string, size: string): string {
   if (!isBananaImageModel(model)) return model
-  const baseModel = model === 'Nano-Banana-Pro' ? 'Nano-Banana-Pro' : 'Nano-Banana-2'
-  return `${baseModel}-${getBananaImageSizeTier(size)}`
+  const baseModel = model === 'Nano-Banana-Pro'
+    ? 'gemini-3-pro-image-preview'
+    : 'gemini-3.1-flash-image-preview'
+  const tier = getBananaImageSizeTier(size)
+  if (tier === '1k') return baseModel
+  return `${baseModel}-${tier.toUpperCase()}`
 }
 
 function normalizeFixedImageModel(value: unknown): string {
@@ -208,7 +212,7 @@ function createLockedOpenAIProfile(definition: typeof LOCKED_OPENAI_PROFILE_DEFI
     provider: 'openai',
     baseUrl: definition.baseUrl,
     apiKey: typeof overrides.apiKey === 'string' ? overrides.apiKey : '',
-    model: normalizeFixedImageModel(overrides.model),
+    model: definition.id === LOCKED_PUBLIC_PROFILE_ID ? DEFAULT_IMAGES_MODEL : normalizeFixedImageModel(overrides.model),
     timeout: normalizeApiTimeout(overrides.timeout),
     apiMode: 'images',
     codexCli: false,

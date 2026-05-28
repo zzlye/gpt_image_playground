@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getBananaPricedImageModel, isBananaImageModel, normalizeSettings } from '../lib/apiProfiles'
+import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getBananaPricedImageModel, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeSettings } from '../lib/apiProfiles'
 import { queryNewApiModelUnitCost } from '../lib/newApi'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
@@ -665,7 +665,16 @@ export default function InputBar() {
     : `OpenAI 最大请求数量为 ${outputImageLimit}`
   const normalizedDisplaySize = normalizeImageSize(params.size)
   const displaySize = normalizedDisplaySize === 'auto' ? DEFAULT_PARAMS.size : normalizedDisplaySize || DEFAULT_PARAMS.size
-  const selectedModelOption = FIXED_IMAGE_MODEL_OPTIONS.find((option) => option.value === activeProfile.model)
+  const modelOptions = activeProfile.id === LOCKED_PUBLIC_PROFILE_ID
+    ? FIXED_IMAGE_MODEL_OPTIONS.filter((option) => option.value === DEFAULT_IMAGES_MODEL)
+    : [...FIXED_IMAGE_MODEL_OPTIONS]
+  const selectedModelOption = modelOptions.find((option) => option.value === activeProfile.model)
+
+  useEffect(() => {
+    if (activeProfile.id === LOCKED_PUBLIC_PROFILE_ID && isBananaImageModel(activeProfile.model)) {
+      setSettings({ model: DEFAULT_IMAGES_MODEL })
+    }
+  }, [activeProfile.id, activeProfile.model, setSettings])
 
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
@@ -1736,7 +1745,7 @@ export default function InputBar() {
         <Select
           value={selectedModelOption?.value ?? FIXED_IMAGE_MODEL_OPTIONS[0].value}
           onChange={(model) => setSettings({ model: String(model) })}
-          options={[...FIXED_IMAGE_MODEL_OPTIONS]}
+          options={modelOptions}
           className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] hover:bg-white dark:hover:bg-white/[0.06] focus:outline-none text-xs transition-all duration-200 shadow-sm"
         />
       </label>
