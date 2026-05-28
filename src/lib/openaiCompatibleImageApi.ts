@@ -1,8 +1,7 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
-import { isBananaImageModel } from './apiProfiles'
+import { getBananaPricedImageModel, isBananaImageModel } from './apiProfiles'
 import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
-import { formatImageRatio, normalizeImageSize } from './size'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
@@ -21,9 +20,6 @@ import {
 } from './imageApiShared'
 
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
-
-const BANANA_IMAGE_MARKDOWN_RE = /!\[[^\]]*]\(([^)]+)\)/g
-const BANANA_IMAGE_URL_RE = /https?:\/\/[^\s"'<>)]*\.(?:png|jpe?g|webp)(?:\?[^\s"'<>)]*)?/gi
 
 function getStreamPartialImages(profile: ApiProfile): number {
   return profile.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES
@@ -122,173 +118,6 @@ function getStreamEventErrorMessage(event: Record<string, unknown>): string | nu
     return getStringValue(event, 'message') ?? '流式请求失败'
   }
   return null
-}
-
-function readDeepStringValues(input: unknown, depth = 0): string[] {
-  if (depth > 8 || input == null) return []
-  if (typeof input === 'string') return [input]
-  if (Array.isArray(input)) return input.flatMap((item) => readDeepStringValues(item, depth + 1))
-  if (typeof input === 'object') return Object.values(input as Record<string, unknown>).flatMap((item) => readDeepStringValues(item, depth + 1))
-  return []
-}
-
-function pickBananaImageValues(input: unknown): string[] {
-  const images: string[] = []
-
-  readDeepStringValues(input).forEach((value: string) => {
-    const text = String(value)
-    if (text.startsWith('data:')) {
-      images.push(text)
-      return
-    }
-
-    const trimmed = text.trim()
-    if (/^[A-Za-z0-9+/]+={0,2}$/.test(trimmed) && trimmed.length > 200) {
-      images.push(trimmed)
-      return
-    }
-
-    Array.from(text.matchAll(BANANA_IMAGE_MARKDOWN_RE)).forEach((match) => {
-      if (match[1]) images.push(match[1])
-    })
-
-    Array.from(text.matchAll(BANANA_IMAGE_URL_RE)).forEach((match) => {
-      images.push(match[0])
-    })
-  })
-
-  return [...new Set(images)]
-}
-
-function createBananaChatContent(prompt: string, inputImageDataUrls: string[]) {
-  const text = `${PROMPT_REWRITE_GUARD_PREFIX}\n${prompt}`
-  if (!inputImageDataUrls.length) return text
-  return [
-    { type: 'text', text },
-    ...inputImageDataUrls.map((dataUrl) => ({
-      type: 'image_url',
-      image_url: { url: dataUrl },
-    })),
-  ]
-}
-
-function getBananaImageSizeTier(size: string): '1K' | '2K' | '4K' {
-  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
-  if (!match) return '1K'
-  const maxEdge = Math.max(Number(match[1]), Number(match[2]))
-  if (maxEdge >= 3200) return '4K'
-  if (maxEdge >= 1800) return '2K'
-  return '1K'
-}
-
-function getBananaImageRatioVariant(size: string): 'landscape' | 'portrait' | 'square' | 'four-three' | 'three-four' {
-  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
-  if (!match) return 'square'
-  const width = Number(match[1])
-  const height = Number(match[2])
-  const ratio = formatImageRatio(width, height).replace(/^≈/, '')
-  if (ratio === '1:1') return 'square'
-  if (ratio === '4:3') return 'four-three'
-  if (ratio === '3:4') return 'three-four'
-  return width >= height ? 'landscape' : 'portrait'
-}
-
-function getBananaRequestModel(model: string, size: string): string {
-  const baseModel = model === 'Nano-Banana-Pro'
-    ? 'gemini-3.0-pro-image'
-    : 'gemini-3.1-flash-image'
-  const tier = getBananaImageSizeTier(size)
-  const tierSuffix = tier === '1K' ? '' : `-${tier.toLowerCase()}`
-  return `${baseModel}-${getBananaImageRatioVariant(size)}${tierSuffix}`
-}
-
-function createBananaGenerationConfig(params: TaskParams) {
-  const normalizedSize = normalizeImageSize(params.size)
-  const match = normalizedSize.match(/^(\d+)x(\d+)$/)
-  const aspectRatio = match ? formatImageRatio(Number(match[1]), Number(match[2])).replace(/^≈/, '') : '1:1'
-
-  return {
-    imageConfig: {
-      // flow2api 会读取这组配置决定香蕉模型的比例和清晰度，size 同时保留给 NewAPI 兼容层。
-      aspectRatio,
-      imageSize: getBananaImageSizeTier(normalizedSize),
-    },
-  }
-}
-
-async function parseBananaImageValues(values: string[], mime: string, signal?: AbortSignal): Promise<CallApiResult> {
-  const images: string[] = []
-  const rawImageUrls: string[] = []
-
-  for (const value of values) {
-    if (isDataUrl(value)) {
-      images.push(value)
-      continue
-    }
-
-    if (isHttpUrl(value)) {
-      rawImageUrls.push(value)
-      images.push(await fetchImageUrlAsDataUrl(value, mime, signal))
-      continue
-    }
-
-    images.push(normalizeBase64Image(value, mime))
-  }
-
-  if (!images.length) throw new Error('香蕉模型流式接口未返回可识别的图片数据')
-  return {
-    images,
-    actualParams: {},
-    actualParamsList: images.map(() => ({})),
-    ...(rawImageUrls.length ? { rawImageUrls } : {}),
-  }
-}
-
-function getBananaDeltaText(event: Record<string, unknown>): string {
-  const choices = event.choices
-  if (!Array.isArray(choices)) return ''
-  return choices.map((choice) => {
-    if (!isRecordValue(choice)) return ''
-    const delta = choice.delta
-    if (!isRecordValue(delta)) return ''
-    const content = delta.content
-    if (typeof content === 'string') return content
-    return readDeepStringValues(content).join('')
-  }).join('')
-}
-
-function getBananaFinishedMessageText(event: Record<string, unknown>): string {
-  const choices = event.choices
-  if (!Array.isArray(choices)) return ''
-  return choices.map((choice) => {
-    if (!isRecordValue(choice)) return ''
-    const message = choice.message
-    if (!isRecordValue(message)) return ''
-    const content = message.content
-    if (typeof content === 'string') return content
-    return readDeepStringValues(content).join('\n')
-  }).join('\n')
-}
-
-async function parseBananaChatStreamResponse(
-  response: Response,
-  mime: string,
-  signal?: AbortSignal,
-): Promise<CallApiResult> {
-  const payloads: unknown[] = []
-  let streamedText = ''
-
-  await readJsonServerSentEvents(response, (event) => {
-    payloads.push(event)
-    streamedText += getBananaDeltaText(event)
-    streamedText += getBananaFinishedMessageText(event)
-  })
-
-  const imageValues = [
-    ...pickBananaImageValues(streamedText),
-    ...payloads.flatMap(pickBananaImageValues),
-  ]
-  return parseBananaImageValues([...new Set(imageValues)], mime, signal)
 }
 
 function parseServerSentEventBlock(block: string): string | null {
@@ -646,65 +475,15 @@ export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile
   }
 
   if (profile.provider === 'openai' && isBananaImageModel(profile.model)) {
-    return callBananaChatImageApi(opts, profile)
+    return callImagesApi(opts, {
+      ...profile,
+      model: getBananaPricedImageModel(profile.model, opts.params.size),
+    })
   }
 
   return profile.apiMode === 'responses'
     ? callResponsesImageApi(opts, profile)
     : callImagesApi(opts, profile)
-}
-
-async function callBananaChatImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
-  const { prompt, params, inputImageDataUrls } = opts
-  const mime = MIME_MAP[params.output_format] || 'image/png'
-  const proxyConfig = readClientDevProxyConfig()
-  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
-  const requestHeaders = createRequestHeaders(profile)
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
-
-  try {
-    assertImageInputPayloadSize(
-      inputImageDataUrls.reduce((sum, dataUrl) => sum + getDataUrlEncodedByteSize(dataUrl), 0),
-    )
-
-    const body = {
-      model: getBananaRequestModel(profile.model, params.size),
-      stream: true,
-      size: params.size,
-      generationConfig: createBananaGenerationConfig(params),
-      messages: [
-        {
-          role: 'user',
-          content: createBananaChatContent(prompt, inputImageDataUrls),
-        },
-      ],
-    }
-
-    const response = await fetch(buildApiUrl(profile.baseUrl, 'chat/completions', proxyConfig, useApiProxy), {
-      method: 'POST',
-      headers: {
-        ...requestHeaders,
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-
-    if (!response.ok) {
-      throw new Error(await getApiErrorMessage(response))
-    }
-
-    if (!isEventStreamResponse(response)) {
-      const payload = await response.json()
-      return parseBananaImageValues(pickBananaImageValues(payload), mime, controller.signal)
-    }
-
-    return parseBananaChatStreamResponse(response, mime, controller.signal)
-  } finally {
-    clearTimeout(timeoutId)
-  }
 }
 
 async function callImagesApi(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {

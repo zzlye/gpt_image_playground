@@ -344,19 +344,12 @@ describe('callImageApi', () => {
     })
   })
 
-  it('routes Banana image models through streaming chat completions', async () => {
-    const streamBody = [
-      'data: {"choices":[{"delta":{"content":"![image](https://cdn.example.com/final.png)"}}]}',
-      '',
-      'data: [DONE]',
-      '',
-    ].join('\n')
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(streamBody, {
+  it('routes Banana image models through standard NewAPI image generations', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      data: [{ b64_json: 'ZmluYWw=' }],
+    }), {
       status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
-    })).mockResolvedValueOnce(new Response(new Blob(['final'], { type: 'image/png' }), {
-      status: 200,
-      headers: { 'Content-Type': 'image/png' },
+      headers: { 'Content-Type': 'application/json' },
     }))
 
     const settings = {
@@ -374,44 +367,27 @@ describe('callImageApi', () => {
       settings,
       prompt: 'prompt',
       params: { ...DEFAULT_PARAMS },
-      inputImageDataUrls: ['data:image/png;base64,aW1hZ2U='],
+      inputImageDataUrls: [],
     } as any)
 
     const [url, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
-    expect(String(url)).toBe('https://zzlye.xyz:60/v1/chat/completions')
+    expect(String(url)).toBe('https://zzlye.xyz:60/v1/images/generations')
     expect(body).toMatchObject({
-      model: 'gemini-3.0-pro-image-square',
+      model: 'Nano-Banana-Pro-1k',
       stream: true,
       size: DEFAULT_PARAMS.size,
-      generationConfig: {
-        imageConfig: {
-          aspectRatio: '1:1',
-          imageSize: '1K',
-        },
-      },
-      messages: [{
-        role: 'user',
-      }],
+      prompt: 'prompt',
     })
-    expect(body.messages[0].content).toEqual([
-      expect.objectContaining({ type: 'text' }),
-      expect.objectContaining({ type: 'image_url' }),
-    ])
     expect(result.images).toEqual(['data:image/png;base64,ZmluYWw='])
-    expect(result.rawImageUrls).toEqual(['https://cdn.example.com/final.png'])
   })
 
-  it('maps Banana model and size selections to flow2api image model variants', async () => {
-    const streamBody = [
-      'data: {"choices":[{"delta":{"content":"data:image/png;base64,ZmluYWw="}}]}',
-      '',
-      'data: [DONE]',
-      '',
-    ].join('\n')
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(streamBody, {
+  it('maps Banana model and size selections to tier-priced NewAPI model aliases', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: [{ b64_json: 'ZmluYWw=' }],
+    }), {
       status: 200,
-      headers: { 'Content-Type': 'text/event-stream' },
+      headers: { 'Content-Type': 'application/json' },
     }))
 
     const settings = {
@@ -434,11 +410,8 @@ describe('callImageApi', () => {
 
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
-    expect(body.model).toBe('gemini-3.1-flash-image-landscape-2k')
-    expect(body.generationConfig.imageConfig).toEqual({
-      aspectRatio: '16:9',
-      imageSize: '2K',
-    })
+    expect(body.model).toBe('Nano-Banana-2-2k')
+    expect(body.size).toBe('2560x1440')
   })
 
   it('parses Responses API image result objects in gallery mode', async () => {

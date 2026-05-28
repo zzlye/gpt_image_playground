@@ -18,6 +18,7 @@ import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '..
 import { shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
+import { normalizeImageSize } from './size'
 
 export const LOCKED_WENYUN_PROFILE_ID = 'wenyun-site'
 export const LOCKED_PUBLIC_PROFILE_ID = 'public-site'
@@ -49,6 +50,21 @@ const FIXED_IMAGE_MODEL_VALUES = new Set<string>(FIXED_IMAGE_MODEL_OPTIONS.map((
 
 export function isBananaImageModel(model: string): boolean {
   return /^Nano-Banana(?:-|$)/i.test(model.trim())
+}
+
+export function getBananaImageSizeTier(size: string): '1k' | '2k' | '4k' {
+  const match = normalizeImageSize(size).match(/^(\d+)x(\d+)$/)
+  if (!match) return '1k'
+  const maxEdge = Math.max(Number(match[1]), Number(match[2]))
+  if (maxEdge >= 3200) return '4k'
+  if (maxEdge >= 1800) return '2k'
+  return '1k'
+}
+
+export function getBananaPricedImageModel(model: string, size: string): string {
+  if (!isBananaImageModel(model)) return model
+  const baseModel = model === 'Nano-Banana-Pro' ? 'Nano-Banana-Pro' : 'Nano-Banana-2'
+  return `${baseModel}-${getBananaImageSizeTier(size)}`
 }
 
 function normalizeFixedImageModel(value: unknown): string {

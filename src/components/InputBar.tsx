@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, isBananaImageModel, normalizeSettings } from '../lib/apiProfiles'
+import { FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getBananaPricedImageModel, isBananaImageModel, normalizeSettings } from '../lib/apiProfiles'
 import { queryNewApiModelUnitCost } from '../lib/newApi'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
@@ -589,14 +589,16 @@ export default function InputBar() {
   ), [activeProfile.id, currentActiveProfile.id, settings])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
-  const bananaModelUnitCostText = activeProfile.model === 'Nano-Banana-2'
-    ? 'HUHN 0.09'
-    : activeProfile.model === 'Nano-Banana-Pro'
-    ? 'HUHN 0.14'
-    : ''
-  const modelUnitCostText = bananaModelUnitCostText || (settings.apiModelUnitCostProfileId === activeProfile.id
+  const modelUnitCostProfile = useMemo(() => (
+    isBananaImageModel(activeProfile.model)
+      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model, params.size) }
+      : activeProfile
+  ), [activeProfile, params.size])
+  const modelUnitCostKey = `${activeProfile.id}:${modelUnitCostProfile.model}`
+  const modelUnitCostFallbackText = isBananaImageModel(activeProfile.model) ? 'HUHN --' : 'HUHN 0.06'
+  const modelUnitCostText = settings.apiModelUnitCostProfileId === modelUnitCostKey
     ? settings.apiModelUnitCostText
-    : 'HUHN 0.06')
+    : modelUnitCostFallbackText
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
     : hasSubmitApiConfig
@@ -607,23 +609,20 @@ export default function InputBar() {
 
   useEffect(() => {
     let cancelled = false
-    if (!activeProfile.id) return
-    if (isBananaImageModel(activeProfile.model)) {
-      return
-    }
+    if (!modelUnitCostProfile.id) return
 
-    void queryNewApiModelUnitCost(activeProfile).then((result) => {
+    void queryNewApiModelUnitCost(modelUnitCostProfile).then((result) => {
       if (cancelled) return
       setSettings({
         apiModelUnitCostText: result.text,
-        apiModelUnitCostProfileId: activeProfile.id,
+        apiModelUnitCostProfileId: modelUnitCostKey,
         apiModelUnitCostUpdatedAt: result.updatedAt,
       })
     }).catch(() => {
       if (cancelled) return
       setSettings({
-        apiModelUnitCostText: 'HUHN 0.06',
-        apiModelUnitCostProfileId: activeProfile.id,
+        apiModelUnitCostText: modelUnitCostFallbackText,
+        apiModelUnitCostProfileId: modelUnitCostKey,
         apiModelUnitCostUpdatedAt: Date.now(),
       })
     })
@@ -631,7 +630,7 @@ export default function InputBar() {
     return () => {
       cancelled = true
     }
-  }, [activeProfile.id, activeProfile.baseUrl, activeProfile.model, setSettings])
+  }, [modelUnitCostProfile, modelUnitCostFallbackText, modelUnitCostKey, setSettings])
 
   const submitCurrentMode = useCallback(() => {
     if (appMode === 'agent') {
