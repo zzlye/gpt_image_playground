@@ -5,6 +5,7 @@ import {
   DEFAULT_IMAGES_MODEL,
   DEFAULT_OPENAI_PROFILE_ID,
   DEFAULT_SETTINGS,
+  FIXED_IMAGE_MODEL_OPTIONS,
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
   findEquivalentApiProfile,
@@ -629,6 +630,20 @@ describe('custom providers', () => {
 
     expect(settings.codexCli).toBe(false)
     expect(settings.profiles.every((profile) => profile.codexCli === false)).toBe(true)
+  })
+
+  it('keeps the fixed 4K GPT image model on the Wenyun profile only', () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      profiles: [
+        { ...DEFAULT_SETTINGS.profiles[0], model: 'gpt-image-2-4k' },
+        { ...DEFAULT_SETTINGS.profiles[1], model: 'gpt-image-2-4k' },
+      ],
+    })
+
+    expect(FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === 'gpt-image-2-4k')).toBe(true)
+    expect(settings.profiles[0].model).toBe('gpt-image-2-4k')
+    expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
   })
 
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {

@@ -595,7 +595,7 @@ export default function InputBar() {
       : activeProfile
   ), [activeProfile])
   const modelUnitCostKey = `${activeProfile.id}:${modelUnitCostProfile.model}`
-  const modelUnitCostFallbackText = isBananaImageModel(activeProfile.model) ? 'HUHN --' : 'HUHN 0.06'
+  const modelUnitCostFallbackText = activeProfile.model === DEFAULT_IMAGES_MODEL ? 'HUHN 0.06' : 'HUHN --'
   const modelUnitCostText = settings.apiModelUnitCostProfileId === modelUnitCostKey
     ? settings.apiModelUnitCostText
     : modelUnitCostFallbackText
@@ -613,7 +613,7 @@ export default function InputBar() {
 
     void queryNewApiModelUnitCost(modelUnitCostProfile).then((result) => {
       if (cancelled) return
-      const text = result.found === false && isBananaImageModel(activeProfile.model)
+      const text = result.found === false
         ? modelUnitCostFallbackText
         : result.text
       setSettings({
