@@ -23,6 +23,7 @@ export interface NewApiNoticeItem {
 export interface NewApiModelUnitCostResult {
   text: string
   updatedAt: number
+  found?: boolean
 }
 
 interface NewApiStatusInfo {
@@ -518,7 +519,7 @@ function formatModelUnitCost(value: number, status: NewApiStatusInfo): string {
 export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<NewApiModelUnitCostResult> {
   const apiRoot = getApiRoot(profile.baseUrl)
   const origin = getApiOrigin(profile.baseUrl)
-  if (!apiRoot || !origin) return { text: FALLBACK_MODEL_UNIT_COST, updatedAt: Date.now() }
+  if (!apiRoot || !origin) return { text: FALLBACK_MODEL_UNIT_COST, updatedAt: Date.now(), found: false }
 
   try {
     const status = await fetchNewApiStatus(apiRoot, origin)
@@ -530,13 +531,15 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
       `${apiRoot}/api/pricing`,
     ]
 
-    for (const url of priceAttempts) {
+    const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
       try {
-        pricePayloads.push(await fetchJson(url, profile.apiKey))
+        return await fetchJsonWithTimeout(url, profile.apiKey, 2500)
       } catch {
         // 单个公开定价接口失败不影响兜底展示。
+        return undefined
       }
-    }
+    }))
+    pricePayloads.push(...fetchedPricePayloads.filter((payload) => payload !== undefined))
 
     const price = pricePayloads
       .map((payload) =>
@@ -548,8 +551,9 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
     return {
       text: price == null ? FALLBACK_MODEL_UNIT_COST : formatModelUnitCost(price, status),
       updatedAt: Date.now(),
+      found: price != null,
     }
   } catch {
-    return { text: FALLBACK_MODEL_UNIT_COST, updatedAt: Date.now() }
+    return { text: FALLBACK_MODEL_UNIT_COST, updatedAt: Date.now(), found: false }
   }
 }

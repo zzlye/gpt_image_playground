@@ -374,7 +374,7 @@ describe('callImageApi', () => {
     const body = JSON.parse(String((init as RequestInit).body))
     expect(String(url)).toBe('https://zzlye.xyz:60/v1/images/generations')
     expect(body).toMatchObject({
-      model: 'gemini-3-pro-image-preview',
+      model: 'nano-banana-pro',
       stream: true,
       size: DEFAULT_PARAMS.size,
       prompt: 'prompt',
@@ -410,7 +410,7 @@ describe('callImageApi', () => {
 
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
-    expect(body.model).toBe('gemini-3.1-flash-image-preview-2K')
+    expect(body.model).toBe('nano-banana-2')
     expect(body.size).toBe('2560x1440')
   })
 

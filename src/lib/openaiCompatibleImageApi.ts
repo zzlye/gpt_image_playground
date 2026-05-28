@@ -477,7 +477,7 @@ export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile
   if (profile.provider === 'openai' && isBananaImageModel(profile.model)) {
     return callImagesApi(opts, {
       ...profile,
-      model: getBananaPricedImageModel(profile.model, opts.params.size),
+      model: getBananaPricedImageModel(profile.model),
     })
   }
 

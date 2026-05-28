@@ -591,9 +591,9 @@ export default function InputBar() {
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
   const modelUnitCostProfile = useMemo(() => (
     isBananaImageModel(activeProfile.model)
-      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model, params.size) }
+      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model) }
       : activeProfile
-  ), [activeProfile, params.size])
+  ), [activeProfile])
   const modelUnitCostKey = `${activeProfile.id}:${modelUnitCostProfile.model}`
   const modelUnitCostFallbackText = isBananaImageModel(activeProfile.model) ? 'HUHN --' : 'HUHN 0.06'
   const modelUnitCostText = settings.apiModelUnitCostProfileId === modelUnitCostKey
@@ -613,8 +613,11 @@ export default function InputBar() {
 
     void queryNewApiModelUnitCost(modelUnitCostProfile).then((result) => {
       if (cancelled) return
+      const text = result.found === false && isBananaImageModel(activeProfile.model)
+        ? modelUnitCostFallbackText
+        : result.text
       setSettings({
-        apiModelUnitCostText: result.text,
+        apiModelUnitCostText: text,
         apiModelUnitCostProfileId: modelUnitCostKey,
         apiModelUnitCostUpdatedAt: result.updatedAt,
       })
@@ -630,7 +633,7 @@ export default function InputBar() {
     return () => {
       cancelled = true
     }
-  }, [modelUnitCostProfile, modelUnitCostFallbackText, modelUnitCostKey, setSettings])
+  }, [activeProfile.model, modelUnitCostProfile, modelUnitCostFallbackText, modelUnitCostKey, setSettings])
 
   const submitCurrentMode = useCallback(() => {
     if (appMode === 'agent') {
