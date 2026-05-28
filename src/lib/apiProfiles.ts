@@ -52,20 +52,9 @@ export function isBananaImageModel(model: string): boolean {
   return /^Nano-Banana(?:-|$)/i.test(model.trim())
 }
 
-function getBananaSizeTier(size?: string): '1K' | '2K' | '4K' {
-  const match = typeof size === 'string' ? size.match(/^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/) : null
-  if (!match) return '1K'
-  const maxEdge = Math.max(Number(match[1]), Number(match[2]))
-  if (maxEdge >= 3200) return '4K'
-  if (maxEdge >= 1800) return '2K'
-  return '1K'
-}
-
-export function getBananaPricedImageModel(model: string, size?: string): string {
+export function getBananaPricedImageModel(model: string): string {
   if (!isBananaImageModel(model)) return model
-  const is4K = getBananaSizeTier(size) === '4K'
-  if (model === 'Nano-Banana-Pro') return is4K ? 'nano-banana-pro-4k-vip' : 'nano-banana-pro'
-  return is4K ? 'nano-banana-2-4k-cl' : 'nano-banana-2'
+  return model === 'Nano-Banana-Pro' ? 'nano-banana-pro' : 'nano-banana-2'
 }
 
 function normalizeFixedImageModel(value: unknown): string {

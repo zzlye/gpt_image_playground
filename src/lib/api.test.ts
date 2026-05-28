@@ -413,7 +413,7 @@ describe('callImageApi', () => {
 
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
-    expect(body.model).toBe('nano-banana-2-4k-cl')
+    expect(body.model).toBe('nano-banana-2')
     expect(body.size).toBe('3840x2160')
     expect(body.aspectRatio).toBe('16:9')
     expect(body.imageSize).toBe('4K')
