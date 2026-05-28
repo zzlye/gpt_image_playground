@@ -451,6 +451,43 @@ describe('callImageApi', () => {
     expect(result.images).toEqual(['data:image/png;base64,ZmluYWw='])
   })
 
+  it('keeps Banana remote result URLs when browser-side image download fails', async () => {
+    const imageUrl = 'https://file.example.com/final.png'
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'task-1',
+        status: 'succeeded',
+        results: [{ url: imageUrl }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      apiKey: 'test-key',
+      model: 'Nano-Banana-2',
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        apiKey: 'test-key',
+        model: 'Nano-Banana-2',
+      })),
+    }
+
+    const result = await callImageApi({
+      settings,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS, size: '3840x2160' },
+      inputImageDataUrls: [],
+    } as any)
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(result.images).toEqual([imageUrl])
+    expect(result.rawImageUrls).toEqual([imageUrl])
+  })
+
   it('parses Responses API image result objects in gallery mode', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       output: [{

@@ -2,8 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getBananaPricedImageModel, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeSettings } from '../lib/apiProfiles'
-import { queryNewApiModelUnitCost } from '../lib/newApi'
+import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getFixedImageModelUnitCostText, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeSettings } from '../lib/apiProfiles'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeImageSize } from '../lib/size'
@@ -589,16 +588,12 @@ export default function InputBar() {
   ), [activeProfile.id, currentActiveProfile.id, settings])
   const hasSubmitApiConfig = Boolean(activeProfile.apiKey)
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
-  const modelUnitCostProfile = useMemo(() => (
-    isBananaImageModel(activeProfile.model)
-      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model) }
-      : activeProfile
-  ), [activeProfile])
-  const modelUnitCostKey = `${activeProfile.id}:${modelUnitCostProfile.model}`
-  const modelUnitCostFallbackText = activeProfile.model === DEFAULT_IMAGES_MODEL ? 'HUHN 0.06' : 'HUHN --'
-  const modelUnitCostText = settings.apiModelUnitCostProfileId === modelUnitCostKey
+  const fixedModelUnitCostText = getFixedImageModelUnitCostText(activeProfile.model)
+  const modelUnitCostKey = `${activeProfile.id}:${activeProfile.model}`
+  const modelUnitCostFallbackText = fixedModelUnitCostText ?? 'HUHN --'
+  const modelUnitCostText = fixedModelUnitCostText ?? (settings.apiModelUnitCostProfileId === modelUnitCostKey
     ? settings.apiModelUnitCostText
-    : modelUnitCostFallbackText
+    : modelUnitCostFallbackText)
   const submitButtonAriaLabel = activeAgentIsRunning
     ? '停止生成'
     : hasSubmitApiConfig
@@ -606,42 +601,6 @@ export default function InputBar() {
     : '请先配置 API'
   const submitTooltipText = activeAgentIsRunning ? '停止生成' : '尚未完成 API 配置，请在右上角设置中进行'
   const promptPlaceholder = '描述你想生成的图片，可输入 @ 来指定参考图...'
-
-  useEffect(() => {
-    let cancelled = false
-    if (!modelUnitCostProfile.id) return
-
-    void queryNewApiModelUnitCost(modelUnitCostProfile).then((result) => {
-      if (cancelled) return
-      const text = result.found === false
-        ? modelUnitCostFallbackText
-        : result.text
-      setSettings({
-        apiModelUnitCostText: text,
-        apiModelUnitCostProfileId: modelUnitCostKey,
-        apiModelUnitCostUpdatedAt: result.updatedAt,
-      })
-    }).catch(() => {
-      if (cancelled) return
-      setSettings({
-        apiModelUnitCostText: modelUnitCostFallbackText,
-        apiModelUnitCostProfileId: modelUnitCostKey,
-        apiModelUnitCostUpdatedAt: Date.now(),
-      })
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    modelUnitCostProfile.id,
-    modelUnitCostProfile.baseUrl,
-    modelUnitCostProfile.apiKey,
-    modelUnitCostProfile.model,
-    modelUnitCostFallbackText,
-    modelUnitCostKey,
-    setSettings,
-  ])
 
   const submitCurrentMode = useCallback(() => {
     if (appMode === 'agent') {

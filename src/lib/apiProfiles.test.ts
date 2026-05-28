@@ -10,6 +10,8 @@ import {
   createDefaultFalProfile,
   findEquivalentApiProfile,
   getApiBalanceSnapshot,
+  getBananaPricedImageModel,
+  getFixedImageModelUnitCostText,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
   LOCKED_PUBLIC_PROFILE_ID,
@@ -644,6 +646,13 @@ describe('custom providers', () => {
     expect(FIXED_IMAGE_MODEL_OPTIONS.map((option) => String(option.value))).not.toContain('gpt-image-2-4k')
     expect(settings.profiles[0].model).toBe(DEFAULT_IMAGES_MODEL)
     expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
+  })
+
+  it('uses fixed display prices for built-in image models', () => {
+    expect(getFixedImageModelUnitCostText(DEFAULT_IMAGES_MODEL)).toBe('HUHN 0.06')
+    expect(getFixedImageModelUnitCostText('Nano-Banana-2')).toBe('HUHN 0.09')
+    expect(getFixedImageModelUnitCostText('Nano-Banana-Pro')).toBe('HUHN 0.18')
+    expect(getBananaPricedImageModel('nano-banana-pro')).toBe('nano-banana-pro')
   })
 
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {

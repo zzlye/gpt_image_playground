@@ -52,8 +52,16 @@ export function isBananaImageModel(model: string): boolean {
 }
 
 export function getBananaPricedImageModel(model: string): string {
-  if (!isBananaImageModel(model)) return model
-  return model === 'Nano-Banana-Pro' ? 'nano-banana-pro' : 'nano-banana-2'
+  const normalized = model.trim()
+  if (!isBananaImageModel(normalized)) return model
+  return /^Nano-Banana-Pro$/i.test(normalized) ? 'nano-banana-pro' : 'nano-banana-2'
+}
+
+export function getFixedImageModelUnitCostText(model: string): string | null {
+  const normalized = model.trim()
+  if (normalized === DEFAULT_IMAGES_MODEL) return 'HUHN 0.06'
+  if (!isBananaImageModel(normalized)) return null
+  return /^Nano-Banana-Pro(?:-(?:1k|2k|4k))?$/i.test(normalized) ? 'HUHN 0.18' : 'HUHN 0.09'
 }
 
 function normalizeFixedImageModel(value: unknown): string {

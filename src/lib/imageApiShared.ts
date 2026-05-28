@@ -22,7 +22,7 @@ export interface CallApiOptions {
 }
 
 export interface CallApiResult {
-  /** base64 data URL 列表 */
+  /** 可直接渲染的图片 URL 或 base64 data URL 列表 */
   images: string[]
   /** API 返回的实际生效参数 */
   actualParams?: Partial<TaskParams>

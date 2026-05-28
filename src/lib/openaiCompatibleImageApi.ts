@@ -336,8 +336,20 @@ async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, s
         continue
       }
 
-      if (isHttpUrl(item.url) || isDataUrl(item.url)) {
+      if (isDataUrl(item.url)) {
         images.push(await fetchImageUrlAsDataUrl(item.url, mime, signal))
+        revisedPrompts.push(typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined)
+        continue
+      }
+
+      if (isHttpUrl(item.url)) {
+        try {
+          images.push(await fetchImageUrlAsDataUrl(item.url, mime, signal))
+        } catch (err) {
+          if (signal?.aborted) throw err
+          // 远程图片已生成但浏览器下载失败时，保留原始 URL 避免把整次任务判失败。
+          images.push(item.url)
+        }
         revisedPrompts.push(typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined)
       }
     }
