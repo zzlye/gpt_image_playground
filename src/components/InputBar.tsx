@@ -591,9 +591,9 @@ export default function InputBar() {
   const canSubmit = Boolean(prompt.trim() && hasSubmitApiConfig && !activeAgentIsRunning)
   const modelUnitCostProfile = useMemo(() => (
     isBananaImageModel(activeProfile.model)
-      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model) }
+      ? { ...activeProfile, model: getBananaPricedImageModel(activeProfile.model, params.size) }
       : activeProfile
-  ), [activeProfile])
+  ), [activeProfile, params.size])
   const modelUnitCostKey = `${activeProfile.id}:${modelUnitCostProfile.model}`
   const modelUnitCostFallbackText = activeProfile.model === DEFAULT_IMAGES_MODEL ? 'HUHN 0.06' : 'HUHN --'
   const modelUnitCostText = settings.apiModelUnitCostProfileId === modelUnitCostKey

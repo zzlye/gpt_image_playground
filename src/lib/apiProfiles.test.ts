@@ -10,6 +10,7 @@ import {
   createDefaultFalProfile,
   findEquivalentApiProfile,
   getApiBalanceSnapshot,
+  getBananaPricedImageModel,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
   LOCKED_PUBLIC_PROFILE_ID,
@@ -644,6 +645,12 @@ describe('custom providers', () => {
     expect(FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === 'gpt-image-2-4k')).toBe(true)
     expect(settings.profiles[0].model).toBe('gpt-image-2-4k')
     expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
+  })
+
+  it('maps Banana 4K sizes to upstream 4K model names', () => {
+    expect(getBananaPricedImageModel('Nano-Banana-2', '3840x2160')).toBe('nano-banana-2-4k-cl')
+    expect(getBananaPricedImageModel('Nano-Banana-Pro', '3840x2160')).toBe('nano-banana-pro-4k-vip')
+    expect(getBananaPricedImageModel('Nano-Banana-2', '2560x1440')).toBe('nano-banana-2')
   })
 
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {
