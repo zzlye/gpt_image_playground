@@ -225,6 +225,14 @@ export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function SparklesIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.5 3.5l1.2 3.4a1 1 0 00.64.64l3.4 1.2-3.4 1.2a1 1 0 00-.64.64l-1.2 3.4-1.2-3.4a1 1 0 00-.64-.64l-3.4-1.2 3.4-1.2a1 1 0 00.64-.64l1.2-3.4zM17.5 12.5l.8 2.2a1 1 0 00.6.6l2.2.8-2.2.8a1 1 0 00-.6.6l-.8 2.2-.8-2.2a1 1 0 00-.6-.6l-2.2-.8 2.2-.8a1 1 0 00.6-.6l.8-2.2z" />
+    </svg>
+  )
+}
+
 export function WrenchIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>

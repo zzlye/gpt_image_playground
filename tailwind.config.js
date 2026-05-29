@@ -2,8 +2,14 @@ import colors from 'tailwindcss/colors';
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'media',
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}', './node_modules/streamdown/dist/*.js'],
+  darkMode: 'class',
+  content: [
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+    './src/infiniteCanvasSource/**/*.{js,ts,jsx,tsx}',
+    './vendor/infinite-canvas-original/web/src/**/*.{js,ts,jsx,tsx}',
+    './node_modules/streamdown/dist/*.js',
+  ],
   theme: {
     extend: {
       colors: {

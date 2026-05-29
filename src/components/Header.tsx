@@ -6,9 +6,13 @@ import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot } fro
 import { queryNewApiBalance } from '../lib/newApi'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
-import { HelpCircleIcon, SettingsIcon } from './icons'
+import { HelpCircleIcon, SettingsIcon, SparklesIcon } from './icons'
 
-export default function Header() {
+type HeaderProps = {
+  onOpenCanvas?: () => void
+}
+
+export default function Header({ onOpenCanvas }: HeaderProps) {
   const setShowSettings = useStore((s) => s.setShowSettings)
   const setSettings = useStore((s) => s.setSettings)
   const showToast = useStore((s) => s.showToast)
@@ -43,6 +47,14 @@ export default function Header() {
                 文运工坊
               </span>
             </h1>
+            <button
+              type="button"
+              onClick={onOpenCanvas}
+              className="canvas-launch-button"
+            >
+              <SparklesIcon className="h-4 w-4" />
+              <span>画布工坊</span>
+            </button>
           </div>
           <div className="absolute left-1/2 top-1/2 hidden max-w-[48vw] -translate-x-1/2 -translate-y-1/2 sm:block">
             <div className="flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/75 py-1 pl-3 pr-1 text-xs font-medium text-gray-600 shadow-sm backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-300">

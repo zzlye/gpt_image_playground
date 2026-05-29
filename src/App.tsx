@@ -19,6 +19,7 @@ import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import AnnouncementModal from './components/AnnouncementModal'
+import CanvasWorkshop from './components/CanvasWorkshop'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 
 let customProviderConfigUrlImportStarted = false
@@ -38,6 +39,7 @@ export default function App() {
   const appearanceBackgroundOpacity = useStore((s) => s.settings.appearanceBackgroundOpacity)
   const appearanceBackgroundBlur = useStore((s) => s.settings.appearanceBackgroundBlur)
   const appearanceNightMode = useStore((s) => s.settings.appearanceNightMode)
+  const [workspaceMode, setWorkspaceMode] = useState<'gallery' | 'canvas'>('gallery')
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementContent, setAnnouncementContent] = useState('')
   const [announcementPublishedAt, setAnnouncementPublishedAt] = useState<string | undefined>(undefined)
@@ -157,22 +159,31 @@ export default function App() {
         </>
       )}
       <div className={`relative z-10 min-h-screen ${appearanceNightMode ? 'appearance-night' : ''}`}>
-        <Header />
-        <main data-home-main data-drag-select-surface className="pb-48">
-          <div className="safe-area-x max-w-7xl mx-auto">
-            <SearchBar />
-            <TaskGrid />
-          </div>
-        </main>
-        <InputBar />
-        <DetailModal />
-        <Lightbox />
-        <SettingsModal />
-        <ConfirmDialog />
-        <SupportPromptModal />
-        <Toast />
-        <MaskEditorModal />
-        <ImageContextMenu />
+        {workspaceMode === 'gallery' ? (
+          <>
+            <Header onOpenCanvas={() => {
+              setAnnouncementOpen(false)
+              setWorkspaceMode('canvas')
+            }} />
+            <main data-home-main data-drag-select-surface className="pb-48">
+              <div className="safe-area-x max-w-7xl mx-auto">
+                <SearchBar />
+                <TaskGrid />
+              </div>
+            </main>
+            <InputBar />
+            <DetailModal />
+            <Lightbox />
+            <SettingsModal />
+            <ConfirmDialog />
+            <SupportPromptModal />
+            <Toast />
+            <MaskEditorModal />
+            <ImageContextMenu />
+          </>
+        ) : (
+          <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} />
+        )}
         <button
           type="button"
           onClick={() => {

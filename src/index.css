@@ -25,6 +25,19 @@
   scrollbar-gutter: stable;
 }
 
+.dark {
+  --background: 240 10% 4%;
+  --foreground: 0 0% 98%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+  --border: 240 4% 22%;
+  --input: 240 4% 22%;
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+  --sidebar: 240 5% 12%;
+  --sidebar-foreground: 0 0% 98%;
+}
+
 html {
   overflow-y: scroll;
 }
@@ -101,6 +114,42 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+.ai-title-aurora {
+  background: linear-gradient(90deg, #111827 0%, #111827 36%, #6b7280 54%, #111827 72%, #111827 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ai-title-aurora 7s ease-in-out infinite;
+}
+
+.dark .ai-title-aurora {
+  background: linear-gradient(90deg, #fafaf9 0%, #fafaf9 36%, #a8a29e 54%, #fafaf9 72%, #fafaf9 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@keyframes ai-title-aurora {
+  0%, 100% {
+    background-position: 0% 50%;
+    filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0));
+  }
+  50% {
+    background-position: 100% 50%;
+    filter: drop-shadow(0 12px 28px rgba(28, 25, 23, 0.08));
+  }
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* 夜间外观模式：用深色表面、边框和输入态统一可读性，而不是只改文字颜色。 */
@@ -257,6 +306,309 @@ input[type="number"] {
   border-left: 3px solid rgba(59, 130, 246, 0.45);
   color: #52525b;
   padding-left: 0.85rem;
+}
+
+@keyframes canvas-button-shine {
+  0% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(240%) skewX(-18deg);
+  }
+}
+
+@keyframes canvas-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.canvas-launch-button,
+.canvas-return-button,
+.canvas-tool-button,
+.canvas-tool-icon-button,
+.canvas-danger-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.canvas-launch-button::before,
+.canvas-return-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.16) 50%, transparent 100%);
+  transform: translateX(-140%) skewX(-18deg);
+  animation: canvas-button-shine 3.6s linear infinite;
+  pointer-events: none;
+}
+
+.canvas-launch-button {
+  overflow: hidden;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-radius: 9999px;
+  padding: 0.48rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #f5f3ff;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.98), rgba(79, 70, 229, 0.96));
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: canvas-float 2.8s ease-in-out infinite;
+}
+
+.canvas-launch-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.canvas-launch-button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.canvas-return-button {
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.96), rgba(37, 99, 235, 0.96));
+  padding: 0.48rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #eff6ff;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.canvas-return-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.canvas-workshop-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 36%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.13), transparent 32%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.98));
+  color: #0f172a;
+}
+
+.dark .canvas-workshop-shell {
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 36%),
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.98));
+  color: #e2e8f0;
+}
+
+.canvas-workshop-topbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  height: 64px;
+  padding: calc(var(--safe-area-top) + 0.75rem) 1rem 0.7rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+}
+
+.dark .canvas-workshop-topbar {
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.82);
+}
+
+.canvas-workshop-viewport {
+  position: relative;
+  height: calc(100vh - 64px);
+  margin-top: 64px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background:
+    linear-gradient(to right, rgba(100, 116, 139, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(100, 116, 139, 0.08) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center center;
+}
+
+.dark .canvas-workshop-viewport {
+  background:
+    linear-gradient(to right, rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.1) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.canvas-workshop-viewport:active {
+  cursor: grabbing;
+}
+
+.canvas-workshop-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4800px;
+  height: 3200px;
+  transform-origin: center center;
+}
+
+.canvas-workshop-connections {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.canvas-node {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(16px);
+}
+
+.dark .canvas-node {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.canvas-node-selected {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.58), 0 22px 56px rgba(37, 99, 235, 0.2);
+}
+
+.canvas-node-accent {
+  height: 4px;
+}
+
+.canvas-tool-button,
+.canvas-tool-icon-button,
+.canvas-danger-button {
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.76);
+  padding: 0.52rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.dark .canvas-tool-button,
+.dark .canvas-tool-icon-button,
+.dark .canvas-danger-button {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.7);
+  color: #e2e8f0;
+}
+
+.canvas-tool-button:hover,
+.canvas-tool-icon-button:hover,
+.canvas-danger-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.14);
+}
+
+.canvas-tool-icon-button {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+}
+
+.canvas-tool-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.canvas-workshop-inspector {
+  position: fixed;
+  top: 84px;
+  right: 18px;
+  z-index: 35;
+  width: min(300px, calc(100vw - 36px));
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 1rem;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
+}
+
+.dark .canvas-workshop-inspector {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.72);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+}
+
+.canvas-workshop-zoom {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--safe-area-bottom) + 18px);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.45rem;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+}
+
+.dark .canvas-workshop-zoom {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.canvas-workshop-drop-hint {
+  position: fixed;
+  left: 18px;
+  bottom: calc(var(--safe-area-bottom) + 18px);
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(168, 85, 247, 0.26);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.55rem 0.8rem;
+  font-size: 0.78rem;
+  color: #475569;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.dark .canvas-workshop-drop-hint {
+  border-color: rgba(168, 85, 247, 0.2);
+  background: rgba(2, 6, 23, 0.72);
+  color: #cbd5e1;
+}
+
+.canvas-danger-button {
+  width: 100%;
+  justify-content: center;
+  border-color: rgba(239, 68, 68, 0.24);
+  color: #b91c1c;
+}
+
+.dark .canvas-danger-button {
+  color: #fca5a5;
 }
 
 .markdown-renderer :where(a) {

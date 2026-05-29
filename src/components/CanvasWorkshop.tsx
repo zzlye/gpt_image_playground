@@ -1,0 +1,112 @@
+import { Component, useMemo, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react'
+import 'antd/dist/reset.css'
+import IndexPage from '../infiniteCanvasSource/app/(user)/page'
+import UserLayout from '../infiniteCanvasSource/app/(user)/layout'
+import OriginalCanvasPage from '../infiniteCanvasSource/app/(user)/canvas/page'
+import OriginalCanvasClientPage from '../infiniteCanvasSource/app/(user)/canvas/[id]/canvas-client-page'
+import ImagePage from '../infiniteCanvasSource/app/(user)/image/page'
+import VideoPage from '../infiniteCanvasSource/app/(user)/video/page'
+import PromptsPage from '../infiniteCanvasSource/app/(user)/prompts/page'
+import AssetsPage from '../infiniteCanvasSource/app/(user)/assets/page'
+import { AppProviders } from '../infiniteCanvasSource/components/layout/app-providers'
+import { CanvasNavigationProvider, type CanvasRoute } from '../infiniteCanvasCompat/nextNavigation'
+
+type CanvasWorkshopProps = {
+  onBack: () => void
+}
+
+type CanvasErrorBoundaryState = {
+  error: Error | null
+}
+
+class CanvasErrorBoundary extends Component<{ children: ReactNode }, CanvasErrorBoundaryState> {
+  state: CanvasErrorBoundaryState = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('画布页面渲染失败:', error, info)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-white p-6 text-stone-900">
+          <div className="max-w-xl rounded-xl border border-red-200 bg-red-50 p-4 text-sm">
+            <div className="text-base font-semibold text-red-700">画布页面加载失败</div>
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs text-red-900">
+              {this.state.error.stack || this.state.error.message}
+            </pre>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+function routeFromHref(href: string): CanvasRoute {
+  if (href === '/' || href === '') return { pathname: '/', params: {} }
+  const match = href.match(/^\/canvas\/([^/?#]+)/)
+  if (match?.[1]) return { pathname: `/canvas/${match[1]}`, params: { id: match[1] } }
+  const path = href.split(/[?#]/)[0] || '/'
+  return { pathname: path, params: {} }
+}
+
+function CanvasRoutePage({ route }: { route: CanvasRoute }) {
+  if (route.pathname === '/canvas') return <OriginalCanvasPage />
+  if (route.params.id) return <OriginalCanvasClientPage />
+  if (route.pathname === '/image') return <ImagePage />
+  if (route.pathname === '/video') return <VideoPage />
+  if (route.pathname === '/prompts') return <PromptsPage />
+  if (route.pathname === '/assets') return <AssetsPage />
+  return <IndexPage />
+}
+
+export default function CanvasWorkshop({ onBack }: CanvasWorkshopProps) {
+  const [route, setRoute] = useState<CanvasRoute>({ pathname: '/', params: {} })
+
+  const navigation = useMemo(
+    () => ({
+      ...route,
+      navigate: (href: string) => {
+        if (href === '/') {
+          onBack()
+          return
+        }
+        setRoute(routeFromHref(href))
+      },
+      backToHome: onBack,
+    }),
+    [onBack, route],
+  )
+
+  const handleInternalLinkClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const link = (event.target as HTMLElement | null)?.closest('a[href]')
+    if (!link) return
+    const href = link.getAttribute('href') || ''
+    if (!href.startsWith('/')) return
+    event.preventDefault()
+    navigation.navigate(href)
+  }
+
+  return (
+    <CanvasNavigationProvider value={navigation}>
+      <AppProviders>
+        <div onClickCapture={handleInternalLinkClick}>
+          <UserLayout>
+            <div className="h-full overflow-hidden bg-background text-foreground">
+              <CanvasErrorBoundary>
+                <CanvasRoutePage route={route} />
+              </CanvasErrorBoundary>
+            </div>
+          </UserLayout>
+        </div>
+      </AppProviders>
+    </CanvasNavigationProvider>
+  )
+}
