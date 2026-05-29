@@ -22,7 +22,7 @@ export const canvasThemes = {
             faint: "#a8a29e",
         },
         toolbar: {
-            panel: "rgba(251,250,247,.96)",
+            panel: "rgba(251,250,247,.985)",
             border: "#d6d3ca",
             item: "#57534e",
             itemHover: "#e7e5df",
@@ -50,7 +50,7 @@ export const canvasThemes = {
             faint: "#78716c",
         },
         toolbar: {
-            panel: "rgba(31,29,26,.96)",
+            panel: "rgba(31,29,26,.985)",
             border: "#44403c",
             item: "#d6d3d1",
             itemHover: "#292524",

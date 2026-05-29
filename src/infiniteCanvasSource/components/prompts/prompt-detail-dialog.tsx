@@ -8,7 +8,7 @@ import { formatPromptDate, type Prompt } from "@/services/api/prompts";
 export function PromptDetailDialog({ prompt, onClose, onCopy, onSaveAsset }: { prompt: Prompt | null; onClose: () => void; onCopy: (prompt: string) => void; onSaveAsset?: (prompt: Prompt) => void }) {
     return (
         <>
-            <Modal title={prompt?.title} open={Boolean(prompt)} onCancel={onClose} footer={null} width={860}>
+            <Modal title={prompt?.title} open={Boolean(prompt)} onCancel={onClose} footer={null} width={860} centered className="canvas-prompt-detail-modal">
                 {prompt ? (
                     <>
                         <div className="grid gap-5 md:grid-cols-[300px_minmax(0,1fr)]">
@@ -24,7 +24,9 @@ export function PromptDetailDialog({ prompt, onClose, onCopy, onSaveAsset }: { p
                                         </Tag>
                                     ))}
                                 </div>
-                                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-stone-800 dark:text-stone-300">{prompt.prompt}</p>
+                                <div className="mt-4 max-h-[58vh] overflow-auto pr-1">
+                                    <p className="whitespace-pre-wrap text-sm leading-7 text-stone-800 dark:text-stone-300">{prompt.prompt}</p>
+                                </div>
                                 <div className="mt-4 text-xs text-stone-500 dark:text-stone-400">
                                     创建：{formatPromptDate(prompt.createdAt)} · 更新：{formatPromptDate(prompt.updatedAt)}
                                 </div>

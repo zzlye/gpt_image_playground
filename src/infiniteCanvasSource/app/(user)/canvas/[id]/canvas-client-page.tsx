@@ -201,6 +201,8 @@ function InfiniteCanvasPage() {
     const historyPausedRef = useRef(false);
     const didInitialCenterRef = useRef(false);
     const rafRef = useRef<number | null>(null);
+    const resizeFrameRef = useRef<number | null>(null);
+    const lastCanvasSizeRef = useRef({ width: 0, height: 0 });
     const toolbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const nodeDraggingRef = useRef(false);
     const dragRef = useRef<{
@@ -319,6 +321,8 @@ function InfiniteCanvasPage() {
             setBackgroundMode(project.backgroundMode);
             setShowImageInfo(project.showImageInfo || false);
             setViewport(project.viewport);
+            // 只有默认视口才交给首次布局居中，避免覆盖用户已保存的画布位置。
+            didInitialCenterRef.current = !(project.viewport.x === 0 && project.viewport.y === 0 && project.viewport.k === 1);
             historyRef.current = { past: [], future: [] };
             if (historyCommitTimerRef.current) {
                 clearTimeout(historyCommitTimerRef.current);
@@ -400,26 +404,58 @@ function InfiniteCanvasPage() {
     }, [selectionBox]);
 
     useEffect(() => {
+        if (!projectLoaded) return;
+
         const el = containerRef.current;
         if (!el) return;
 
-        const updateSize = () => {
+        // 画布容器尺寸只跟随窗口变化，不再监听容器自身，避免和视口更新互相触发。
+        const commitSize = () => {
+            resizeFrameRef.current = null;
             const rect = el.getBoundingClientRect();
-            setSize((current) => {
-                if (current.width === rect.width && current.height === rect.height) return current;
-                return { width: rect.width, height: rect.height };
-            });
+            const nextSize = {
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+            };
+
+            if (nextSize.width <= 0 || nextSize.height <= 0) return;
+
+            const previous = lastCanvasSizeRef.current;
+            if (previous.width !== nextSize.width || previous.height !== nextSize.height) {
+                lastCanvasSizeRef.current = nextSize;
+                setSize((current) =>
+                    current.width === nextSize.width && current.height === nextSize.height ? current : nextSize,
+                );
+            }
+
             if (!didInitialCenterRef.current) {
                 didInitialCenterRef.current = true;
-                setViewport({ x: rect.width / 2, y: rect.height / 2, k: 1 });
+                setViewport((current) =>
+                    current.x === nextSize.width / 2 && current.y === nextSize.height / 2 && current.k === 1
+                        ? current
+                        : { x: nextSize.width / 2, y: nextSize.height / 2, k: 1 },
+                );
             }
         };
 
-        updateSize();
-        const resizeObserver = new ResizeObserver(updateSize);
-        resizeObserver.observe(el);
-        return () => resizeObserver.disconnect();
-    }, []);
+        const scheduleSizeUpdate = () => {
+            if (resizeFrameRef.current !== null) return;
+            resizeFrameRef.current = window.requestAnimationFrame(commitSize);
+        };
+
+        scheduleSizeUpdate();
+        window.addEventListener("resize", scheduleSizeUpdate);
+        window.visualViewport?.addEventListener("resize", scheduleSizeUpdate);
+
+        return () => {
+            window.removeEventListener("resize", scheduleSizeUpdate);
+            window.visualViewport?.removeEventListener("resize", scheduleSizeUpdate);
+            if (resizeFrameRef.current !== null) {
+                window.cancelAnimationFrame(resizeFrameRef.current);
+                resizeFrameRef.current = null;
+            }
+        };
+    }, [projectLoaded]);
 
     const screenToCanvas = useCallback((clientX: number, clientY: number) => {
         const rect = containerRef.current?.getBoundingClientRect();
