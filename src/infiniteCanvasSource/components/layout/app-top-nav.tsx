@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Settings2, Sparkles } from "lucide-react";
+import { Menu, Settings, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -102,7 +102,7 @@ export function AppTopNav() {
                                 aria-label="配置"
                                 title="配置"
                             >
-                                <Settings2 className="size-4" />
+                                <Settings className="size-5" />
                             </button>
                         </div>
                     </div>

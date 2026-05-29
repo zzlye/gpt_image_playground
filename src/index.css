@@ -331,21 +331,65 @@ input[type="number"] {
 @keyframes workspace-view-in {
   from {
     opacity: 0;
-    filter: blur(8px) saturate(0.94);
+    transform: translateY(8px) scale(0.992);
+    filter: blur(10px) saturate(0.94);
   }
   to {
     opacity: 1;
+    transform: translateY(0) scale(1);
     filter: blur(0) saturate(1);
   }
 }
 
 .workspace-mode-view {
   min-height: inherit;
-  animation: workspace-view-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: workspace-view-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform, filter;
+}
+
+@keyframes workspace-root-old {
+  from {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.992);
+    filter: blur(8px);
+  }
+}
+
+@keyframes workspace-root-new {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(1.006);
+    filter: blur(10px) saturate(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0) saturate(1);
+  }
+}
+
+html[data-workspace-vt]::view-transition-old(root) {
+  animation: workspace-root-old 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  mix-blend-mode: normal;
+}
+
+html[data-workspace-vt]::view-transition-new(root) {
+  animation: workspace-root-new 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  mix-blend-mode: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .workspace-mode-view {
+    animation: none;
+  }
+
+  html[data-workspace-vt]::view-transition-old(root),
+  html[data-workspace-vt]::view-transition-new(root) {
     animation: none;
   }
 
@@ -432,6 +476,63 @@ input[type="number"] {
 
 .canvas-integrated-shell :where(button, input, textarea, select, .ant-btn) {
   font-family: inherit;
+}
+
+/* 画布工坊通用毛玻璃表面，和文运工坊底部输入卡片保持同一质感。 */
+.canvas-glass-panel,
+.canvas-integrated-shell :where(.ant-card, .ant-modal-content, .ant-drawer-content) {
+  border: 1px solid rgba(255, 255, 255, 0.52) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08) !important;
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+}
+
+.dark .canvas-glass-panel,
+.dark .canvas-integrated-shell :where(.ant-card, .ant-modal-content, .ant-drawer-content) {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.32) !important;
+}
+
+.canvas-page-shell {
+  background: transparent;
+}
+
+.canvas-page-title-card {
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+}
+
+.dark .canvas-page-title-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.32);
+}
+
+.canvas-integrated-shell :where(.ant-input, .ant-input-affix-wrapper, .ant-select-selector) {
+  background: rgba(255, 255, 255, 0.62) !important;
+  border-color: rgba(203, 213, 225, 0.72) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.dark .canvas-integrated-shell :where(.ant-input, .ant-input-affix-wrapper, .ant-select-selector) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: #f8fafc !important;
+}
+
+.canvas-integrated-shell :where(input[type="checkbox"]) {
+  accent-color: #3b82f6;
+}
+
+.dark .canvas-integrated-shell :where(input[type="checkbox"]) {
+  accent-color: #60a5fa;
 }
 
 header :where(button, [role="button"]) {

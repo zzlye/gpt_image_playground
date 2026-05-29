@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
@@ -128,6 +129,26 @@ export default function App() {
     document.documentElement.style.colorScheme = appearanceNightMode ? 'dark' : 'light'
   }, [appearanceNightMode, workspaceMode])
 
+  const switchWorkspaceMode = useCallback((nextMode: 'gallery' | 'canvas') => {
+    if (workspaceMode === nextMode) return
+
+    const applyMode = () => setWorkspaceMode(nextMode)
+    if (typeof document.startViewTransition !== 'function') {
+      applyMode()
+      return
+    }
+
+    const root = document.documentElement
+    root.dataset.workspaceVt = nextMode
+    const cleanup = () => {
+      delete root.dataset.workspaceVt
+    }
+    const transition = document.startViewTransition(() => {
+      flushSync(applyMode)
+    })
+    transition.finished.finally(cleanup)
+  }, [workspaceMode])
+
   const dismissAnnouncementToday = () => {
     setSettings({
       announcementDismissedDate: new Date().toISOString().slice(0, 10),
@@ -172,7 +193,7 @@ export default function App() {
             <>
               <Header onOpenCanvas={() => {
                 setAnnouncementOpen(false)
-                setWorkspaceMode('canvas')
+                switchWorkspaceMode('canvas')
               }} />
               <main data-home-main data-drag-select-surface className="pb-48">
                 <div className="safe-area-x max-w-7xl mx-auto">
@@ -188,7 +209,7 @@ export default function App() {
               <ImageContextMenu />
             </>
           ) : (
-            <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
+            <CanvasWorkshop onBack={() => switchWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
           )}
         </div>
         <SettingsModal />

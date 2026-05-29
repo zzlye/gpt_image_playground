@@ -341,7 +341,6 @@ type ExternalApiConfigSectionProps = {
   apiKey: string
   model: string
   timeout: number
-  apiProxy: boolean
   showApiKey: boolean
   modelOptions: string[]
   isFetchingModels: boolean
@@ -353,7 +352,6 @@ type ExternalApiConfigSectionProps = {
   onModelCommit: (value: string) => void
   onTimeoutDraftChange: (value: number) => void
   onTimeoutCommit: (value: number) => void
-  onApiProxyToggle: () => void
   onToggleShowApiKey: () => void
   onFetchModels: () => void
 }
@@ -366,7 +364,6 @@ function ExternalApiConfigSection({
   apiKey,
   model,
   timeout,
-  apiProxy,
   showApiKey,
   modelOptions,
   isFetchingModels,
@@ -378,21 +375,13 @@ function ExternalApiConfigSection({
   onModelCommit,
   onTimeoutDraftChange,
   onTimeoutCommit,
-  onApiProxyToggle,
   onToggleShowApiKey,
   onFetchModels,
 }: ExternalApiConfigSectionProps) {
   const modelListId = `${idPrefix}-model-options`
 
   return (
-    <section className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]">
-      <div>
-        <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">{title}</h4>
-        <p data-selectable-text className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          {description}
-        </p>
-      </div>
-
+    <section className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]" aria-label={title} title={description}>
       <label className="block">
         <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
         <input
@@ -468,34 +457,18 @@ function ExternalApiConfigSection({
         ) : null}
       </label>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
-          <input
-            value={timeout}
-            onChange={(e) => onTimeoutDraftChange(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
-            onBlur={(e) => onTimeoutCommit(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
-            type="number"
-            min={10}
-            max={600}
-            className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-          />
-        </label>
-
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/70 bg-white/45 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.02]">
-          <span className="text-sm text-gray-600 dark:text-gray-300">API 代理</span>
-          <button
-            type="button"
-            onClick={onApiProxyToggle}
-            className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${apiProxy ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-            role="switch"
-            aria-checked={apiProxy}
-            aria-label={`${title} API 代理`}
-          >
-            <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${apiProxy ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
-          </button>
-        </div>
-      </div>
+      <label className="block">
+        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
+        <input
+          value={timeout}
+          onChange={(e) => onTimeoutDraftChange(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
+          onBlur={(e) => onTimeoutCommit(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
+          type="number"
+          min={10}
+          max={600}
+          className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+        />
+      </label>
     </section>
   )
 }
@@ -2190,6 +2163,12 @@ export default function SettingsModal() {
 
             {activeTab === 'textApi' && (
               <div className="space-y-5">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/15 dark:bg-blue-500/[0.08]">
+                  <h4 className="text-sm font-bold text-blue-700 dark:text-blue-300">文字 API 配置</h4>
+                  <p data-selectable-text className="mt-1 text-xs leading-relaxed text-blue-600/80 dark:text-blue-200/70">
+                    用于画布工坊里的文字问答和节点说明，和出图接口完全分开。
+                  </p>
+                </div>
                 <ExternalApiConfigSection
                   idPrefix="text-api"
                   title="文字 API 配置"
@@ -2198,7 +2177,6 @@ export default function SettingsModal() {
                   apiKey={draft.textApiKey}
                   model={draft.textModel}
                   timeout={draft.textTimeout}
-                  apiProxy={draft.textApiProxy}
                   showApiKey={showApiKey}
                   modelOptions={textModelOptions}
                   isFetchingModels={isFetchingTextModels}
@@ -2210,7 +2188,6 @@ export default function SettingsModal() {
                   onModelCommit={(value) => commitSettings({ ...draft, textModel: value.trim() })}
                   onTimeoutDraftChange={(value) => setDraft({ ...draft, textTimeout: value })}
                   onTimeoutCommit={(value) => commitSettings({ ...draft, textTimeout: value })}
-                  onApiProxyToggle={() => commitSettings({ ...draft, textApiProxy: !draft.textApiProxy })}
                   onToggleShowApiKey={() => setShowApiKey((value) => !value)}
                   onFetchModels={() => void fetchExternalApiModels('text')}
                 />
@@ -2219,6 +2196,12 @@ export default function SettingsModal() {
 
             {activeTab === 'videoApi' && (
               <div className="space-y-5">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/15 dark:bg-blue-500/[0.08]">
+                  <h4 className="text-sm font-bold text-blue-700 dark:text-blue-300">视频 API 配置</h4>
+                  <p data-selectable-text className="mt-1 text-xs leading-relaxed text-blue-600/80 dark:text-blue-200/70">
+                    用于画布工坊里的视频生成，可以单独填写 URL、Key 和视频模型。
+                  </p>
+                </div>
                 <ExternalApiConfigSection
                   idPrefix="video-api"
                   title="视频 API 配置"
@@ -2227,7 +2210,6 @@ export default function SettingsModal() {
                   apiKey={draft.videoApiKey}
                   model={draft.videoModel}
                   timeout={draft.videoTimeout}
-                  apiProxy={draft.videoApiProxy}
                   showApiKey={showApiKey}
                   modelOptions={videoModelOptions}
                   isFetchingModels={isFetchingVideoModels}
@@ -2239,7 +2221,6 @@ export default function SettingsModal() {
                   onModelCommit={(value) => commitSettings({ ...draft, videoModel: value.trim() })}
                   onTimeoutDraftChange={(value) => setDraft({ ...draft, videoTimeout: value })}
                   onTimeoutCommit={(value) => commitSettings({ ...draft, videoTimeout: value })}
-                  onApiProxyToggle={() => commitSettings({ ...draft, videoApiProxy: !draft.videoApiProxy })}
                   onToggleShowApiKey={() => setShowApiKey((value) => !value)}
                   onFetchModels={() => void fetchExternalApiModels('video')}
                 />
@@ -2291,20 +2272,6 @@ export default function SettingsModal() {
                     className="hidden"
                     onChange={handleBackgroundUpload}
                   />
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <span className="block text-sm text-gray-600 dark:text-gray-300">夜间模式</span>
-                  <button
-                    type="button"
-                    onClick={() => commitSettings({ ...draft, appearanceNightMode: !draft.appearanceNightMode })}
-                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.appearanceNightMode ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    role="switch"
-                    aria-checked={draft.appearanceNightMode}
-                    aria-label="夜间模式"
-                  >
-                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.appearanceNightMode ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
-                  </button>
                 </div>
 
                 <label className="block">

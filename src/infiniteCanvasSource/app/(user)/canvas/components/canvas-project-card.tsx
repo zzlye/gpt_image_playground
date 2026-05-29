@@ -28,14 +28,14 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     };
 
     return (
-        <article className="group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl border border-gray-200/70 bg-white/[0.62] p-5 shadow-none backdrop-blur transition hover:border-blue-200 hover:bg-white/[0.78] dark:border-white/[0.08] dark:bg-white/[0.045] dark:hover:border-blue-400/30 dark:hover:bg-white/[0.07]" onClick={() => !editing && open()}>
+        <article className="canvas-glass-panel group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl p-5 transition hover:border-blue-200 hover:bg-white/[0.82] dark:hover:border-blue-400/30 dark:hover:bg-slate-900/80" onClick={() => !editing && open()}>
             <div className="flex items-start gap-3">
                 <input
                     type="checkbox"
                     checked={selected}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => toggleSelected(project.id, event.target.checked)}
-                    className="mt-1 size-4 accent-stone-950 dark:accent-stone-100"
+                    className="mt-1 size-4 accent-blue-500 dark:accent-blue-400"
                     aria-label={`选择 ${project.title}`}
                 />
                 {editing ? (

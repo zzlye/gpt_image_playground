@@ -188,9 +188,9 @@ export default function AssetsPage() {
     };
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-transparent text-stone-900 dark:text-stone-100">
-            <main className="min-h-0 flex-1 overflow-y-auto bg-transparent px-6 py-8 pb-24">
-                <div className="pb-8">
+        <div className="canvas-page-shell flex h-full flex-col overflow-hidden text-stone-900 dark:text-stone-100">
+            <main className="min-h-0 flex-1 overflow-y-auto px-6 py-8 pb-24">
+                <div className="canvas-page-title-card mx-auto mb-8 max-w-6xl px-5 py-6">
                     <div className="mx-auto max-w-5xl text-center">
                         <h1 className="text-4xl font-semibold tracking-tight text-stone-950 dark:text-stone-100">我的素材</h1>
                         <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">收藏常用文本和图片，按类型、标题和标签快速查找。</p>
@@ -344,7 +344,7 @@ export default function AssetsPage() {
                             </Form.Item>
                         )}
                     </Form>
-                    <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-950">
+                    <div className="canvas-glass-panel rounded-xl p-4">
                         <Typography.Text strong>预览</Typography.Text>
                         <div className="mt-3 overflow-hidden rounded-lg border border-stone-200 bg-background dark:border-stone-800">
                             {coverUrl || imageDraft?.dataUrl ? (

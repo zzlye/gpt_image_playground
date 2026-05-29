@@ -405,7 +405,10 @@ function InfiniteCanvasPage() {
 
         const updateSize = () => {
             const rect = el.getBoundingClientRect();
-            setSize({ width: rect.width, height: rect.height });
+            setSize((current) => {
+                if (current.width === rect.width && current.height === rect.height) return current;
+                return { width: rect.width, height: rect.height };
+            });
             if (!didInitialCenterRef.current) {
                 didInitialCenterRef.current = true;
                 setViewport({ x: rect.width / 2, y: rect.height / 2, k: 1 });

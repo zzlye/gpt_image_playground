@@ -46,12 +46,12 @@ export default function PromptsPage() {
     };
 
     return (
-        <div className="flex h-full flex-col overflow-hidden bg-transparent text-stone-800 dark:text-stone-100">
+        <div className="canvas-page-shell flex h-full flex-col overflow-hidden text-stone-800 dark:text-stone-100">
             <main
-                className="min-h-0 flex-1 overflow-y-auto bg-transparent px-6 py-8 pb-24"
+                className="min-h-0 flex-1 overflow-y-auto px-6 py-8 pb-24"
                 onScroll={handleListScroll}
             >
-                <div className="pb-8">
+                <div className="canvas-page-title-card mx-auto mb-8 max-w-6xl px-5 py-6">
                     <div className="mx-auto max-w-5xl text-center">
                         <h1 className="text-4xl font-semibold tracking-tight text-stone-950 dark:text-stone-100">提示词中心</h1>
                         <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">共 {totalPrompts} 条提示词，按标题、标签与分类快速查找灵感。</p>
