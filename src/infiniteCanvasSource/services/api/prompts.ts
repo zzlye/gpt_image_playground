@@ -23,16 +23,20 @@ export type PromptListResponse = {
 };
 
 export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROMPTS_OPTION, page, pageSize }: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number } = {}) {
-    return apiGet<PromptListResponse>(
-        "/api/prompts",
-        compactApiParams({
-            ...(keyword ? { keyword } : {}),
-            ...(tag.length ? { tag } : {}),
-            ...(category !== ALL_PROMPTS_OPTION ? { category } : {}),
-            ...(page ? { page } : {}),
-            ...(pageSize ? { pageSize } : {}),
-        }),
-    );
+    try {
+        return await apiGet<PromptListResponse>(
+            "/api/prompts",
+            compactApiParams({
+                ...(keyword ? { keyword } : {}),
+                ...(tag.length ? { tag } : {}),
+                ...(category !== ALL_PROMPTS_OPTION ? { category } : {}),
+                ...(page ? { page } : {}),
+                ...(pageSize ? { pageSize } : {}),
+            }),
+        );
+    } catch {
+        return { items: [], tags: [], categories: [], total: 0 };
+    }
 }
 
 export function formatPromptDate(value: string) {

@@ -657,6 +657,21 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     ? record.activeProfileId
     : profiles[0].id
   const active = profiles.find((p) => p.id === activeProfileId) ?? profiles[0]
+  const legacyTextVideoBaseUrl = normalizeBaseUrl(typeof record.textVideoBaseUrl === 'string' ? record.textVideoBaseUrl : '')
+  const legacyTextVideoApiKey = typeof record.textVideoApiKey === 'string' ? record.textVideoApiKey : ''
+  const legacyTextVideoModel = typeof record.textVideoModel === 'string' ? record.textVideoModel.trim() : ''
+  const legacyTextVideoTimeout = normalizeApiTimeout(record.textVideoTimeout, DEFAULT_API_TIMEOUT)
+  const legacyTextVideoApiProxy = typeof record.textVideoApiProxy === 'boolean' ? record.textVideoApiProxy : false
+  const textBaseUrl = normalizeBaseUrl(typeof record.textBaseUrl === 'string' ? record.textBaseUrl : legacyTextVideoBaseUrl)
+  const textApiKey = typeof record.textApiKey === 'string' ? record.textApiKey : legacyTextVideoApiKey
+  const textModel = typeof record.textModel === 'string' ? record.textModel.trim() : legacyTextVideoModel
+  const textTimeout = normalizeApiTimeout(record.textTimeout, legacyTextVideoTimeout)
+  const textApiProxy = typeof record.textApiProxy === 'boolean' ? record.textApiProxy : legacyTextVideoApiProxy
+  const videoBaseUrl = normalizeBaseUrl(typeof record.videoBaseUrl === 'string' ? record.videoBaseUrl : legacyTextVideoBaseUrl)
+  const videoApiKey = typeof record.videoApiKey === 'string' ? record.videoApiKey : legacyTextVideoApiKey
+  const videoModel = typeof record.videoModel === 'string' ? record.videoModel.trim() : legacyTextVideoModel
+  const videoTimeout = normalizeApiTimeout(record.videoTimeout, legacyTextVideoTimeout)
+  const videoApiProxy = typeof record.videoApiProxy === 'boolean' ? record.videoApiProxy : legacyTextVideoApiProxy
 
   return {
     baseUrl: active.baseUrl,
@@ -681,11 +696,21 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     appearanceBackgroundOpacity: normalizeAppearanceOpacity(record.appearanceBackgroundOpacity),
     appearanceBackgroundBlur: normalizeAppearanceBlur(record.appearanceBackgroundBlur),
     appearanceNightMode: typeof record.appearanceNightMode === 'boolean' ? record.appearanceNightMode : false,
-    textVideoBaseUrl: normalizeBaseUrl(typeof record.textVideoBaseUrl === 'string' ? record.textVideoBaseUrl : ''),
-    textVideoApiKey: typeof record.textVideoApiKey === 'string' ? record.textVideoApiKey : '',
-    textVideoModel: typeof record.textVideoModel === 'string' ? record.textVideoModel.trim() : '',
-    textVideoTimeout: normalizeApiTimeout(record.textVideoTimeout, DEFAULT_API_TIMEOUT),
-    textVideoApiProxy: typeof record.textVideoApiProxy === 'boolean' ? record.textVideoApiProxy : false,
+    textVideoBaseUrl: legacyTextVideoBaseUrl,
+    textVideoApiKey: legacyTextVideoApiKey,
+    textVideoModel: legacyTextVideoModel,
+    textVideoTimeout: legacyTextVideoTimeout,
+    textVideoApiProxy: legacyTextVideoApiProxy,
+    textBaseUrl,
+    textApiKey,
+    textModel,
+    textTimeout,
+    textApiProxy,
+    videoBaseUrl,
+    videoApiKey,
+    videoModel,
+    videoTimeout,
+    videoApiProxy,
     apiBalanceText: normalizeApiBalanceText(record.apiBalanceText),
     apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
@@ -992,6 +1017,16 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   textVideoModel: '',
   textVideoTimeout: DEFAULT_API_TIMEOUT,
   textVideoApiProxy: false,
+  textBaseUrl: '',
+  textApiKey: '',
+  textModel: '',
+  textTimeout: DEFAULT_API_TIMEOUT,
+  textApiProxy: false,
+  videoBaseUrl: '',
+  videoApiKey: '',
+  videoModel: '',
+  videoTimeout: DEFAULT_API_TIMEOUT,
+  videoApiProxy: false,
   apiModelUnitCostText: 'HUHN 0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,

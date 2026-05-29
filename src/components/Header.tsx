@@ -59,7 +59,7 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
             </button>
           </div>
           <div className="absolute left-1/2 top-1/2 hidden max-w-[48vw] -translate-x-1/2 -translate-y-1/2 sm:block">
-            <div className="flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/75 py-1 pl-3 pr-1 text-xs font-medium text-gray-600 shadow-sm backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-300">
+            <div className="flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/75 py-1 pl-3 pr-1 text-xs font-medium text-gray-600 shadow-none backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-gray-300">
               <span className="min-w-0 truncate">
                 {activeProfile.name}：{apiBalanceText || '未查询'}
               </span>
@@ -83,7 +83,7 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
                   dismissAllTooltips()
                   setShowHelp(true)
                 }}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                className="p-2 rounded-lg shadow-none hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                 aria-label="操作指南"
               >
                 <HelpCircleIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -105,7 +105,7 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
             >
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                className="p-2 rounded-lg shadow-none hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
                 aria-label="设置"
               >
                 <SettingsIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />

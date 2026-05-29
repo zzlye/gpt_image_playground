@@ -28,7 +28,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     };
 
     return (
-        <article className="group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl bg-[#f1eee8] p-5 transition hover:bg-[#ebe6dc] dark:bg-white/5 dark:hover:bg-white/10" onClick={() => !editing && open()}>
+        <article className="group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl border border-gray-200/70 bg-white/[0.62] p-5 shadow-none backdrop-blur transition hover:border-blue-200 hover:bg-white/[0.78] dark:border-white/[0.08] dark:bg-white/[0.045] dark:hover:border-blue-400/30 dark:hover:bg-white/[0.07]" onClick={() => !editing && open()}>
             <div className="flex items-start gap-3">
                 <input
                     type="checkbox"

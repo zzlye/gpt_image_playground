@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { normalizeBaseUrl } from '../lib/api'
-import { isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig } from '../lib/devProxy'
+import { buildApiUrl, isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig, shouldUseApiProxy } from '../lib/devProxy'
 import { useStore, exportData, importData, clearData, type SettingsTab } from '../store'
 import {
   createDefaultOpenAIProfile,
@@ -51,6 +51,7 @@ const DEFAULT_COPY_IMPORT_URL_OPTIONS = {
 }
 
 type CopyImportUrlOptions = typeof DEFAULT_COPY_IMPORT_URL_OPTIONS
+type ExternalApiTarget = 'text' | 'video'
 
 function readCopyImportUrlOptions(): CopyImportUrlOptions {
   if (typeof window === 'undefined') return DEFAULT_COPY_IMPORT_URL_OPTIONS
@@ -332,6 +333,173 @@ async function getRandomBackgroundImageUrl() {
   return normalizeRandomBackgroundImageUrl(imageUrl)
 }
 
+type ExternalApiConfigSectionProps = {
+  idPrefix: string
+  title: string
+  description: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  timeout: number
+  apiProxy: boolean
+  showApiKey: boolean
+  modelOptions: string[]
+  isFetchingModels: boolean
+  onBaseUrlDraftChange: (value: string) => void
+  onBaseUrlCommit: (value: string) => void
+  onApiKeyDraftChange: (value: string) => void
+  onApiKeyCommit: (value: string) => void
+  onModelDraftChange: (value: string) => void
+  onModelCommit: (value: string) => void
+  onTimeoutDraftChange: (value: number) => void
+  onTimeoutCommit: (value: number) => void
+  onApiProxyToggle: () => void
+  onToggleShowApiKey: () => void
+  onFetchModels: () => void
+}
+
+function ExternalApiConfigSection({
+  idPrefix,
+  title,
+  description,
+  baseUrl,
+  apiKey,
+  model,
+  timeout,
+  apiProxy,
+  showApiKey,
+  modelOptions,
+  isFetchingModels,
+  onBaseUrlDraftChange,
+  onBaseUrlCommit,
+  onApiKeyDraftChange,
+  onApiKeyCommit,
+  onModelDraftChange,
+  onModelCommit,
+  onTimeoutDraftChange,
+  onTimeoutCommit,
+  onApiProxyToggle,
+  onToggleShowApiKey,
+  onFetchModels,
+}: ExternalApiConfigSectionProps) {
+  const modelListId = `${idPrefix}-model-options`
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]">
+      <div>
+        <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">{title}</h4>
+        <p data-selectable-text className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          {description}
+        </p>
+      </div>
+
+      <label className="block">
+        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
+        <input
+          value={baseUrl}
+          onChange={(e) => onBaseUrlDraftChange(e.target.value)}
+          onBlur={(e) => onBaseUrlCommit(e.target.value)}
+          type="text"
+          placeholder="https://example.com/v1"
+          className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+        />
+      </label>
+
+      <div className="block">
+        <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
+        <div className="relative">
+          <input
+            value={apiKey}
+            onChange={(e) => onApiKeyDraftChange(e.target.value)}
+            onBlur={(e) => onApiKeyCommit(e.target.value)}
+            type={showApiKey ? 'text' : 'password'}
+            placeholder="sk-..."
+            className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+          />
+          <button
+            type="button"
+            onClick={onToggleShowApiKey}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+            tabIndex={-1}
+            aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+          >
+            {showApiKey ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <label className="block">
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <span className="block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
+          <button
+            type="button"
+            onClick={onFetchModels}
+            disabled={isFetchingModels}
+            className="rounded-xl bg-blue-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isFetchingModels ? '获取中...' : '获取模型'}
+          </button>
+        </div>
+        <input
+          value={model}
+          list={modelOptions.length ? modelListId : undefined}
+          onChange={(e) => onModelDraftChange(e.target.value)}
+          onBlur={(e) => onModelCommit(e.target.value)}
+          type="text"
+          placeholder="填写模型 ID，或点击获取模型后选择"
+          className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+        />
+        {modelOptions.length ? (
+          <datalist id={modelListId}>
+            {modelOptions.map((item) => <option key={item} value={item} />)}
+          </datalist>
+        ) : null}
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
+          <input
+            value={timeout}
+            onChange={(e) => onTimeoutDraftChange(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
+            onBlur={(e) => onTimeoutCommit(Number(e.target.value) || DEFAULT_SETTINGS.textTimeout)}
+            type="number"
+            min={10}
+            max={600}
+            className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+          />
+        </label>
+
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/70 bg-white/45 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.02]">
+          <span className="text-sm text-gray-600 dark:text-gray-300">API 代理</span>
+          <button
+            type="button"
+            onClick={onApiProxyToggle}
+            className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${apiProxy ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            role="switch"
+            aria-checked={apiProxy}
+            aria-label={`${title} API 代理`}
+          >
+            <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${apiProxy ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 const CUSTOM_PROVIDER_LLM_PROMPT = `# 角色
 你是 API 文档解析助手。你的任务是根据用户提供的图像生成 API 文档，生成本应用可导入的自定义服务商配置 JSON。
 
@@ -455,6 +623,10 @@ export default function SettingsModal() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('api')
   const [isRandomizingBackground, setIsRandomizingBackground] = useState(false)
   const [isQueryingBalance, setIsQueryingBalance] = useState(false)
+  const [isFetchingTextModels, setIsFetchingTextModels] = useState(false)
+  const [isFetchingVideoModels, setIsFetchingVideoModels] = useState(false)
+  const [textModelOptions, setTextModelOptions] = useState<string[]>([])
+  const [videoModelOptions, setVideoModelOptions] = useState<string[]>([])
   const [exportConfig, setExportConfig] = useState(true)
   const [exportTasks, setExportTasks] = useState(true)
   const [importConfig, setImportConfig] = useState(true)
@@ -1246,6 +1418,54 @@ export default function SettingsModal() {
     }
   }
 
+  const fetchExternalApiModels = async (target: ExternalApiTarget) => {
+    const isText = target === 'text'
+    const baseUrl = isText ? draft.textBaseUrl : draft.videoBaseUrl
+    const apiKey = isText ? draft.textApiKey : draft.videoApiKey
+    const apiProxy = isText ? draft.textApiProxy : draft.videoApiProxy
+    const setLoading = isText ? setIsFetchingTextModels : setIsFetchingVideoModels
+    const setOptions = isText ? setTextModelOptions : setVideoModelOptions
+    const currentModel = isText ? draft.textModel : draft.videoModel
+
+    if (!baseUrl.trim()) {
+      showToast(`请先填写${isText ? '文字' : '视频'} API URL`, 'error')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await fetch(buildApiUrl(baseUrl, 'models', apiProxyConfig, shouldUseApiProxy(apiProxy, apiProxyConfig)), {
+        headers: apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : undefined,
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => null) as { data?: unknown, error?: { message?: string }, msg?: string } | null
+      if (!response.ok) throw new Error(payload?.error?.message || payload?.msg || `读取模型失败：${response.status}`)
+
+      const rawModels = Array.isArray(payload?.data) ? payload.data : []
+      const models = rawModels
+        .map((item) => {
+          if (typeof item === 'string') return item
+          if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') return (item as { id: string }).id
+          return ''
+        })
+        .filter((item): item is string => Boolean(item.trim()))
+        .sort((a, b) => a.localeCompare(b))
+
+      if (models.length === 0) throw new Error('接口没有返回模型列表')
+      setOptions(models)
+
+      if (!currentModel.trim()) {
+        const patch = isText ? { textModel: models[0] } : { videoModel: models[0] }
+        commitSettings({ ...draft, ...patch })
+      }
+      showToast(`已获取 ${models.length} 个模型`, 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '读取模型失败', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
         <div data-no-drag-select className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div
@@ -1288,6 +1508,24 @@ export default function SettingsModal() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
                 出图 API 配置
+              </button>
+              <button
+                onClick={() => setActiveTab('textApi')}
+                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'textApi' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5m-9 5l2.5-2.5H18a3 3 0 003-3V7a3 3 0 00-3-3H6a3 3 0 00-3 3v6.5a3 3 0 003 3H4v2.5z" />
+                </svg>
+                文字 API 配置
+              </button>
+              <button
+                onClick={() => setActiveTab('videoApi')}
+                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'videoApi' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 6h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+                </svg>
+                视频 API 配置
               </button>
               <button
                 onClick={() => setActiveTab('appearance')}
@@ -1947,103 +2185,65 @@ export default function SettingsModal() {
                 </>
               )}
 
-              <div className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]">
-                <div>
-                  <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">文字/视频 API 配置</h4>
-                  <p data-selectable-text className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                    用于画布工坊里的文字问答和视频生成，可与出图接口分开设置。
-                  </p>
-                </div>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
-                  <input
-                    value={draft.textVideoBaseUrl}
-                    onChange={(e) => setDraft({ ...draft, textVideoBaseUrl: e.target.value })}
-                    onBlur={(e) => commitSettings({ ...draft, textVideoBaseUrl: normalizeBaseUrl(e.target.value) })}
-                    type="text"
-                    placeholder="https://example.com/v1"
-                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                  />
-                </label>
-
-                <div className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
-                  <div className="relative">
-                    <input
-                      value={draft.textVideoApiKey}
-                      onChange={(e) => setDraft({ ...draft, textVideoApiKey: e.target.value })}
-                      onBlur={(e) => commitSettings({ ...draft, textVideoApiKey: e.target.value })}
-                      type={showApiKey ? 'text' : 'password'}
-                      placeholder="sk-..."
-                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey((v) => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
-                      tabIndex={-1}
-                      aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
-                    >
-                      {showApiKey ? (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
-                  <input
-                    value={draft.textVideoModel}
-                    onChange={(e) => setDraft({ ...draft, textVideoModel: e.target.value })}
-                    onBlur={(e) => commitSettings({ ...draft, textVideoModel: e.target.value.trim() })}
-                    type="text"
-                    placeholder="例如 gpt-5.5 或视频模型 ID"
-                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                  />
-                </label>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
-                    <input
-                      value={draft.textVideoTimeout}
-                      onChange={(e) => setDraft({ ...draft, textVideoTimeout: Number(e.target.value) || DEFAULT_SETTINGS.textVideoTimeout })}
-                      onBlur={(e) => commitSettings({ ...draft, textVideoTimeout: Number(e.target.value) || DEFAULT_SETTINGS.textVideoTimeout })}
-                      type="number"
-                      min={10}
-                      max={600}
-                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
-                    />
-                  </label>
-
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/70 bg-white/45 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.02]">
-                    <span className="text-sm text-gray-600 dark:text-gray-300">API 代理</span>
-                    <button
-                      type="button"
-                      onClick={() => commitSettings({ ...draft, textVideoApiProxy: !draft.textVideoApiProxy })}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.textVideoApiProxy ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                      role="switch"
-                      aria-checked={draft.textVideoApiProxy}
-                      aria-label="文字/视频 API 代理"
-                    >
-                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.textVideoApiProxy ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
+            )}
+
+            {activeTab === 'textApi' && (
+              <div className="space-y-5">
+                <ExternalApiConfigSection
+                  idPrefix="text-api"
+                  title="文字 API 配置"
+                  description="用于画布工坊里的文字问答和节点说明，和出图接口完全分开。"
+                  baseUrl={draft.textBaseUrl}
+                  apiKey={draft.textApiKey}
+                  model={draft.textModel}
+                  timeout={draft.textTimeout}
+                  apiProxy={draft.textApiProxy}
+                  showApiKey={showApiKey}
+                  modelOptions={textModelOptions}
+                  isFetchingModels={isFetchingTextModels}
+                  onBaseUrlDraftChange={(value) => setDraft({ ...draft, textBaseUrl: value })}
+                  onBaseUrlCommit={(value) => commitSettings({ ...draft, textBaseUrl: normalizeBaseUrl(value) })}
+                  onApiKeyDraftChange={(value) => setDraft({ ...draft, textApiKey: value })}
+                  onApiKeyCommit={(value) => commitSettings({ ...draft, textApiKey: value })}
+                  onModelDraftChange={(value) => setDraft({ ...draft, textModel: value })}
+                  onModelCommit={(value) => commitSettings({ ...draft, textModel: value.trim() })}
+                  onTimeoutDraftChange={(value) => setDraft({ ...draft, textTimeout: value })}
+                  onTimeoutCommit={(value) => commitSettings({ ...draft, textTimeout: value })}
+                  onApiProxyToggle={() => commitSettings({ ...draft, textApiProxy: !draft.textApiProxy })}
+                  onToggleShowApiKey={() => setShowApiKey((value) => !value)}
+                  onFetchModels={() => void fetchExternalApiModels('text')}
+                />
+              </div>
+            )}
+
+            {activeTab === 'videoApi' && (
+              <div className="space-y-5">
+                <ExternalApiConfigSection
+                  idPrefix="video-api"
+                  title="视频 API 配置"
+                  description="用于画布工坊里的视频生成，可以单独填写 URL、Key 和视频模型。"
+                  baseUrl={draft.videoBaseUrl}
+                  apiKey={draft.videoApiKey}
+                  model={draft.videoModel}
+                  timeout={draft.videoTimeout}
+                  apiProxy={draft.videoApiProxy}
+                  showApiKey={showApiKey}
+                  modelOptions={videoModelOptions}
+                  isFetchingModels={isFetchingVideoModels}
+                  onBaseUrlDraftChange={(value) => setDraft({ ...draft, videoBaseUrl: value })}
+                  onBaseUrlCommit={(value) => commitSettings({ ...draft, videoBaseUrl: normalizeBaseUrl(value) })}
+                  onApiKeyDraftChange={(value) => setDraft({ ...draft, videoApiKey: value })}
+                  onApiKeyCommit={(value) => commitSettings({ ...draft, videoApiKey: value })}
+                  onModelDraftChange={(value) => setDraft({ ...draft, videoModel: value })}
+                  onModelCommit={(value) => commitSettings({ ...draft, videoModel: value.trim() })}
+                  onTimeoutDraftChange={(value) => setDraft({ ...draft, videoTimeout: value })}
+                  onTimeoutCommit={(value) => commitSettings({ ...draft, videoTimeout: value })}
+                  onApiProxyToggle={() => commitSettings({ ...draft, videoApiProxy: !draft.videoApiProxy })}
+                  onToggleShowApiKey={() => setShowApiKey((value) => !value)}
+                  onFetchModels={() => void fetchExternalApiModels('video')}
+                />
+              </div>
             )}
             
             {activeTab === 'appearance' && (

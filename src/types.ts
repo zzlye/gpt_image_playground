@@ -108,16 +108,36 @@ export interface AppSettings {
   appearanceBackgroundBlur: number
   /** 夜间外观模式，开启后使用深色界面配色 */
   appearanceNightMode: boolean
-  /** 文字/视频 API 地址，可单独配置 */
+  /** 旧版文字/视频混合 API 地址：保留用于历史配置迁移 */
   textVideoBaseUrl: string
-  /** 文字/视频 API Key */
+  /** 旧版文字/视频混合 API Key：保留用于历史配置迁移 */
   textVideoApiKey: string
-  /** 文字/视频默认模型 ID */
+  /** 旧版文字/视频混合默认模型 ID：保留用于历史配置迁移 */
   textVideoModel: string
-  /** 文字/视频请求超时，单位秒 */
+  /** 旧版文字/视频混合请求超时，单位秒：保留用于历史配置迁移 */
   textVideoTimeout: number
-  /** 文字/视频是否使用本地代理 */
+  /** 旧版文字/视频是否使用本地代理：保留用于历史配置迁移 */
   textVideoApiProxy: boolean
+  /** 文字 API 地址，用于画布工坊文字问答 */
+  textBaseUrl: string
+  /** 文字 API Key */
+  textApiKey: string
+  /** 文字模型 ID */
+  textModel: string
+  /** 文字请求超时，单位秒 */
+  textTimeout: number
+  /** 文字 API 是否使用本地代理 */
+  textApiProxy: boolean
+  /** 视频 API 地址，用于画布工坊视频生成 */
+  videoBaseUrl: string
+  /** 视频 API Key */
+  videoApiKey: string
+  /** 视频模型 ID */
+  videoModel: string
+  /** 视频请求超时，单位秒 */
+  videoTimeout: number
+  /** 视频 API 是否使用本地代理 */
+  videoApiProxy: boolean
   /** 最近一次查询到的 Key 余额展示文本 */
   apiBalanceText: string
   /** 最近一次余额展示使用的货币符号 */

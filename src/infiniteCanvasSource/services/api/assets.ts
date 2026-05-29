@@ -29,5 +29,9 @@ export type AssetLibraryQuery = {
 };
 
 export async function fetchAssetLibrary(query: AssetLibraryQuery = {}) {
-    return apiGet<AssetLibraryResponse>("/api/assets", compactApiParams(query));
+    try {
+        return await apiGet<AssetLibraryResponse>("/api/assets", compactApiParams(query));
+    } catch {
+        return { items: [], tags: [], total: 0 };
+    }
 }

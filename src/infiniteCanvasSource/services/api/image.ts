@@ -125,13 +125,13 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
 }
 
 function aiApiUrl(config: AiConfig, path: string, target: "image" | "textVideo" = "image") {
-    const baseUrl = target === "textVideo" && config.textVideoBaseUrl.trim() ? config.textVideoBaseUrl : config.baseUrl;
+    const baseUrl = target === "textVideo" && (config.textBaseUrl.trim() || config.textVideoBaseUrl.trim()) ? config.textBaseUrl.trim() || config.textVideoBaseUrl : config.baseUrl;
     return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(baseUrl, path);
 }
 
 function aiHeaders(config: AiConfig, contentType?: string, target: "image" | "textVideo" = "image") {
     const token = useUserStore.getState().token;
-    const apiKey = target === "textVideo" && config.textVideoApiKey.trim() ? config.textVideoApiKey : config.apiKey;
+    const apiKey = target === "textVideo" && (config.textApiKey.trim() || config.textVideoApiKey.trim()) ? config.textApiKey.trim() || config.textVideoApiKey : config.apiKey;
     return config.channelMode === "remote"
         ? {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -148,7 +148,7 @@ function refreshRemoteUser(config: AiConfig) {
 }
 
 function requestTimeout(config: AiConfig, target: "image" | "textVideo" = "image") {
-    const seconds = target === "textVideo" ? config.textVideoTimeout : config.timeout;
+    const seconds = target === "textVideo" ? config.textTimeout || config.textVideoTimeout : config.timeout;
     return Math.max(1, Number(seconds) || 120) * 1000;
 }
 

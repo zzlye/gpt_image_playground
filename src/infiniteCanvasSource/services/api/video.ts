@@ -11,13 +11,13 @@ type VideoResponse = { id: string; status?: string; error?: { message?: string }
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
 
 function aiApiUrl(config: AiConfig, path: string) {
-    const baseUrl = config.textVideoBaseUrl.trim() || config.baseUrl;
+    const baseUrl = config.videoBaseUrl.trim() || config.textVideoBaseUrl.trim() || config.baseUrl;
     return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(baseUrl, path);
 }
 
 function aiHeaders(config: AiConfig) {
     const token = useUserStore.getState().token;
-    const apiKey = config.textVideoApiKey.trim() || config.apiKey;
+    const apiKey = config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey;
     return config.channelMode === "remote" ? (token ? { Authorization: `Bearer ${token}` } : undefined) : { Authorization: `Bearer ${apiKey}` };
 }
 
@@ -26,7 +26,7 @@ function refreshRemoteUser(config: AiConfig) {
 }
 
 function requestTimeout(config: AiConfig) {
-    return Math.max(1, Number(config.textVideoTimeout || config.timeout) || 120) * 1000;
+    return Math.max(1, Number(config.videoTimeout || config.textVideoTimeout || config.timeout) || 120) * 1000;
 }
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = []) {

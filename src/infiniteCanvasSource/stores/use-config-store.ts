@@ -16,6 +16,14 @@ export type AiConfig = {
     textVideoApiKey: string;
     textVideoApiProxy: boolean;
     textVideoTimeout: number;
+    textBaseUrl: string;
+    textApiKey: string;
+    textApiProxy: boolean;
+    textTimeout: number;
+    videoBaseUrl: string;
+    videoApiKey: string;
+    videoApiProxy: boolean;
+    videoTimeout: number;
     model: string;
     imageModel: string;
     videoModel: string;
@@ -40,6 +48,14 @@ export const defaultConfig: AiConfig = {
     textVideoApiKey: "",
     textVideoApiProxy: false,
     textVideoTimeout: 120,
+    textBaseUrl: "",
+    textApiKey: "",
+    textApiProxy: false,
+    textTimeout: 120,
+    videoBaseUrl: "",
+    videoApiKey: "",
+    videoApiProxy: false,
+    videoTimeout: 120,
     model: "gpt-image-2",
     imageModel: "gpt-image-2",
     videoModel: "grok-imagine-video",
@@ -122,7 +138,35 @@ export const useConfigStore = create<ConfigStore>()(
             partialize: (state) => ({ config: state.config }),
             merge: (persisted, current) => {
                 const config = { ...defaultConfig, ...((persisted as Partial<ConfigStore>).config || {}) };
-                return { ...current, config: { ...config, channelMode: config.channelMode || "remote", imageModel: config.imageModel || config.model, videoModel: config.videoModel || "grok-imagine-video", textModel: config.textModel || config.model, videoSeconds: config.videoSeconds || "6", vquality: config.vquality || "720", timeout: Number(config.timeout) || 120, textVideoBaseUrl: config.textVideoBaseUrl || "", textVideoApiKey: config.textVideoApiKey || "", textVideoApiProxy: Boolean(config.textVideoApiProxy), textVideoTimeout: Number(config.textVideoTimeout) || 120 } };
+                const legacyTextVideoBaseUrl = config.textVideoBaseUrl || "";
+                const legacyTextVideoApiKey = config.textVideoApiKey || "";
+                const legacyTextVideoApiProxy = Boolean(config.textVideoApiProxy);
+                const legacyTextVideoTimeout = Number(config.textVideoTimeout) || 120;
+                return {
+                    ...current,
+                    config: {
+                        ...config,
+                        channelMode: config.channelMode || "remote",
+                        imageModel: config.imageModel || config.model,
+                        videoModel: config.videoModel || "grok-imagine-video",
+                        textModel: config.textModel || config.model,
+                        videoSeconds: config.videoSeconds || "6",
+                        vquality: config.vquality || "720",
+                        timeout: Number(config.timeout) || 120,
+                        textVideoBaseUrl: legacyTextVideoBaseUrl,
+                        textVideoApiKey: legacyTextVideoApiKey,
+                        textVideoApiProxy: legacyTextVideoApiProxy,
+                        textVideoTimeout: legacyTextVideoTimeout,
+                        textBaseUrl: config.textBaseUrl || legacyTextVideoBaseUrl,
+                        textApiKey: config.textApiKey || legacyTextVideoApiKey,
+                        textApiProxy: typeof config.textApiProxy === "boolean" ? config.textApiProxy : legacyTextVideoApiProxy,
+                        textTimeout: Number(config.textTimeout) || legacyTextVideoTimeout,
+                        videoBaseUrl: config.videoBaseUrl || legacyTextVideoBaseUrl,
+                        videoApiKey: config.videoApiKey || legacyTextVideoApiKey,
+                        videoApiProxy: typeof config.videoApiProxy === "boolean" ? config.videoApiProxy : legacyTextVideoApiProxy,
+                        videoTimeout: Number(config.videoTimeout) || legacyTextVideoTimeout,
+                    },
+                };
             },
         },
     ),

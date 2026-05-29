@@ -90,8 +90,16 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
         textVideoApiKey: normalizedSettings.textVideoApiKey,
         textVideoApiProxy: normalizedSettings.textVideoApiProxy,
         textVideoTimeout: normalizedSettings.textVideoTimeout,
-        textModel: normalizedSettings.textVideoModel || state.config.textModel,
-        videoModel: normalizedSettings.textVideoModel || state.config.videoModel,
+        textBaseUrl: normalizedSettings.textBaseUrl,
+        textApiKey: normalizedSettings.textApiKey,
+        textApiProxy: normalizedSettings.textApiProxy,
+        textTimeout: normalizedSettings.textTimeout,
+        videoBaseUrl: normalizedSettings.videoBaseUrl,
+        videoApiKey: normalizedSettings.videoApiKey,
+        videoApiProxy: normalizedSettings.videoApiProxy,
+        videoTimeout: normalizedSettings.videoTimeout,
+        textModel: normalizedSettings.textModel || state.config.textModel,
+        videoModel: normalizedSettings.videoModel || state.config.videoModel,
       },
     }))
   }, [
@@ -105,6 +113,16 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
     normalizedSettings.textVideoBaseUrl,
     normalizedSettings.textVideoModel,
     normalizedSettings.textVideoTimeout,
+    normalizedSettings.textApiKey,
+    normalizedSettings.textApiProxy,
+    normalizedSettings.textBaseUrl,
+    normalizedSettings.textModel,
+    normalizedSettings.textTimeout,
+    normalizedSettings.videoApiKey,
+    normalizedSettings.videoApiProxy,
+    normalizedSettings.videoBaseUrl,
+    normalizedSettings.videoModel,
+    normalizedSettings.videoTimeout,
   ])
 
   const navigation = useMemo(

@@ -164,10 +164,6 @@ input[type="number"] {
   color-scheme: dark;
 }
 
-.appearance-night :where(header, [class*="bg-white"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gray-200"]) {
-  background-color: rgba(15, 23, 42, 0.86) !important;
-}
-
 .appearance-night :where([class*="border-gray-"], [class*="border-white"], [class*="ring-black"]) {
   border-color: rgba(148, 163, 184, 0.24) !important;
 }
@@ -335,9 +331,11 @@ input[type="number"] {
 @keyframes workspace-view-in {
   from {
     opacity: 0;
+    filter: blur(8px) saturate(0.94);
   }
   to {
     opacity: 1;
+    filter: blur(0) saturate(1);
   }
 }
 
@@ -434,6 +432,10 @@ input[type="number"] {
 
 .canvas-integrated-shell :where(button, input, textarea, select, .ant-btn) {
   font-family: inherit;
+}
+
+header :where(button, [role="button"]) {
+  box-shadow: none !important;
 }
 
 .canvas-workshop-shell {
