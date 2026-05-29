@@ -4,8 +4,6 @@ import IndexPage from '../infiniteCanvasSource/app/(user)/page'
 import UserLayout from '../infiniteCanvasSource/app/(user)/layout'
 import OriginalCanvasPage from '../infiniteCanvasSource/app/(user)/canvas/page'
 import OriginalCanvasClientPage from '../infiniteCanvasSource/app/(user)/canvas/[id]/canvas-client-page'
-import ImagePage from '../infiniteCanvasSource/app/(user)/image/page'
-import VideoPage from '../infiniteCanvasSource/app/(user)/video/page'
 import PromptsPage from '../infiniteCanvasSource/app/(user)/prompts/page'
 import AssetsPage from '../infiniteCanvasSource/app/(user)/assets/page'
 import { AppProviders } from '../infiniteCanvasSource/components/layout/app-providers'
@@ -59,8 +57,6 @@ function routeFromHref(href: string): CanvasRoute {
 function CanvasRoutePage({ route }: { route: CanvasRoute }) {
   if (route.pathname === '/canvas') return <OriginalCanvasPage />
   if (route.params.id) return <OriginalCanvasClientPage />
-  if (route.pathname === '/image') return <ImagePage />
-  if (route.pathname === '/video') return <VideoPage />
   if (route.pathname === '/prompts') return <PromptsPage />
   if (route.pathname === '/assets') return <AssetsPage />
   return <IndexPage />

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Home, ImageIcon, Images, List, Menu, MessageSquare, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Home, ImageIcon, Images, Keyboard, List, Menu, MessageSquare, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
@@ -15,7 +15,7 @@ import { resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { UserStatusActions } from "@/components/layout/user-status-actions";
+import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl } from "../utils/canvas-image-data";
@@ -837,7 +837,7 @@ function InfiniteCanvasPage() {
     }, [applyHistory]);
 
     const createAndOpenProject = useCallback(() => {
-        const id = createProject(`无限画布 ${useCanvasStore.getState().projects.length + 1}`);
+        const id = createProject(`画布工坊 ${useCanvasStore.getState().projects.length + 1}`);
         router.push(`/canvas/${id}`);
     }, [createProject, router]);
 
@@ -2339,11 +2339,10 @@ function CanvasTopBar({
     onExpandAssistant: () => void;
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
+    const setColorTheme = useThemeStore((state) => state.setTheme);
     const theme = canvasThemes[colorTheme];
     const titleRef = useRef<HTMLDivElement>(null);
-    const accountRef = useRef<HTMLDivElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
-    const [accountOpen, setAccountOpen] = useState(false);
 
     useEffect(() => {
         if (!isTitleEditing) return;
@@ -2353,15 +2352,6 @@ function CanvasTopBar({
         document.addEventListener("pointerdown", close, true);
         return () => document.removeEventListener("pointerdown", close, true);
     }, [isTitleEditing, onFinishTitleEditing]);
-
-    useEffect(() => {
-        if (!accountOpen) return;
-        const close = (event: PointerEvent) => {
-            if (!accountRef.current?.contains(event.target as Node)) setAccountOpen(false);
-        };
-        document.addEventListener("pointerdown", close, true);
-        return () => document.removeEventListener("pointerdown", close, true);
-    }, [accountOpen]);
 
     return (
         <>
@@ -2417,17 +2407,17 @@ function CanvasTopBar({
                 </div>
 
                 <div className="pointer-events-auto flex items-center gap-1.5">
-                    <UserStatusActions
-                        variant="canvas"
-                        accountOpen={accountOpen}
-                        onAccountOpenChange={setAccountOpen}
-                        accountRef={accountRef}
-                        getPopupContainer={(node) => node.parentElement || document.body}
-                        onOpenShortcuts={() => {
-                            setShortcutsOpen(true);
-                            setAccountOpen(false);
-                        }}
+                    <AnimatedThemeToggler
+                        theme={colorTheme}
+                        onThemeChange={setColorTheme}
+                        className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-black/5 dark:hover:bg-white/10 [&_svg]:size-4"
+                        style={{ color: theme.node.text }}
+                        aria-label={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
+                        title={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
                     />
+                    <button type="button" className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
+                        <Keyboard className="size-4" />
+                    </button>
                     {assistantCollapsed ? (
                         <>
                             <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />

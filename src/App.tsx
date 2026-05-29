@@ -120,6 +120,13 @@ export default function App() {
     void loadAnnouncement(true)
   }, [loadAnnouncement, settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
 
+  useEffect(() => {
+    if (workspaceMode !== 'gallery') return
+    // 文运工坊的外置夜间按钮和设置里的夜间模式保持同一个根主题状态。
+    document.documentElement.classList.toggle('dark', appearanceNightMode)
+    document.documentElement.style.colorScheme = appearanceNightMode ? 'dark' : 'light'
+  }, [appearanceNightMode, workspaceMode])
+
   const dismissAnnouncementToday = () => {
     setSettings({
       announcementDismissedDate: new Date().toISOString().slice(0, 10),

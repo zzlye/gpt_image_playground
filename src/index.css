@@ -152,6 +152,12 @@ input[type="number"] {
   display: none;
 }
 
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
 /* 夜间外观模式：用深色表面、边框和输入态统一可读性，而不是只改文字颜色。 */
 .appearance-night {
   color: #e5e7eb;

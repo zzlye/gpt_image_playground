@@ -4,6 +4,7 @@ import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot } from '../lib/apiProfiles'
 import { queryNewApiBalance } from '../lib/newApi'
+import { AnimatedThemeToggler } from '../infiniteCanvasSource/components/ui/animated-theme-toggler'
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
 import { HelpCircleIcon, SettingsIcon, SparklesIcon } from './icons'
@@ -17,6 +18,7 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
   const setSettings = useStore((s) => s.setSettings)
   const showToast = useStore((s) => s.showToast)
   const settings = useStore((s) => s.settings)
+  const appearanceNightMode = settings.appearanceNightMode
   const activeProfile = getActiveApiProfile(settings)
   const apiBalanceText = getApiBalanceSnapshot(settings, activeProfile.id)?.text ?? ''
   const [isQueryingBalance, setIsQueryingBalance] = useState(false)
@@ -72,6 +74,13 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <AnimatedThemeToggler
+              theme={appearanceNightMode ? 'dark' : 'light'}
+              onThemeChange={(theme) => setSettings({ appearanceNightMode: theme === 'dark' })}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-100 [&_svg]:h-5 [&_svg]:w-5"
+              aria-label={appearanceNightMode ? '切换到白天模式' : '切换到夜间模式'}
+              title={appearanceNightMode ? '切换到白天模式' : '切换到夜间模式'}
+            />
             <div
               className="relative"
               {...helpTooltip.handlers}
