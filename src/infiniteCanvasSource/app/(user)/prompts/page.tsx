@@ -52,7 +52,7 @@ export default function PromptsPage() {
                 onScroll={handleListScroll}
             >
                 <div className="pb-8">
-                    <div className="mx-auto max-w-5xl text-center">
+                    <div className="canvas-glass-panel mx-auto max-w-5xl rounded-2xl px-6 py-6 text-center">
                         <h1 className="text-4xl font-semibold tracking-tight text-stone-950 dark:text-stone-100">提示词中心</h1>
                         <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">共 {totalPrompts} 条提示词，按标题、标签与分类快速查找灵感。</p>
                     </div>
@@ -63,10 +63,8 @@ export default function PromptsPage() {
                     ) : null}
                     {!query.isLoading ? (
                         <>
-                            <div className="mx-auto mt-8 w-full max-w-2xl">
+                            <div className="canvas-glass-panel mx-auto mt-6 grid max-w-6xl gap-4 rounded-2xl p-4 text-left">
                                 <Input size="large" className="w-full" prefix={<Search className="size-4 text-stone-400" />} value={titleKeyword} placeholder="按标题查询" onChange={(event) => setTitleKeyword(event.target.value)} />
-                            </div>
-                            <div className="mx-auto mt-6 grid max-w-6xl gap-3 text-left">
                                 <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-start">
                                     <div className="pt-2 text-xs font-medium text-stone-500 dark:text-stone-400">分类</div>
                                     <div className="flex flex-wrap gap-2">

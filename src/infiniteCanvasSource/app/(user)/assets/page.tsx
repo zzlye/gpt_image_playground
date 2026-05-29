@@ -191,12 +191,12 @@ export default function AssetsPage() {
         <div className="flex h-full flex-col overflow-hidden bg-transparent text-stone-900 dark:text-stone-100">
             <main className="min-h-0 flex-1 overflow-y-auto bg-transparent px-6 py-8 pb-24">
                 <div className="pb-8">
-                    <div className="mx-auto max-w-5xl text-center">
+                    <div className="canvas-glass-panel mx-auto max-w-5xl rounded-2xl px-6 py-6 text-center">
                         <h1 className="text-4xl font-semibold tracking-tight text-stone-950 dark:text-stone-100">我的素材</h1>
                         <p className="mt-3 text-sm text-stone-500 dark:text-stone-400">收藏常用文本和图片，按类型、标题和标签快速查找。</p>
                     </div>
 
-                    <div className="mx-auto mt-8 w-full max-w-2xl">
+                    <div className="canvas-glass-panel mx-auto mt-6 grid max-w-6xl gap-4 rounded-2xl p-4">
                         <Input.Search
                             className="w-full"
                             size="large"
@@ -213,9 +213,6 @@ export default function AssetsPage() {
                                 setKeyword(value);
                             }}
                         />
-                    </div>
-
-                    <div className="mx-auto mt-6 grid max-w-6xl gap-3 text-left">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
                                 <div className="text-xs font-medium text-stone-500 dark:text-stone-400">类型</div>
@@ -410,7 +407,7 @@ function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { as
     return (
         <Card
             hoverable
-            className="overflow-hidden"
+            className="canvas-glass-card overflow-hidden"
             styles={{ body: { padding: 0 } }}
             cover={
                 <button type="button" className="block w-full text-left" onClick={onOpen}>

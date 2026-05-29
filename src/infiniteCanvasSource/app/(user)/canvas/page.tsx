@@ -59,7 +59,7 @@ export default function CanvasPage() {
     return (
         <main className="h-full overflow-auto bg-transparent pb-24 text-stone-950 dark:text-stone-100">
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-gray-200/70 bg-white/45 px-4 py-5 backdrop-blur dark:border-white/[0.08] dark:bg-white/[0.035]">
+                <div className="canvas-glass-panel flex flex-wrap items-end justify-between gap-4 rounded-2xl px-4 py-5">
                     <div>
                         <p className="text-xs text-stone-500">画布库</p>
                         <h1 className="mt-2 text-3xl font-semibold">画布工坊</h1>
@@ -90,7 +90,7 @@ export default function CanvasPage() {
                 </div>
 
                 {!hydrated ? (
-                    <section className="flex min-h-[360px] items-center justify-center border-y border-stone-200 text-sm text-stone-500 dark:border-stone-800">正在加载画布...</section>
+                    <section className="canvas-glass-panel flex min-h-[360px] items-center justify-center rounded-2xl text-sm text-stone-500 dark:text-stone-300">正在加载画布...</section>
                 ) : projects.length ? (
                     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                         {projects.map((project) => (
@@ -98,7 +98,7 @@ export default function CanvasPage() {
                         ))}
                     </div>
                 ) : (
-                    <section className="flex min-h-[360px] flex-col items-center justify-center border-y border-stone-200 text-center dark:border-stone-800">
+                    <section className="canvas-glass-panel flex min-h-[360px] flex-col items-center justify-center rounded-2xl text-center">
                         <h2 className="text-xl font-medium">还没有画布</h2>
                         <p className="mt-3 text-sm text-stone-500">新建一个画布后，就可以独立保存节点、连线和画布外观。</p>
                         <Button type="primary" className="mt-6" icon={<Plus className="size-4" />} onClick={createAndEnter}>

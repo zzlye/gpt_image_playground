@@ -76,6 +76,24 @@ const VIDEO_NODE_MAX_HEIGHT = 420;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
+const DEFAULT_CANVAS_VIEWPORT: ViewportTransform = { x: 0, y: 0, k: 1 };
+
+// 兼容旧版本本地画布数据，避免缺少新字段时进入画布直接报错。
+function normalizeCanvasArray<T>(value: unknown): T[] {
+    return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeCanvasViewport(value: unknown): ViewportTransform {
+    const viewport = value as Partial<ViewportTransform> | null | undefined;
+    if (Number.isFinite(viewport?.x) && Number.isFinite(viewport?.y) && Number.isFinite(viewport?.k) && Number(viewport?.k) > 0) {
+        return { x: Number(viewport?.x), y: Number(viewport?.y), k: Number(viewport?.k) };
+    }
+    return DEFAULT_CANVAS_VIEWPORT;
+}
+
+function normalizeCanvasBackgroundMode(value: unknown): CanvasBackgroundMode {
+    return typeof value === "string" && value in canvasThemes ? (value as CanvasBackgroundMode) : "lines";
+}
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const spec = getNodeSpec(type);
@@ -310,15 +328,20 @@ function InfiniteCanvasPage() {
         }
 
         const restore = async () => {
-            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
-            const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
+            const safeConnections = normalizeCanvasArray<CanvasConnection>(project.connections);
+            const safeBackgroundMode = normalizeCanvasBackgroundMode(project.backgroundMode);
+            const safeShowImageInfo = Boolean(project.showImageInfo);
+            const safeActiveChatId = typeof project.activeChatId === "string" ? project.activeChatId : null;
+            const safeViewport = normalizeCanvasViewport(project.viewport);
+            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(normalizeCanvasArray<CanvasNodeData>(project.nodes)));
+            const restoredSessions = await hydrateAssistantImages(normalizeCanvasArray<CanvasAssistantSession>(project.chatSessions));
             setNodes(restoredNodes);
-            setConnections(project.connections);
+            setConnections(safeConnections);
             setChatSessions(restoredSessions);
-            setActiveChatId(project.activeChatId || null);
-            setBackgroundMode(project.backgroundMode);
-            setShowImageInfo(project.showImageInfo || false);
-            setViewport(project.viewport);
+            setActiveChatId(safeActiveChatId);
+            setBackgroundMode(safeBackgroundMode);
+            setShowImageInfo(safeShowImageInfo);
+            setViewport(safeViewport);
             historyRef.current = { past: [], future: [] };
             if (historyCommitTimerRef.current) {
                 clearTimeout(historyCommitTimerRef.current);
@@ -326,11 +349,11 @@ function InfiniteCanvasPage() {
             }
             lastHistoryRef.current = {
                 nodes: restoredNodes,
-                connections: project.connections,
+                connections: safeConnections,
                 chatSessions: restoredSessions,
-                activeChatId: project.activeChatId || null,
-                backgroundMode: project.backgroundMode,
-                showImageInfo: project.showImageInfo || false,
+                activeChatId: safeActiveChatId,
+                backgroundMode: safeBackgroundMode,
+                showImageInfo: safeShowImageInfo,
             };
             setHistoryState({ canUndo: false, canRedo: false });
             setProjectLoaded(true);

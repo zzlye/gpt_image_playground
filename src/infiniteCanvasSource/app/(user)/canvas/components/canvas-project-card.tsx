@@ -21,6 +21,9 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     const setDeleteIds = useCanvasUiStore((state) => state.setDeleteProjectIds);
     const editing = editingId === project.id;
     const selected = selectedIds.includes(project.id);
+    const nodeCount = Array.isArray(project.nodes) ? project.nodes.length : 0;
+    const connectionCount = Array.isArray(project.connections) ? project.connections.length : 0;
+    const updatedAt = new Date(project.updatedAt || project.createdAt || Date.now());
     const open = () => router.push(`/canvas/${project.id}`);
     const saveTitle = () => {
         renameProject(project.id, editingTitle);
@@ -28,14 +31,14 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     };
 
     return (
-        <article className="group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl border border-gray-200/70 bg-white/[0.62] p-5 shadow-none backdrop-blur transition hover:border-blue-200 hover:bg-white/[0.78] dark:border-white/[0.08] dark:bg-white/[0.045] dark:hover:border-blue-400/30 dark:hover:bg-white/[0.07]" onClick={() => !editing && open()}>
+        <article className="canvas-glass-card group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl p-5" onClick={() => !editing && open()}>
             <div className="flex items-start gap-3">
                 <input
                     type="checkbox"
                     checked={selected}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => toggleSelected(project.id, event.target.checked)}
-                    className="mt-1 size-4 accent-stone-950 dark:accent-stone-100"
+                    className="mt-1 size-4 accent-blue-500 dark:accent-blue-400"
                     aria-label={`选择 ${project.title}`}
                 />
                 {editing ? (
@@ -51,13 +54,13 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                     >
                         <h2 className="truncate text-xl font-semibold">{project.title}</h2>
                         <p className="mt-3 text-sm leading-6 text-stone-600 dark:text-stone-400">
-                            {project.nodes.length} 个节点 · {project.connections.length} 条连线
+                            {nodeCount} 个节点 · {connectionCount} 条连线
                         </p>
                     </button>
                 )}
             </div>
             <div className="mt-8 flex items-end justify-between gap-3">
-                <p className="text-xs text-stone-500">更新于 {new Date(project.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
+                <p className="text-xs text-stone-500 dark:text-stone-400">更新于 {updatedAt.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
                 <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                     {editing ? (
                         <>

@@ -162,7 +162,7 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
         <div className="canvas-integrated-shell" onClickCapture={handleInternalLinkClick}>
           <UserLayout>
             <div className="h-full overflow-hidden bg-transparent text-foreground">
-              <CanvasErrorBoundary>
+              <CanvasErrorBoundary key={route.pathname}>
                 <CanvasRoutePage route={route} />
               </CanvasErrorBoundary>
             </div>

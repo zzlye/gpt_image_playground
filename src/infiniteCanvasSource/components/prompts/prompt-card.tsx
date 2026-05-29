@@ -26,7 +26,7 @@ export function PromptCard({
     return (
         <Card
             hoverable
-            className="overflow-hidden"
+            className="canvas-glass-card overflow-hidden"
             styles={{ body: { padding: 0 } }}
             cover={
                 <button type="button" className="block w-full text-left" onClick={onOpen}>
