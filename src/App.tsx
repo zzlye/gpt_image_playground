@@ -24,10 +24,6 @@ import { useGlobalClickSuppression } from './lib/clickSuppression'
 
 let customProviderConfigUrlImportStarted = false
 
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => void
-}
-
 function getAnnouncementHash(content: string) {
   let hash = 0
   for (let index = 0; index < content.length; index += 1) {
@@ -147,21 +143,6 @@ export default function App() {
     })
   }
 
-  const switchWorkspaceMode = useCallback((nextMode: 'gallery' | 'canvas') => {
-    if (nextMode === workspaceMode) return
-
-    const applyMode = () => setWorkspaceMode(nextMode)
-    const transitionDocument = document as ViewTransitionDocument
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (!reduceMotion && typeof transitionDocument.startViewTransition === 'function') {
-      transitionDocument.startViewTransition(applyMode)
-      return
-    }
-
-    applyMode()
-  }, [workspaceMode])
-
   return (
     <>
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-gray-950" />
@@ -191,7 +172,7 @@ export default function App() {
             <>
               <Header onOpenCanvas={() => {
                 setAnnouncementOpen(false)
-                switchWorkspaceMode('canvas')
+                setWorkspaceMode('canvas')
               }} />
               <main data-home-main data-drag-select-surface className="pb-48">
                 <div className="safe-area-x max-w-7xl mx-auto">
@@ -207,7 +188,7 @@ export default function App() {
               <ImageContextMenu />
             </>
           ) : (
-            <CanvasWorkshop onBack={() => switchWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
+            <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
           )}
         </div>
         <SettingsModal />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Sparkles } from "lucide-react";
+import { Menu, Settings2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -13,7 +13,6 @@ import { useState } from "react";
 import { useStore } from "../../../store";
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot } from "../../../lib/apiProfiles";
 import { queryNewApiBalance } from "../../../lib/newApi";
-import { SettingsIcon } from "../../../components/icons";
 
 export function AppTopNav() {
     const pathname = usePathname();
@@ -103,7 +102,7 @@ export function AppTopNav() {
                                 aria-label="配置"
                                 title="配置"
                             >
-                                <SettingsIcon className="size-5" />
+                                <Settings2 className="size-4" />
                             </button>
                         </div>
                     </div>
