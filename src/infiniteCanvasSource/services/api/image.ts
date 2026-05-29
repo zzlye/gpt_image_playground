@@ -124,25 +124,32 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
     return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
 }
 
-function aiApiUrl(config: AiConfig, path: string) {
-    return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(config.baseUrl, path);
+function aiApiUrl(config: AiConfig, path: string, target: "image" | "textVideo" = "image") {
+    const baseUrl = target === "textVideo" && config.textVideoBaseUrl.trim() ? config.textVideoBaseUrl : config.baseUrl;
+    return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(baseUrl, path);
 }
 
-function aiHeaders(config: AiConfig, contentType?: string) {
+function aiHeaders(config: AiConfig, contentType?: string, target: "image" | "textVideo" = "image") {
     const token = useUserStore.getState().token;
+    const apiKey = target === "textVideo" && config.textVideoApiKey.trim() ? config.textVideoApiKey : config.apiKey;
     return config.channelMode === "remote"
         ? {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
               ...(contentType ? { "Content-Type": contentType } : {}),
           }
         : {
-              Authorization: `Bearer ${config.apiKey}`,
+              Authorization: `Bearer ${apiKey}`,
               ...(contentType ? { "Content-Type": contentType } : {}),
           };
 }
 
 function refreshRemoteUser(config: AiConfig) {
     if (config.channelMode === "remote") void useUserStore.getState().hydrateUser();
+}
+
+function requestTimeout(config: AiConfig, target: "image" | "textVideo" = "image") {
+    const seconds = target === "textVideo" ? config.textVideoTimeout : config.timeout;
+    return Math.max(1, Number(seconds) || 120) * 1000;
 }
 
 function withSystemMessage(config: AiConfig, messages: ChatCompletionMessage[]) {
@@ -158,7 +165,7 @@ export async function requestGeneration(config: AiConfig, prompt: string) {
         const response = await axios.post<ImageApiResponse>(
             aiApiUrl(config, "/images/generations"),
             {
-                model: config.model,
+                model: config.imageModel || config.model,
                 prompt: withSystemPrompt(config, prompt),
                 n,
                 ...(quality ? { quality } : {}),
@@ -167,6 +174,7 @@ export async function requestGeneration(config: AiConfig, prompt: string) {
             },
             {
                 headers: aiHeaders(config, "application/json"),
+                timeout: requestTimeout(config),
             },
         );
         const images = parseImagePayload(response.data);
@@ -182,7 +190,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
     const formData = new FormData();
-    formData.set("model", config.model);
+    formData.set("model", config.imageModel || config.model);
     formData.set("prompt", withSystemPrompt(config, prompt));
     formData.set("n", String(n));
     formData.set("response_format", "b64_json");
@@ -196,7 +204,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     files.forEach((file) => formData.append("image", file));
 
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(config, "/images/edits"), formData, { headers: aiHeaders(config) });
+        const response = await axios.post<ImageApiResponse>(aiApiUrl(config, "/images/edits"), formData, { headers: aiHeaders(config), timeout: requestTimeout(config) });
         const images = parseImagePayload(response.data);
         refreshRemoteUser(config);
         return images;
@@ -212,16 +220,17 @@ export async function requestImageQuestion(config: AiConfig, messages: ChatCompl
 
     try {
         const response = await axios.post(
-            aiApiUrl(config, "/chat/completions"),
+            aiApiUrl(config, "/chat/completions", "textVideo"),
             {
-                model: config.model,
+                model: config.textModel || config.model,
                 messages: withSystemMessage(config, messages),
                 stream: true,
             },
             {
                 headers: {
-                    ...aiHeaders(config, "application/json"),
+                    ...aiHeaders(config, "application/json", "textVideo"),
                 } as Record<string, string>,
+                timeout: requestTimeout(config, "textVideo"),
                 responseType: "text",
                 onDownloadProgress: (event) => {
                     const responseText = String(event.event?.target?.responseText || "");

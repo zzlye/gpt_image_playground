@@ -90,12 +90,14 @@ export const AnimatedThemeToggler = ({ children, className, duration = 400, vari
 
     useEffect(() => {
         if (theme) {
-            setIsDark(theme === "dark");
+            const nextIsDark = theme === "dark";
+            setIsDark((current) => (current === nextIsDark ? current : nextIsDark));
             return;
         }
 
         const updateTheme = () => {
-            setIsDark(document.documentElement.classList.contains("dark"));
+            const nextIsDark = document.documentElement.classList.contains("dark");
+            setIsDark((current) => (current === nextIsDark ? current : nextIsDark));
         };
 
         updateTheme();

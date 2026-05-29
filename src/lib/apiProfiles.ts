@@ -15,7 +15,7 @@ import type {
   ReferenceImageEditAction,
 } from '../types'
 import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
-import { shouldUseApiProxy } from './devProxy'
+import { normalizeBaseUrl, shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
 
@@ -681,6 +681,11 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     appearanceBackgroundOpacity: normalizeAppearanceOpacity(record.appearanceBackgroundOpacity),
     appearanceBackgroundBlur: normalizeAppearanceBlur(record.appearanceBackgroundBlur),
     appearanceNightMode: typeof record.appearanceNightMode === 'boolean' ? record.appearanceNightMode : false,
+    textVideoBaseUrl: normalizeBaseUrl(typeof record.textVideoBaseUrl === 'string' ? record.textVideoBaseUrl : ''),
+    textVideoApiKey: typeof record.textVideoApiKey === 'string' ? record.textVideoApiKey : '',
+    textVideoModel: typeof record.textVideoModel === 'string' ? record.textVideoModel.trim() : '',
+    textVideoTimeout: normalizeApiTimeout(record.textVideoTimeout, DEFAULT_API_TIMEOUT),
+    textVideoApiProxy: typeof record.textVideoApiProxy === 'boolean' ? record.textVideoApiProxy : false,
     apiBalanceText: normalizeApiBalanceText(record.apiBalanceText),
     apiBalanceCurrency: typeof record.apiBalanceCurrency === 'string' ? record.apiBalanceCurrency : undefined,
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
@@ -982,6 +987,11 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   appearanceBackgroundOpacity: 0.28,
   appearanceBackgroundBlur: 18,
   appearanceNightMode: false,
+  textVideoBaseUrl: '',
+  textVideoApiKey: '',
+  textVideoModel: '',
+  textVideoTimeout: DEFAULT_API_TIMEOUT,
+  textVideoApiProxy: false,
   apiModelUnitCostText: 'HUHN 0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,

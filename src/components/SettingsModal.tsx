@@ -1287,7 +1287,7 @@ export default function SettingsModal() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
-                API 配置
+                出图 API 配置
               </button>
               <button
                 onClick={() => setActiveTab('appearance')}
@@ -1440,6 +1440,12 @@ export default function SettingsModal() {
 
             {activeTab === 'api' && (
               <div className="space-y-4">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-500/15 dark:bg-blue-500/[0.08]">
+                  <h4 className="text-sm font-bold text-blue-700 dark:text-blue-300">出图 API 配置</h4>
+                  <p data-selectable-text className="mt-1 text-xs leading-relaxed text-blue-600/80 dark:text-blue-200/70">
+                    用于文运工坊和画布工坊的图片生成、图片编辑请求。
+                  </p>
+                </div>
                 <div className="block">
                   <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">当前配置</span>
                   <div className="grid grid-cols-2 gap-2">
@@ -1940,6 +1946,103 @@ export default function SettingsModal() {
                   </div>
                 </>
               )}
+
+              <div className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">文字/视频 API 配置</h4>
+                  <p data-selectable-text className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                    用于画布工坊里的文字问答和视频生成，可与出图接口分开设置。
+                  </p>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API URL</span>
+                  <input
+                    value={draft.textVideoBaseUrl}
+                    onChange={(e) => setDraft({ ...draft, textVideoBaseUrl: e.target.value })}
+                    onBlur={(e) => commitSettings({ ...draft, textVideoBaseUrl: normalizeBaseUrl(e.target.value) })}
+                    type="text"
+                    placeholder="https://example.com/v1"
+                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                  />
+                </label>
+
+                <div className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">API Key</span>
+                  <div className="relative">
+                    <input
+                      value={draft.textVideoApiKey}
+                      onChange={(e) => setDraft({ ...draft, textVideoApiKey: e.target.value })}
+                      onBlur={(e) => commitSettings({ ...draft, textVideoApiKey: e.target.value })}
+                      type={showApiKey ? 'text' : 'password'}
+                      placeholder="sk-..."
+                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 pr-10 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+                      tabIndex={-1}
+                      aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                    >
+                      {showApiKey ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
+                  <input
+                    value={draft.textVideoModel}
+                    onChange={(e) => setDraft({ ...draft, textVideoModel: e.target.value })}
+                    onBlur={(e) => commitSettings({ ...draft, textVideoModel: e.target.value.trim() })}
+                    type="text"
+                    placeholder="例如 gpt-5.5 或视频模型 ID"
+                    className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                  />
+                </label>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
+                    <input
+                      value={draft.textVideoTimeout}
+                      onChange={(e) => setDraft({ ...draft, textVideoTimeout: Number(e.target.value) || DEFAULT_SETTINGS.textVideoTimeout })}
+                      onBlur={(e) => commitSettings({ ...draft, textVideoTimeout: Number(e.target.value) || DEFAULT_SETTINGS.textVideoTimeout })}
+                      type="number"
+                      min={10}
+                      max={600}
+                      className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                    />
+                  </label>
+
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200/70 bg-white/45 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.02]">
+                    <span className="text-sm text-gray-600 dark:text-gray-300">API 代理</span>
+                    <button
+                      type="button"
+                      onClick={() => commitSettings({ ...draft, textVideoApiProxy: !draft.textVideoApiProxy })}
+                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${draft.textVideoApiProxy ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      role="switch"
+                      aria-checked={draft.textVideoApiProxy}
+                      aria-label="文字/视频 API 代理"
+                    >
+                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${draft.textVideoApiProxy ? 'translate-x-[14px]' : 'translate-x-[2px]'}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             )}
             

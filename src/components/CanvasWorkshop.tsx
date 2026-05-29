@@ -1,16 +1,20 @@
-import { Component, useMemo, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react'
 import 'antd/dist/reset.css'
-import IndexPage from '../infiniteCanvasSource/app/(user)/page'
 import UserLayout from '../infiniteCanvasSource/app/(user)/layout'
 import OriginalCanvasPage from '../infiniteCanvasSource/app/(user)/canvas/page'
 import OriginalCanvasClientPage from '../infiniteCanvasSource/app/(user)/canvas/[id]/canvas-client-page'
 import PromptsPage from '../infiniteCanvasSource/app/(user)/prompts/page'
 import AssetsPage from '../infiniteCanvasSource/app/(user)/assets/page'
 import { AppProviders } from '../infiniteCanvasSource/components/layout/app-providers'
+import { useConfigStore } from '../infiniteCanvasSource/stores/use-config-store'
+import { useThemeStore } from '../infiniteCanvasSource/stores/use-theme-store'
 import { CanvasNavigationProvider, type CanvasRoute } from '../infiniteCanvasCompat/nextNavigation'
+import { useStore } from '../store'
+import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
 
 type CanvasWorkshopProps = {
   onBack: () => void
+  onOpenSettings: () => void
 }
 
 type CanvasErrorBoundaryState = {
@@ -59,11 +63,47 @@ function CanvasRoutePage({ route }: { route: CanvasRoute }) {
   if (route.params.id) return <OriginalCanvasClientPage />
   if (route.pathname === '/prompts') return <PromptsPage />
   if (route.pathname === '/assets') return <AssetsPage />
-  return <IndexPage />
+  return <OriginalCanvasPage />
 }
 
-export default function CanvasWorkshop({ onBack }: CanvasWorkshopProps) {
-  const [route, setRoute] = useState<CanvasRoute>({ pathname: '/', params: {} })
+export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorkshopProps) {
+  const settings = useStore((s) => s.settings)
+  const normalizedSettings = normalizeSettings(settings)
+  const activeProfile = getActiveApiProfile(normalizedSettings)
+  const [route, setRoute] = useState<CanvasRoute>({ pathname: '/canvas', params: {} })
+
+  useEffect(() => {
+    // 画布工坊复用文运工坊设置，避免打开画布时继续拉取原项目的后端配置。
+    useThemeStore.getState().setTheme(normalizedSettings.appearanceNightMode ? 'dark' : 'light')
+    useConfigStore.setState((state) => ({
+      config: {
+        ...state.config,
+        channelMode: 'local',
+        baseUrl: activeProfile.baseUrl,
+        apiKey: activeProfile.apiKey,
+        timeout: activeProfile.timeout,
+        model: activeProfile.model,
+        imageModel: activeProfile.model,
+        textVideoBaseUrl: normalizedSettings.textVideoBaseUrl,
+        textVideoApiKey: normalizedSettings.textVideoApiKey,
+        textVideoApiProxy: normalizedSettings.textVideoApiProxy,
+        textVideoTimeout: normalizedSettings.textVideoTimeout,
+        textModel: normalizedSettings.textVideoModel || state.config.textModel,
+        videoModel: normalizedSettings.textVideoModel || state.config.videoModel,
+      },
+    }))
+  }, [
+    activeProfile.apiKey,
+    activeProfile.baseUrl,
+    activeProfile.model,
+    activeProfile.timeout,
+    normalizedSettings.appearanceNightMode,
+    normalizedSettings.textVideoApiKey,
+    normalizedSettings.textVideoApiProxy,
+    normalizedSettings.textVideoBaseUrl,
+    normalizedSettings.textVideoModel,
+    normalizedSettings.textVideoTimeout,
+  ])
 
   const navigation = useMemo(
     () => ({
@@ -76,8 +116,9 @@ export default function CanvasWorkshop({ onBack }: CanvasWorkshopProps) {
         setRoute(routeFromHref(href))
       },
       backToHome: onBack,
+      openSettings: onOpenSettings,
     }),
-    [onBack, route],
+    [onBack, onOpenSettings, route],
   )
 
   const handleInternalLinkClick = (event: MouseEvent<HTMLDivElement>) => {

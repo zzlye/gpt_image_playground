@@ -34,6 +34,7 @@ function getAnnouncementHash(content: string) {
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
+  const setShowSettings = useStore((s) => s.setShowSettings)
   const settings = useStore((s) => s.settings)
   const appearanceBackgroundImageUrl = useStore((s) => s.settings.appearanceBackgroundImageUrl)
   const appearanceBackgroundOpacity = useStore((s) => s.settings.appearanceBackgroundOpacity)
@@ -181,16 +182,16 @@ export default function App() {
             <InputBar />
             <DetailModal />
             <Lightbox />
-            <SettingsModal />
-            <ConfirmDialog />
             <SupportPromptModal />
-            <Toast />
             <MaskEditorModal />
             <ImageContextMenu />
           </>
         ) : (
-          <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} />
+          <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
         )}
+        <SettingsModal />
+        <ConfirmDialog />
+        <Toast />
         <button
           type="button"
           onClick={() => {

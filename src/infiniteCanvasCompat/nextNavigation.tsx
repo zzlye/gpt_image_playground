@@ -8,6 +8,7 @@ export type CanvasRoute = {
 type CanvasNavigationValue = CanvasRoute & {
   navigate: (href: string) => void
   backToHome: () => void
+  openSettings: () => void
 }
 
 const CanvasNavigationContext = createContext<CanvasNavigationValue | null>(null)
@@ -34,6 +35,7 @@ export function useRouter() {
     push: navigation.navigate,
     replace: navigation.navigate,
     back: navigation.backToHome,
+    openSettings: navigation.openSettings,
     refresh: () => undefined,
     prefetch: async () => undefined,
   }

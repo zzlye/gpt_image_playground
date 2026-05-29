@@ -6,9 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { navigationTools, type NavigationToolSlug } from "@/constant/navigation-tools";
-import { AppConfigModal } from "@/components/layout/app-config-modal";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
-import { useConfigStore } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -17,7 +15,6 @@ export function AppTopNav() {
     const pathname = usePathname();
     const router = useRouter();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
-    const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
     const hideHeader = /^\/canvas\/[^/]+/.test(pathname);
@@ -75,7 +72,7 @@ export function AppTopNav() {
                             <button
                                 type="button"
                                 className="inline-flex size-8 shrink-0 items-center justify-center text-stone-600 transition hover:text-stone-950 dark:text-stone-300 dark:hover:text-white [&_svg]:size-4"
-                                onClick={() => openConfigDialog(false)}
+                                onClick={() => router.openSettings()}
                                 aria-label="配置"
                                 title="配置"
                             >
@@ -94,7 +91,6 @@ export function AppTopNav() {
             ) : null}
 
             <MobileNavDrawer open={mobileNavOpen} activeToolSlug={activeToolSlug} onClose={() => setMobileNavOpen(false)} />
-            <AppConfigModal />
         </>
     );
 }

@@ -11,6 +11,11 @@ export type AiConfig = {
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
+    timeout: number;
+    textVideoBaseUrl: string;
+    textVideoApiKey: string;
+    textVideoApiProxy: boolean;
+    textVideoTimeout: number;
     model: string;
     imageModel: string;
     videoModel: string;
@@ -30,6 +35,11 @@ export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: "https://api.openai.com",
     apiKey: "",
+    timeout: 120,
+    textVideoBaseUrl: "",
+    textVideoApiKey: "",
+    textVideoApiProxy: false,
+    textVideoTimeout: 120,
     model: "gpt-image-2",
     imageModel: "gpt-image-2",
     videoModel: "grok-imagine-video",
@@ -112,7 +122,7 @@ export const useConfigStore = create<ConfigStore>()(
             partialize: (state) => ({ config: state.config }),
             merge: (persisted, current) => {
                 const config = { ...defaultConfig, ...((persisted as Partial<ConfigStore>).config || {}) };
-                return { ...current, config: { ...config, channelMode: config.channelMode || "remote", imageModel: config.imageModel || config.model, videoModel: config.videoModel || "grok-imagine-video", textModel: config.textModel || config.model, videoSeconds: config.videoSeconds || "6", vquality: config.vquality || "720" } };
+                return { ...current, config: { ...config, channelMode: config.channelMode || "remote", imageModel: config.imageModel || config.model, videoModel: config.videoModel || "grok-imagine-video", textModel: config.textModel || config.model, videoSeconds: config.videoSeconds || "6", vquality: config.vquality || "720", timeout: Number(config.timeout) || 120, textVideoBaseUrl: config.textVideoBaseUrl || "", textVideoApiKey: config.textVideoApiKey || "", textVideoApiProxy: Boolean(config.textVideoApiProxy), textVideoTimeout: Number(config.textVideoTimeout) || 120 } };
             },
         },
     ),

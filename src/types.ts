@@ -108,6 +108,16 @@ export interface AppSettings {
   appearanceBackgroundBlur: number
   /** 夜间外观模式，开启后使用深色界面配色 */
   appearanceNightMode: boolean
+  /** 文字/视频 API 地址，可单独配置 */
+  textVideoBaseUrl: string
+  /** 文字/视频 API Key */
+  textVideoApiKey: string
+  /** 文字/视频默认模型 ID */
+  textVideoModel: string
+  /** 文字/视频请求超时，单位秒 */
+  textVideoTimeout: number
+  /** 文字/视频是否使用本地代理 */
+  textVideoApiProxy: boolean
   /** 最近一次查询到的 Key 余额展示文本 */
   apiBalanceText: string
   /** 最近一次余额展示使用的货币符号 */
