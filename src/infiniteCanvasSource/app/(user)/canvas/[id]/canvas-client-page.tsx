@@ -109,7 +109,7 @@ export default function CanvasPage() {
 
 function CanvasRefreshShell() {
     return (
-        <main className="relative h-full min-h-0 overflow-hidden bg-background text-foreground">
+        <main className="relative h-full min-h-0 overflow-hidden bg-transparent text-foreground">
             <div
                 className="absolute inset-0 opacity-60"
                 style={{
@@ -2010,7 +2010,7 @@ function InfiniteCanvasPage() {
     if (!projectLoaded) return <CanvasRefreshShell />;
 
     return (
-        <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
+        <main className="flex h-full min-h-0 overflow-hidden" style={{ background: "transparent", color: theme.node.text }}>
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar
                     title={currentProject?.title || "未命名画布"}
@@ -2338,11 +2338,17 @@ function CanvasTopBar({
     assistantCollapsed: boolean;
     onExpandAssistant: () => void;
 }) {
-    const colorTheme = useThemeStore((state) => state.theme);
+    const router = useRouter();
+    const fallbackTheme = useThemeStore((state) => state.theme);
     const setColorTheme = useThemeStore((state) => state.setTheme);
+    const colorTheme = router.appearanceTheme || fallbackTheme;
     const theme = canvasThemes[colorTheme];
     const titleRef = useRef<HTMLDivElement>(null);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
+    const syncColorTheme = (nextTheme: "light" | "dark") => {
+        setColorTheme(nextTheme);
+        router.setAppearanceTheme(nextTheme);
+    };
 
     useEffect(() => {
         if (!isTitleEditing) return;
@@ -2374,7 +2380,7 @@ function CanvasTopBar({
                             ],
                         }}
                     >
-                        <button type="button" className="grid size-9 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} aria-label="打开画布菜单">
+                        <button type="button" className="grid h-9 w-9 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} aria-label="打开画布菜单">
                             <Menu className="size-5" />
                         </button>
                     </Dropdown>
@@ -2409,14 +2415,14 @@ function CanvasTopBar({
                 <div className="pointer-events-auto flex items-center gap-1.5">
                     <AnimatedThemeToggler
                         theme={colorTheme}
-                        onThemeChange={setColorTheme}
-                        className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-black/5 dark:hover:bg-white/10 [&_svg]:size-4"
+                        onThemeChange={syncColorTheme}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-none transition hover:bg-black/5 dark:hover:bg-white/10 [&_svg]:h-5 [&_svg]:w-5"
                         style={{ color: theme.node.text }}
                         aria-label={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
                         title={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
                     />
-                    <button type="button" className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
-                        <Keyboard className="size-4" />
+                    <button type="button" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
+                        <Keyboard className="size-5" />
                     </button>
                     {assistantCollapsed ? (
                         <>

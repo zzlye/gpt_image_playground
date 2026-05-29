@@ -2,6 +2,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode, RefObject
 import { useRef, useState } from "react";
 import { Button, Segmented, Switch } from "antd";
 import { CircleDot, Eraser, FolderOpen, Grid2x2, Hand, Image as ImageIcon, Info, Library, Moon, Palette, Redo2, Settings2, Square, Sun, Trash2, Type, Undo2, Upload, Video } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { canvasThemes, type CanvasBackgroundMode, type CanvasColorTheme, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -48,9 +49,11 @@ export function CanvasToolbar({
     onOpenAssetLibrary: () => void;
     onOpenMyAssets: () => void;
 }) {
+    const router = useRouter();
     const wrapRef = useRef<HTMLDivElement>(null);
-    const colorTheme = useThemeStore((state) => state.theme);
+    const fallbackTheme = useThemeStore((state) => state.theme);
     const setTheme = useThemeStore((state) => state.setTheme);
+    const colorTheme = router.appearanceTheme || fallbackTheme;
     const theme = canvasThemes[colorTheme];
     const [hovered, setHovered] = useState<string | null>(null);
     const [tipX, setTipX] = useState(0);
@@ -60,6 +63,10 @@ export function CanvasToolbar({
     const hoverStyle = { background: theme.toolbar.itemHover, color: theme.toolbar.activeText };
     const activeStyle = { background: theme.toolbar.activeBg, color: theme.toolbar.activeText };
     const tip = hovered ? toolLabel(hovered) : "";
+    const syncTheme = (nextTheme: CanvasColorTheme) => {
+        setTheme(nextTheme);
+        router.setAppearanceTheme(nextTheme);
+    };
 
     return (
         <div className="pointer-events-none absolute bottom-5 z-50 flex justify-center" style={{ left: 300, right: 16 }}>
@@ -136,11 +143,11 @@ export function CanvasToolbar({
                     <div className="px-1 pb-2 text-sm font-medium opacity-65">画布外观</div>
                     <div className="px-1 pb-1.5 text-[11px] font-medium opacity-50">主题模式</div>
                     <div className="grid grid-cols-2 gap-1 rounded-lg p-1" style={{ background: theme.toolbar.itemHover }}>
-                        <CanvasThemeButton colorTheme={colorTheme} targetTheme="light" onThemeChange={setTheme}>
+                        <CanvasThemeButton colorTheme={colorTheme} targetTheme="light" onThemeChange={syncTheme}>
                             <Sun className="size-4" />
                             浅色
                         </CanvasThemeButton>
-                        <CanvasThemeButton colorTheme={colorTheme} targetTheme="dark" onThemeChange={setTheme}>
+                        <CanvasThemeButton colorTheme={colorTheme} targetTheme="dark" onThemeChange={syncTheme}>
                             <Moon className="size-4" />
                             深色
                         </CanvasThemeButton>

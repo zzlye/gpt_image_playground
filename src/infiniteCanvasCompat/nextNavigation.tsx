@@ -9,6 +9,8 @@ type CanvasNavigationValue = CanvasRoute & {
   navigate: (href: string) => void
   backToHome: () => void
   openSettings: () => void
+  appearanceTheme: 'light' | 'dark'
+  setAppearanceTheme: (theme: 'light' | 'dark') => void
 }
 
 const CanvasNavigationContext = createContext<CanvasNavigationValue | null>(null)
@@ -36,6 +38,8 @@ export function useRouter() {
     replace: navigation.navigate,
     back: navigation.backToHome,
     openSettings: navigation.openSettings,
+    appearanceTheme: navigation.appearanceTheme,
+    setAppearanceTheme: navigation.setAppearanceTheme,
     refresh: () => undefined,
     prefetch: async () => undefined,
   }

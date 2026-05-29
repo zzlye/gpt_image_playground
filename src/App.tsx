@@ -167,28 +167,30 @@ export default function App() {
         </>
       )}
       <div className={`relative z-10 min-h-screen ${appearanceNightMode ? 'appearance-night' : ''}`}>
-        {workspaceMode === 'gallery' ? (
-          <>
-            <Header onOpenCanvas={() => {
-              setAnnouncementOpen(false)
-              setWorkspaceMode('canvas')
-            }} />
-            <main data-home-main data-drag-select-surface className="pb-48">
-              <div className="safe-area-x max-w-7xl mx-auto">
-                <SearchBar />
-                <TaskGrid />
-              </div>
-            </main>
-            <InputBar />
-            <DetailModal />
-            <Lightbox />
-            <SupportPromptModal />
-            <MaskEditorModal />
-            <ImageContextMenu />
-          </>
-        ) : (
-          <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
-        )}
+        <div key={workspaceMode} className={`workspace-mode-view workspace-mode-view-${workspaceMode}`}>
+          {workspaceMode === 'gallery' ? (
+            <>
+              <Header onOpenCanvas={() => {
+                setAnnouncementOpen(false)
+                setWorkspaceMode('canvas')
+              }} />
+              <main data-home-main data-drag-select-surface className="pb-48">
+                <div className="safe-area-x max-w-7xl mx-auto">
+                  <SearchBar />
+                  <TaskGrid />
+                </div>
+              </main>
+              <InputBar />
+              <DetailModal />
+              <Lightbox />
+              <SupportPromptModal />
+              <MaskEditorModal />
+              <ImageContextMenu />
+            </>
+          ) : (
+            <CanvasWorkshop onBack={() => setWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
+          )}
+        </div>
         <SettingsModal />
         <ConfirmDialog />
         <Toast />

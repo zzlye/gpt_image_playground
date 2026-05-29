@@ -67,14 +67,16 @@ function CanvasRoutePage({ route }: { route: CanvasRoute }) {
 }
 
 export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorkshopProps) {
+  const setSettings = useStore((s) => s.setSettings)
   const settings = useStore((s) => s.settings)
   const normalizedSettings = normalizeSettings(settings)
   const activeProfile = getActiveApiProfile(normalizedSettings)
+  const appearanceTheme: 'light' | 'dark' = normalizedSettings.appearanceNightMode ? 'dark' : 'light'
   const [route, setRoute] = useState<CanvasRoute>({ pathname: '/canvas', params: {} })
 
   useEffect(() => {
     // 画布工坊复用文运工坊设置，避免打开画布时继续拉取原项目的后端配置。
-    useThemeStore.getState().setTheme(normalizedSettings.appearanceNightMode ? 'dark' : 'light')
+    useThemeStore.getState().setTheme(appearanceTheme)
     useConfigStore.setState((state) => ({
       config: {
         ...state.config,
@@ -97,7 +99,7 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
     activeProfile.baseUrl,
     activeProfile.model,
     activeProfile.timeout,
-    normalizedSettings.appearanceNightMode,
+    appearanceTheme,
     normalizedSettings.textVideoApiKey,
     normalizedSettings.textVideoApiProxy,
     normalizedSettings.textVideoBaseUrl,
@@ -117,8 +119,13 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
       },
       backToHome: onBack,
       openSettings: onOpenSettings,
+      appearanceTheme,
+      setAppearanceTheme: (theme: 'light' | 'dark') => {
+        useThemeStore.getState().setTheme(theme)
+        setSettings({ appearanceNightMode: theme === 'dark' })
+      },
     }),
-    [onBack, onOpenSettings, route],
+    [appearanceTheme, onBack, onOpenSettings, route, setSettings],
   )
 
   const handleInternalLinkClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -134,9 +141,9 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
   return (
     <CanvasNavigationProvider value={navigation}>
       <AppProviders>
-        <div onClickCapture={handleInternalLinkClick}>
+        <div className="canvas-integrated-shell" onClickCapture={handleInternalLinkClick}>
           <UserLayout>
-            <div className="h-full overflow-hidden bg-background text-foreground">
+            <div className="h-full overflow-hidden bg-transparent text-foreground">
               <CanvasErrorBoundary>
                 <CanvasRoutePage route={route} />
               </CanvasErrorBoundary>

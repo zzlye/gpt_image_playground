@@ -332,6 +332,31 @@ input[type="number"] {
   }
 }
 
+@keyframes workspace-view-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.workspace-mode-view {
+  min-height: inherit;
+  animation: workspace-view-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-mode-view {
+    animation: none;
+  }
+
+  .canvas-launch-button,
+  .canvas-return-button {
+    animation: none;
+  }
+}
+
 .canvas-launch-button,
 .canvas-return-button,
 .canvas-tool-button,
@@ -343,7 +368,7 @@ input[type="number"] {
   justify-content: center;
   gap: 0.45rem;
   white-space: nowrap;
-  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, border-color 150ms ease;
+  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
 }
 
 .canvas-launch-button::before,
@@ -366,13 +391,13 @@ input[type="number"] {
   font-weight: 700;
   color: #f5f3ff;
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.98), rgba(79, 70, 229, 0.96));
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: none;
   animation: canvas-float 2.8s ease-in-out infinite;
 }
 
 .canvas-launch-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  box-shadow: none;
 }
 
 .canvas-launch-button:active {
@@ -385,15 +410,30 @@ input[type="number"] {
   border: 1px solid rgba(59, 130, 246, 0.4);
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.96), rgba(37, 99, 235, 0.96));
   padding: 0.48rem 0.9rem;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #eff6ff;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: none;
 }
 
 .canvas-return-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  box-shadow: none;
+}
+
+.canvas-integrated-shell {
+  min-height: 100vh;
+  font-family: var(--font-ui-sans);
+  font-size: 14px;
+  color: inherit;
+}
+
+.canvas-integrated-shell :where(.ant-app, main.bg-background, .bg-background) {
+  background-color: transparent !important;
+}
+
+.canvas-integrated-shell :where(button, input, textarea, select, .ant-btn) {
+  font-family: inherit;
 }
 
 .canvas-workshop-shell {
