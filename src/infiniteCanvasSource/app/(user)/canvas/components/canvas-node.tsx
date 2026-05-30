@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Image as ImageIcon, Plus, RefreshCw, Star, Video } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Plus, RefreshCw, Star, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -42,6 +42,7 @@ type CanvasNodeProps = {
     onSetBatchPrimary?: (node: CanvasNodeData) => void;
     onRetry?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
+    onUpload?: (nodeId: string) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
 };
 
@@ -94,6 +95,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     onSetBatchPrimary,
     onRetry,
     onGenerateImage,
+    onUpload,
     onContextMenu,
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -308,6 +310,31 @@ export const CanvasNode = React.memo(function CanvasNode({
                         onSetBatchPrimary={() => onSetBatchPrimary?.(data)}
                     />
                 </div>
+
+                {hasImageContent && !isBatchRoot && !isBatchChild ? (
+                    <button
+                        type="button"
+                        className="absolute right-3 top-3 z-40 inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium shadow-lg backdrop-blur-md transition hover:scale-[1.03]"
+                        style={{ background: `${theme.toolbar.panel}e6`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
+                        title="替换图片"
+                        aria-label="替换图片"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onUpload?.(data.id);
+                        }}
+                        onMouseDown={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                        }}
+                        onPointerDown={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                        }}
+                    >
+                        <Upload className="size-3.5" />
+                        替换
+                    </button>
+                ) : null}
 
                 {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
 

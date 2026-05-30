@@ -114,9 +114,16 @@ export type SelectionBox = {
     initialSelectedNodeIds: string[];
 };
 
-export type ContextMenuState = {
-    type: "node";
-    x: number;
-    y: number;
-    nodeId: string;
-};
+export type ContextMenuState =
+    | {
+          type: "node";
+          x: number;
+          y: number;
+          nodeId: string;
+      }
+    | {
+          type: "canvas";
+          x: number;
+          y: number;
+          position: Position;
+      };

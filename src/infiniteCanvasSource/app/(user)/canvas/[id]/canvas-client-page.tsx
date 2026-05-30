@@ -914,11 +914,11 @@ function InfiniteCanvasPage() {
         };
     }, []);
 
-    const pasteCopiedNodes = useCallback(() => {
+    const pasteCopiedNodes = useCallback((position?: Position) => {
         const clipboard = clipboardRef.current;
         if (!clipboard?.nodes.length) return false;
 
-        const center = getCanvasCenter();
+        const center = position || getCanvasCenter();
         const bounds = clipboard.nodes.reduce(
             (acc, node) => ({
                 left: Math.min(acc.left, node.position.x),
@@ -968,6 +968,19 @@ function InfiniteCanvasPage() {
         setDialogNodeId(nextNodes[0]?.id || null);
         return true;
     }, [getCanvasCenter]);
+
+    const copyAllNodes = useCallback(() => {
+        const allIds = new Set(nodesRef.current.map((node) => node.id));
+        if (!allIds.size) return;
+        clipboardRef.current = {
+            nodes: nodesRef.current.map((node) => ({
+                ...node,
+                position: { ...node.position },
+                metadata: node.metadata ? { ...node.metadata } : undefined,
+            })),
+            connections: connectionsRef.current.map((connection) => ({ ...connection })),
+        };
+    }, []);
 
     const resetViewport = useCallback(() => {
         setViewport({ x: size.width / 2, y: size.height / 2, k: 1 });
@@ -1750,10 +1763,14 @@ function InfiniteCanvasPage() {
     }, [projectId, renameProject, titleDraft]);
 
     const preventCanvasContextMenu = useCallback((event: ReactMouseEvent) => {
-        if ((event.target as HTMLElement).closest("[data-node-id]")) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("[data-node-id],[data-connection-create-menu],[data-canvas-node-create-menu],[data-canvas-no-zoom]")) return;
         event.preventDefault();
-        setContextMenu(null);
-    }, []);
+        setQuickNodeCreateMenu(null);
+        setSelectedNodeIds(new Set());
+        setSelectedConnectionId(null);
+        setContextMenu({ type: "canvas", x: event.clientX, y: event.clientY, position: screenToCanvas(event.clientX, event.clientY) });
+    }, [screenToCanvas]);
 
     const handleGenerateNode = useCallback(
         async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => {
@@ -2382,6 +2399,7 @@ function InfiniteCanvasPage() {
                             onSetBatchPrimary={setBatchPrimary}
                             onRetry={(node) => void handleRetryNode(node)}
                             onGenerateImage={generateImageFromTextNode}
+                            onUpload={handleUploadRequest}
                             onContextMenu={(event, id) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -2466,13 +2484,45 @@ function InfiniteCanvasPage() {
                 {contextMenu ? (
                     <CanvasNodeContextMenu
                         menu={contextMenu}
+                        canUndo={historyState.canUndo}
+                        canRedo={historyState.canRedo}
+                        canPaste={Boolean(clipboardRef.current?.nodes.length)}
                         onClose={() => setContextMenu(null)}
                         onDuplicate={() => {
+                            if (contextMenu.type !== "node") return;
                             duplicateNode(contextMenu.nodeId);
                             setContextMenu(null);
                         }}
                         onDelete={() => {
+                            if (contextMenu.type !== "node") return;
                             deleteNodes(new Set([contextMenu.nodeId]));
+                            setContextMenu(null);
+                        }}
+                        onUpload={() => {
+                            if (contextMenu.type !== "canvas") return;
+                            handleUploadRequest(undefined, contextMenu.position);
+                            setContextMenu(null);
+                        }}
+                        onAddNode={() => {
+                            if (contextMenu.type !== "canvas") return;
+                            setQuickNodeCreateMenu({ position: contextMenu.position });
+                            setContextMenu(null);
+                        }}
+                        onUndo={() => {
+                            undoCanvas();
+                            setContextMenu(null);
+                        }}
+                        onRedo={() => {
+                            redoCanvas();
+                            setContextMenu(null);
+                        }}
+                        onCopyAll={() => {
+                            copyAllNodes();
+                            setContextMenu(null);
+                        }}
+                        onPaste={() => {
+                            if (contextMenu.type !== "canvas") return;
+                            pasteCopiedNodes(contextMenu.position);
                             setContextMenu(null);
                         }}
                     />
