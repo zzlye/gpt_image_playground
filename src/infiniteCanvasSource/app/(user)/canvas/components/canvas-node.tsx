@@ -249,6 +249,14 @@ export const CanvasNode = React.memo(function CanvasNode({
             }}
             onContextMenu={(event) => onContextMenu(event, data.id)}
         >
+            <div className="pointer-events-none absolute -top-7 left-1 z-50 max-w-[70%]">
+                <span
+                    className="inline-block max-w-full truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md"
+                    style={{ background: `${theme.toolbar.panel}d9`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
+                >
+                    {data.title}
+                </span>
+            </div>
             <div
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
                 style={{
@@ -406,7 +414,7 @@ function TextContent({ node, theme, isEditingContent, textareaRef, onContentChan
                     style={{ fontSize: `${node.metadata?.fontSize || 14}px`, color: theme.node.text }}
                     onWheel={(event) => event.stopPropagation()}
                 >
-                    {node.metadata?.content || <span style={{ color: theme.node.placeholder }}>双击编辑文字</span>}
+                    {node.metadata?.content || <span style={{ color: theme.node.placeholder }}>点击节点后在下方编辑</span>}
                 </div>
             )}
         </div>

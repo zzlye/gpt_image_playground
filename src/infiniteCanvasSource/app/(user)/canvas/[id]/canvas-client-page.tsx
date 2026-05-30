@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Home, ImageIcon, Images, Keyboard, List, Menu, Paintbrush, Plus, Redo2, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Home, ImageIcon, Images, Keyboard, List, Menu, Paintbrush, Plus, Redo2, Scissors, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
@@ -619,6 +619,27 @@ function InfiniteCanvasPage() {
     }, [collapsingBatchIds, nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
 
     const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+    const selectedConnectionActionPosition = useMemo(() => {
+        if (!selectedConnectionId) return null;
+        const connection = connections.find((item) => item.id === selectedConnectionId);
+        if (!connection) return null;
+        const from = nodeById.get(connection.fromNodeId);
+        const to = nodeById.get(connection.toNodeId);
+        if (!from || !to || isHiddenBatchConnectionEndpoint(from, nodes) || isHiddenBatchConnectionEndpoint(to, nodes)) return null;
+
+        const startX = from.position.x + from.width;
+        const startY = from.position.y + from.height / 2;
+        const endX = to.position.x;
+        const endY = to.position.y + to.height / 2;
+        const curvature = Math.max(Math.abs(endX - startX) * 0.5, 50);
+        return cubicPoint(
+            { x: startX, y: startY },
+            { x: startX + curvature, y: startY },
+            { x: endX - curvature, y: endY },
+            { x: endX, y: endY },
+            0.5,
+        );
+    }, [connections, nodeById, nodes, selectedConnectionId]);
     const toolbarNode = toolbarNodeId ? nodeById.get(toolbarNodeId) || null : null;
     const infoNode = infoNodeId ? nodeById.get(infoNodeId) || null : null;
     const cropNode = cropNodeId ? nodeById.get(cropNodeId) || null : null;
@@ -742,6 +763,11 @@ function InfiniteCanvasPage() {
         setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
         setSelectedConnectionId((current) => (current === connectionId ? null : current));
     }, []);
+
+    const deleteSelectedConnection = useCallback(() => {
+        if (!selectedConnectionId) return;
+        deleteConnection(selectedConnectionId);
+    }, [deleteConnection, selectedConnectionId]);
 
     const deselectCanvas = useCallback(() => {
         cancelPendingConnectionCreate();
@@ -1033,7 +1059,7 @@ function InfiniteCanvasPage() {
         if (wasClick && clickedNodeId) {
             const clickedNode = nodesRef.current.find((node) => node.id === clickedNodeId);
             if (clickedNode?.type === CanvasNodeType.Text) {
-                setDialogNodeId((current) => (current === clickedNodeId ? current : null));
+                setDialogNodeId(clickedNodeId);
             } else {
                 setDialogNodeId(clickedNodeId);
             }
@@ -1278,7 +1304,7 @@ function InfiniteCanvasPage() {
                 if (selectedNodeIdsRef.current.size) {
                     deleteNodes(new Set(selectedNodeIdsRef.current));
                 } else if (selectedConnectionId) {
-                    deleteConnection(selectedConnectionId);
+                    deleteSelectedConnection();
                 }
             }
 
@@ -1300,7 +1326,7 @@ function InfiniteCanvasPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [copySelectedNodes, deleteConnection, deleteNodes, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
+    }, [copySelectedNodes, deleteNodes, deleteSelectedConnection, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
 
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
@@ -2155,18 +2181,49 @@ function InfiniteCanvasPage() {
                                         from={from}
                                         to={to}
                                         active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
-                                        selected={selectedConnectionId === connection.id}
                                         onSelect={() => {
                                             setSelectedConnectionId(connection.id);
                                             setSelectedNodeIds(new Set());
                                             setContextMenu(null);
                                         }}
-                                        onDelete={() => deleteConnection(connection.id)}
                                     />
                                 );
                             })}
                         {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} /> : null}
                     </svg>
+
+                    {selectedConnectionActionPosition ? (
+                        <button
+                            type="button"
+                            data-no-drag-select
+                            data-canvas-no-zoom
+                            className="absolute z-[65] grid h-9 w-9 cursor-pointer place-items-center rounded-full border shadow-lg backdrop-blur-md transition hover:scale-105"
+                            style={{
+                                left: selectedConnectionActionPosition.x,
+                                top: selectedConnectionActionPosition.y,
+                                transform: "translate(-50%, -50%)",
+                                background: `${theme.toolbar.panel}e6`,
+                                borderColor: `${theme.toolbar.border}cc`,
+                                color: theme.node.activeStroke,
+                            }}
+                            aria-label="删除连线"
+                            title="删除连线"
+                            onMouseDown={(event) => {
+                                event.stopPropagation();
+                                event.preventDefault();
+                            }}
+                            onPointerDown={(event) => {
+                                event.stopPropagation();
+                                event.preventDefault();
+                            }}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                deleteSelectedConnection();
+                            }}
+                        >
+                            <Scissors className="size-4 stroke-[2.4]" />
+                        </button>
+                    ) : null}
 
                     {visibleNodes.map((node) => (
                         <CanvasNode
@@ -2761,6 +2818,14 @@ function sourceNodeReferenceImages(node: CanvasNodeData | null) {
             storageKey: node.metadata.storageKey,
         },
     ];
+}
+
+function cubicPoint(p0: Position, p1: Position, p2: Position, p3: Position, t: number): Position {
+    const a = 1 - t;
+    return {
+        x: a ** 3 * p0.x + 3 * a ** 2 * t * p1.x + 3 * a * t ** 2 * p2.x + t ** 3 * p3.x,
+        y: a ** 3 * p0.y + 3 * a ** 2 * t * p1.y + 3 * a * t ** 2 * p2.y + t ** 3 * p3.y,
+    };
 }
 
 function isHiddenBatchChild(node: CanvasNodeData, nodes: CanvasNodeData[], collapsingBatchIds?: Set<string>) {
