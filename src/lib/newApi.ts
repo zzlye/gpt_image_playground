@@ -50,6 +50,15 @@ const FALLBACK_MODEL_UNIT_COST = `${DEFAULT_CURRENCY_SYMBOL} 0.06`
 const PUBLIC_FETCH_TIMEOUT_MS = 6000
 const WENYUN_PUBLIC_PROXY_PREFIX = '/wy-public/wenyun'
 
+class HttpStatusError extends Error {
+  status: number
+
+  constructor(status: number) {
+    super(`请求失败：${status}`)
+    this.status = status
+  }
+}
+
 function trimTrailingSlash(value: string): string {
   return value.trim().replace(/\/+$/, '')
 }
@@ -77,7 +86,7 @@ async function fetchJson(url: string, apiKey?: string): Promise<unknown> {
       ? { Authorization: `Bearer ${apiKey.trim()}` }
       : undefined,
   })
-  if (!response.ok) throw new Error(`请求失败：${response.status}`)
+  if (!response.ok) throw new HttpStatusError(response.status)
   return response.json()
 }
 
@@ -92,7 +101,7 @@ async function fetchJsonWithTimeout(url: string, apiKey?: string, timeoutMs = PU
         ? { Authorization: `Bearer ${apiKey.trim()}` }
         : undefined,
     })
-    if (!response.ok) throw new Error(`请求失败：${response.status}`)
+    if (!response.ok) throw new HttpStatusError(response.status)
     return response.json()
   } finally {
     globalThis.clearTimeout(timer)
@@ -581,6 +590,19 @@ function collectModelPricesFromPayload(payload: unknown, allowDirectPayload: boo
   return allowDirectPayload ? collectModelPriceValues(getPayloadData(payload)) : []
 }
 
+function getPublicPriceUrls(origin: string, apiRoot: string): string[] {
+  return Array.from(new Set([
+    `${origin}/api/pricing`,
+    `${apiRoot}/api/pricing`,
+    `${origin}/api/ratio_config`,
+    `${apiRoot}/api/ratio_config`,
+  ]))
+}
+
+function isAuthOrRateLimitFailure(error: unknown): boolean {
+  return error instanceof HttpStatusError && (error.status === 401 || error.status === 403 || error.status === 429)
+}
+
 export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<NewApiModelUnitCostResult> {
   const apiRoot = getApiRoot(profile.baseUrl)
   const origin = getApiOrigin(profile.baseUrl)
@@ -597,25 +619,18 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
       }
     }
 
-    const priceAttempts = Array.from(new Set([
-      `${origin}/api/ratio_config`,
-      `${apiRoot}/api/ratio_config`,
-      `${origin}/api/pricing`,
-      `${apiRoot}/api/pricing`,
-    ]))
-
-    const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
-      try {
-        return await fetchPublicPriceJson(url, profile.apiKey)
-      } catch {
-        // 单个公开定价接口失败不影响兜底展示。
-        return undefined
+    let price: number | null = null
+    if (profile.apiKey.trim()) {
+      for (const url of getPublicPriceUrls(origin, apiRoot)) {
+        try {
+          price = readModelUnitCostFromPayload(await fetchPublicPriceJson(url, profile.apiKey), profile.model)
+          if (price != null) break
+        } catch (err) {
+          // 文运站未登录或限流时不要继续打备用公开接口，避免控制台刷 401/429。
+          if (isAuthOrRateLimitFailure(err)) break
+        }
       }
-    }))
-
-    const price = fetchedPricePayloads
-      .map((payload) => readModelUnitCostFromPayload(payload, profile.model))
-      .find((value): value is number => value != null)
+    }
 
     return {
       text: price == null ? FALLBACK_MODEL_UNIT_COST : formatModelUnitCost(price, status),
@@ -658,23 +673,17 @@ export async function queryNewApiPriceTable(profile: ApiProfile): Promise<NewApi
       }
     }
 
-    const priceAttempts = Array.from(new Set([
-      `${origin}/api/ratio_config`,
-      `${apiRoot}/api/ratio_config`,
-      `${origin}/api/pricing`,
-      `${apiRoot}/api/pricing`,
-    ]))
-
-    const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
-      try {
-        return await fetchPublicPriceJson(url, profile.apiKey)
-      } catch {
-        // 单个公开定价接口失败不影响其它价格来源。
-        return undefined
+    if (profile.apiKey.trim()) {
+      for (const url of getPublicPriceUrls(origin, apiRoot)) {
+        try {
+          addEntries(collectModelPricesFromPayload(await fetchPublicPriceJson(url, profile.apiKey), true))
+          if (entries.size > 0) break
+        } catch (err) {
+          // NewAPI 文档里 pricing/ratio_config 是价格来源，但当前文运站会对未授权或限流请求返回 401/429。
+          if (isAuthOrRateLimitFailure(err)) break
+        }
       }
-    }))
-
-    fetchedPricePayloads.forEach((payload) => addEntries(collectModelPricesFromPayload(payload, true)))
+    }
 
     return {
       items: Array.from(entries.values())

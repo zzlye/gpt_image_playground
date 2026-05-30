@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { LoaderCircle, ReceiptText, X } from 'lucide-react'
-import type { ApiProfile } from '../types'
+import type { ApiProfile, AppSettings } from '../types'
+import { useStore } from '../store'
 import {
   getFixedImageModelUnitCostText,
   getFixedImageRequestModel,
@@ -23,28 +24,47 @@ type PriceRow = {
 }
 
 export default function PriceTableButton({ activeProfile, buttonClassName, buttonStyle }: PriceTableButtonProps) {
+  const settings = useStore((state) => state.settings)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [items, setItems] = useState<NewApiPriceTableItem[]>([])
   const [updatedAt, setUpdatedAt] = useState<number | null>(null)
-  const profileQueryKey = `${activeProfile.id}\n${activeProfile.baseUrl}\n${activeProfile.apiKey}`
+  const priceApiKey = useMemo(
+    () => pickPriceApiKey(activeProfile, settings),
+    [
+      activeProfile.apiKey,
+      activeProfile.baseUrl,
+      activeProfile.id,
+      settings.textApiKey,
+      settings.textBaseUrl,
+      settings.textVideoApiKey,
+      settings.textVideoBaseUrl,
+      settings.videoApiKey,
+      settings.videoBaseUrl,
+    ],
+  )
+  const profileQueryKey = `${activeProfile.id}\n${activeProfile.baseUrl}\n${priceApiKey}`
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
     setError('')
-    void queryNewApiPriceTable(activeProfile)
+    void queryNewApiPriceTable({ ...activeProfile, apiKey: priceApiKey })
       .then((result) => {
         if (cancelled) return
         setItems(result.items)
         setUpdatedAt(result.updatedAt)
-        if (!result.found) setError('没有从 NewAPI 读取到模型价格，已显示内置价格。')
+        if (!result.found && buildPriceRows(activeProfile.id, result.items, settings).length === 0) {
+          setError('没有从 NewAPI 读取到模型价格。')
+        }
       })
       .catch((err) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : '模型列表读取失败')
+        if (buildPriceRows(activeProfile.id, [], settings).length === 0) {
+          setError(err instanceof Error ? err.message : '模型列表读取失败')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -53,9 +73,12 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
     return () => {
       cancelled = true
     }
-  }, [profileQueryKey, open])
+  }, [activeProfile.baseUrl, activeProfile.id, open, priceApiKey, profileQueryKey, settings])
 
-  const rows = useMemo(() => buildPriceRows(activeProfile.id, items), [activeProfile.id, items])
+  const rows = useMemo(
+    () => buildPriceRows(activeProfile.id, items, settings),
+    [activeProfile.id, items, settings.textModel, settings.textVideoModel, settings.videoModel],
+  )
 
   return (
     <>
@@ -135,7 +158,7 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
   )
 }
 
-function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[]): PriceRow[] {
+function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[], settings?: AppSettings): PriceRow[] {
   const fetchedByModel = new Map(fetchedItems.map((item) => [item.model.trim().toLowerCase(), item]))
   const fixedOptions = getImageModelOptionsForProfile(profileId)
   const knownModels = new Set<string>()
@@ -156,6 +179,16 @@ function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[])
 
   if (profileId === LOCKED_PUBLIC_PROFILE_ID) return rows
 
+  for (const model of [settings?.textModel, settings?.textVideoModel, settings?.videoModel]) {
+    const normalized = model?.trim()
+    if (!normalized) continue
+    const key = normalized.toLowerCase()
+    if (knownModels.has(key)) continue
+    const fetched = fetchedByModel.get(key)
+    knownModels.add(key)
+    rows.push({ model: normalized, priceText: fetched?.text || 'HUHN --' })
+  }
+
   for (const item of fetchedItems) {
     const key = item.model.trim().toLowerCase()
     if (!key || knownModels.has(key)) continue
@@ -164,4 +197,34 @@ function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[])
   }
 
   return rows
+}
+
+function pickPriceApiKey(activeProfile: ApiProfile, settings: AppSettings): string {
+  const ownKey = activeProfile.apiKey.trim()
+  if (ownKey || activeProfile.id === LOCKED_PUBLIC_PROFILE_ID) return ownKey
+
+  const targetOrigin = getComparableOrigin(activeProfile.baseUrl)
+  const candidates = [
+    { baseUrl: settings.textBaseUrl || settings.textVideoBaseUrl, apiKey: settings.textApiKey || settings.textVideoApiKey },
+    { baseUrl: settings.videoBaseUrl || settings.textVideoBaseUrl, apiKey: settings.videoApiKey || settings.textVideoApiKey },
+  ]
+
+  for (const candidate of candidates) {
+    const key = candidate.apiKey.trim()
+    if (!key) continue
+    const origin = getComparableOrigin(candidate.baseUrl)
+    if (!origin || !targetOrigin || origin === targetOrigin) return key
+  }
+
+  return ''
+}
+
+function getComparableOrigin(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, '').replace(/\/v1$/i, '')
+  if (!normalized) return ''
+  try {
+    return new URL(normalized).origin.toLowerCase()
+  } catch {
+    return normalized.toLowerCase()
+  }
 }

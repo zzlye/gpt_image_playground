@@ -463,51 +463,22 @@ function EmptyImageContent({ theme, isBatchRoot, batchCount, batchExpanded, batc
 
 function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
     const videoUrl = node.metadata?.content || "";
-    const sizeLabel = node.metadata?.naturalWidth && node.metadata?.naturalHeight ? `${Math.round(node.metadata.naturalWidth)} x ${Math.round(node.metadata.naturalHeight)}` : "";
-    const bytesLabel = formatBytes(node.metadata?.bytes || 0);
-    const metaLabel = [sizeLabel, bytesLabel].filter(Boolean).join(" · ");
+    if (!videoUrl) return <EmptyVideoContent theme={theme} />;
 
     return (
-        <div
-            className="flex h-full w-full flex-col gap-2.5 p-3 backdrop-blur-md"
-            style={{
-                background: theme.toolbar.panel,
-                color: theme.node.text,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 16px 42px rgba(28,25,23,.08)",
-            }}
-        >
-            <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-xl border" style={{ background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text }}>
-                        <Video className="size-4" />
-                    </span>
-                    <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold leading-4">{node.title || "视频节点"}</div>
-                        <div className="mt-0.5 truncate text-[11px] opacity-55">{videoUrl ? "主视频" : "等待视频生成"}</div>
-                    </div>
-                </div>
-                <span className="shrink-0 rounded-full border px-2 py-1 text-[10px] font-medium" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.muted }}>
-                    视频
-                </span>
-            </div>
+        <div className="h-full w-full overflow-hidden rounded-3xl bg-black">
+            <video src={videoUrl} controls loop playsInline preload="metadata" className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
+        </div>
+    );
+}
 
-            <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-inner" style={{ background: "linear-gradient(180deg, #050505, #111111)", borderColor: theme.node.stroke }}>
-                {videoUrl ? (
-                    <video src={videoUrl} controls loop playsInline preload="metadata" className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
-                ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-5 text-center" style={{ color: theme.node.placeholder }}>
-                        <Video className="size-9 opacity-35" />
-                        <div className="text-sm font-medium">等待视频生成完成</div>
-                        <div className="max-w-[220px] text-xs leading-5 opacity-55">暂无视频内容</div>
-                    </div>
-                )}
+function EmptyVideoContent({ theme }: Pick<NodeContentRendererProps, "theme">) {
+    return (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
+            <div className="flex size-14 items-center justify-center rounded-2xl" style={{ background: theme.toolbar.activeBg }}>
+                <Video className="size-6 opacity-30" />
             </div>
-
-            {videoUrl ? (
-                <div className="min-h-4 truncate px-1 text-[11px] opacity-55">
-                    {metaLabel || "视频已就绪"}
-                </div>
-            ) : null}
+            <span className="text-[10px] tracking-[0.18em] opacity-50">空视频节点</span>
         </div>
     );
 }
