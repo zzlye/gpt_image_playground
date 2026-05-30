@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Home, ImageIcon, Images, Keyboard, List, Menu, MessageSquare, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Home, ImageIcon, Images, Keyboard, List, Menu, Plus, Redo2, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
@@ -18,13 +18,13 @@ import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS } from "../../../../../lib/apiProfiles";
 import { cropDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
 import { App, Button, Dropdown, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { ActiveConnectionPath, ConnectionPath } from "../components/canvas-connections";
 import { CanvasConfigNodePanel } from "../components/canvas-config-node-panel";
-import { CanvasAssistantPanel } from "../components/canvas-assistant-panel";
 import { CanvasNodeContextMenu } from "../components/canvas-context-menu";
 import { CanvasNodeAngleDialog, type CanvasImageAngleParams } from "../components/canvas-node-angle-dialog";
 import { CanvasNodeCropDialog, type CanvasImageCropRect } from "../components/canvas-node-crop-dialog";
@@ -265,8 +265,6 @@ function InfiniteCanvasPage() {
     const [cropNodeId, setCropNodeId] = useState<string | null>(null);
     const [angleNodeId, setAngleNodeId] = useState<string | null>(null);
     const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
-    const [assistantCollapsed, setAssistantCollapsed] = useState(true);
-    const [assistantMounted, setAssistantMounted] = useState(false);
     const [titleEditing, setTitleEditing] = useState(false);
     const [titleDraft, setTitleDraft] = useState("");
     const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
@@ -2068,12 +2066,6 @@ function InfiniteCanvasPage() {
                     onImportImage={() => handleUploadRequest()}
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
-                    assistantCollapsed={assistantCollapsed}
-                    onOpenSettings={() => openConfigDialog(false)}
-                    onExpandAssistant={() => {
-                        setAssistantMounted(true);
-                        setAssistantCollapsed(false);
-                    }}
                 />
 
                 <InfiniteCanvas
@@ -2320,21 +2312,6 @@ function InfiniteCanvasPage() {
 
                 <AssetPickerModal open={assetPickerOpen} defaultTab={assetPickerTab} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
             </section>
-            {assistantMounted ? (
-                <CanvasAssistantPanel
-                    nodes={nodes}
-                    selectedNodeIds={selectedNodeIds}
-                    sessions={chatSessions}
-                    activeSessionId={activeChatId}
-                    onSelectNodeIds={setSelectedNodeIds}
-                    onSessionsChange={handleAssistantSessionsChange}
-                    onInsertImage={insertAssistantImage}
-                    onInsertText={insertAssistantText}
-                    onPasteImage={pasteAssistantImage}
-                    onCollapseStart={() => setAssistantCollapsed(true)}
-                    onCollapse={() => setAssistantMounted(false)}
-                />
-            ) : null}
         </main>
     );
 }
@@ -2356,9 +2333,6 @@ function CanvasTopBar({
     onImportImage,
     onUndo,
     onRedo,
-    assistantCollapsed,
-    onOpenSettings,
-    onExpandAssistant,
 }: {
     title: string;
     titleDraft: string;
@@ -2376,9 +2350,6 @@ function CanvasTopBar({
     onImportImage: () => void;
     onUndo: () => void;
     onRedo: () => void;
-    assistantCollapsed: boolean;
-    onOpenSettings: () => void;
-    onExpandAssistant: () => void;
 }) {
     const router = useRouter();
     const fallbackTheme = useThemeStore((state) => state.theme);
@@ -2458,37 +2429,14 @@ function CanvasTopBar({
                     <AnimatedThemeToggler
                         theme={colorTheme}
                         onThemeChange={syncColorTheme}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-none transition hover:bg-black/5 dark:hover:bg-white/10 [&_svg]:h-5 [&_svg]:w-5"
-                        style={{ color: theme.node.text }}
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-white dark:hover:bg-white/10 [&_svg]:h-5 [&_svg]:w-5"
+                        style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
                         aria-label={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
                         title={colorTheme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
                     />
-                    <button type="button" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style={{ color: theme.node.text }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
+                    <button type="button" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-white dark:hover:bg-white/10" style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
                         <Keyboard className="size-5" />
                     </button>
-                    {assistantCollapsed ? (
-                        <>
-                            <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
-                            <Button
-                                type="text"
-                                className="!h-10 !w-10 !min-w-10 !rounded-xl !p-0 !font-medium"
-                                style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
-                                icon={<Settings2 className="size-4" />}
-                                onClick={onOpenSettings}
-                                aria-label="助手设置"
-                                title="助手设置"
-                            />
-                            <Button
-                                type="text"
-                                className="!h-10 !rounded-xl !px-3 !font-medium"
-                                style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
-                                icon={<MessageSquare className="size-4" />}
-                                onClick={onExpandAssistant}
-                            >
-                                助手
-                            </Button>
-                        </>
-                    ) : null}
                 </div>
             </div>
             <Modal title="快捷键" open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
@@ -2648,15 +2596,23 @@ function getInputSummary(inputs: NodeGenerationInput[]) {
 
 function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefined, mode: CanvasNodeGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? config.imageModel : mode === "video" ? config.videoModel : config.textModel;
+    const model = node?.metadata?.model || defaultModel || config.model || defaultConfig.model;
+    const resolvedModel = mode === "video" ? normalizeFixedVideoModel(model) : model;
     return {
         ...config,
-        model: node?.metadata?.model || defaultModel || config.model || defaultConfig.model,
+        model: resolvedModel,
+        videoModel: mode === "video" ? resolvedModel : config.videoModel,
         quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
         size: node?.metadata?.size || config.size || defaultConfig.size,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
         count: String(node?.metadata?.count || (mode === "image" ? 3 : config.count) || defaultConfig.count),
     };
+}
+
+function normalizeFixedVideoModel(model: string) {
+    const normalized = model.trim();
+    return FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_IMAGES_MODEL;
 }
 
 function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
