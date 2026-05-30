@@ -113,13 +113,15 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     aria-label="生成"
                 >
                     <span className="flex items-center gap-1.5">
-                        {mode === "video" ? null : imageCostText ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">{imageCostText}</span>
-                        ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
-                                <CreditSymbol />
-                                {credits.toLocaleString()}
-                            </span>
+                        {mode === "image" && (
+                            imageCostText ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">{imageCostText}</span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
+                                    <CreditSymbol />
+                                    {credits.toLocaleString()}
+                                </span>
+                            )
                         )}
                         {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
                     </span>

@@ -141,13 +141,15 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
                 onClick={() => onGenerate(node.id)}
             >
                 <span className="inline-flex items-center gap-1.5">
-                    {mode === "video" ? null : imageCostText ? (
-                        <span className="inline-flex items-center gap-1">{imageCostText}</span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1">
-                            <CreditSymbol />
-                            {credits.toLocaleString()}
-                        </span>
+                    {mode === "image" && (
+                        imageCostText ? (
+                            <span className="inline-flex items-center gap-1">{imageCostText}</span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1">
+                                <CreditSymbol />
+                                {credits.toLocaleString()}
+                            </span>
+                        )
                     )}
                     {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
                     <span>开始生成</span>

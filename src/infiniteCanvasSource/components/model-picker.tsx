@@ -71,7 +71,7 @@ export function ModelPicker({ config, value, onChange, options: fixedOptions, cl
             </SelectTrigger>
             <SelectContent
                 data-canvas-no-zoom
-                className="z-[1200] w-80 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 bg-popover p-1 shadow-xl"
+                className="z-[1200] w-80 max-w-[calc(100vw-24px)] rounded-xl border border-border/70 p-1 shadow-xl !bg-white dark:!bg-gray-900"
                 position="popper"
                 align="start"
                 side="bottom"

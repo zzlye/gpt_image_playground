@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Home, ImageIcon, Images, Keyboard, List, Menu, Plus, Redo2, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Home, ImageIcon, Images, Keyboard, List, Menu, Paintbrush, Plus, Redo2, RefreshCw, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
@@ -13,12 +13,14 @@ import { defaultConfig, type AiConfig, useConfigStore, useEffectiveConfig } from
 import { resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
 import { resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
+import { cn } from "@/lib/utils";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { getActiveApiProfile, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { queryNewApiBalance } from "../../../../../lib/newApi";
 import { useStore } from "../../../../../store";
 import { cropDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
@@ -224,6 +226,23 @@ function InfiniteCanvasPage() {
     const effectiveConfig = useEffectiveConfig();
     const settings = useStore((state) => state.settings);
     const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
+    const setSettings = useStore((state) => state.setSettings);
+    const [isPureBackground, setIsPureBackground] = useState(false);
+    const [isQueryingBalance, setIsQueryingBalance] = useState(false);
+    const apiBalanceText = getApiBalanceSnapshot(settings, activeProfile.id)?.text ?? "";
+
+    const queryActiveProfileBalance = async () => {
+        setIsQueryingBalance(true);
+        try {
+            const balance = await queryNewApiBalance(activeProfile);
+            setSettings(setApiBalanceSnapshot(useStore.getState().settings, activeProfile.id, balance));
+            message.success("余额已更新");
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : "余额查询失败");
+        } finally {
+            setIsQueryingBalance(false);
+        }
+    };
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const addAsset = useAssetStore((state) => state.addAsset);
@@ -2072,12 +2091,19 @@ function InfiniteCanvasPage() {
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
                     onOpenSettings={() => router.openSettings()}
+                    isPureBackground={isPureBackground}
+                    onTogglePureBackground={() => setIsPureBackground(!isPureBackground)}
+                    apiBalanceText={apiBalanceText}
+                    activeProfile={activeProfile}
+                    onQueryBalance={queryActiveProfileBalance}
+                    isQueryingBalance={isQueryingBalance}
                 />
 
                 <InfiniteCanvas
                     containerRef={containerRef}
                     viewport={viewport}
                     backgroundMode={backgroundMode}
+                    isPureBackground={isPureBackground}
                     onViewportChange={(next) => {
                         setViewport(next);
                         setContextMenu(null);
@@ -2340,6 +2366,12 @@ function CanvasTopBar({
     onUndo,
     onRedo,
     onOpenSettings,
+    isPureBackground,
+    onTogglePureBackground,
+    apiBalanceText,
+    activeProfile,
+    onQueryBalance,
+    isQueryingBalance,
 }: {
     title: string;
     titleDraft: string;
@@ -2358,6 +2390,12 @@ function CanvasTopBar({
     onUndo: () => void;
     onRedo: () => void;
     onOpenSettings: () => void;
+    isPureBackground: boolean;
+    onTogglePureBackground: () => void;
+    apiBalanceText: string;
+    activeProfile: any;
+    onQueryBalance: () => void;
+    isQueryingBalance: boolean;
 }) {
     const router = useRouter();
     const fallbackTheme = useThemeStore((state) => state.theme);
@@ -2433,7 +2471,38 @@ function CanvasTopBar({
                     </div>
                 </div>
 
+                {/* 中间的查询余额小面板 */}
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-sm backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}>
+                    <span>额度: {apiBalanceText || "暂无额度"}</span>
+                    <button
+                        type="button"
+                        onClick={onQueryBalance}
+                        disabled={isQueryingBalance}
+                        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition"
+                    >
+                        <RefreshCw className={cn("size-3.5", isQueryingBalance && "animate-spin")} />
+                    </button>
+                </div>
+
                 <div className="pointer-events-auto flex items-center gap-1.5">
+                    {/* 切换纯色背景按钮 */}
+                    <button
+                        type="button"
+                        className={cn(
+                            "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-white dark:hover:bg-white/10",
+                            isPureBackground && "border border-primary/50"
+                        )}
+                        style={{
+                            background: theme.toolbar.panel,
+                            color: isPureBackground ? "var(--ant-primary-color)" : theme.node.text,
+                            boxShadow: "0 10px 30px rgba(28,25,23,.10)"
+                        }}
+                        onClick={onTogglePureBackground}
+                        aria-label="快速切换纯色背景"
+                        title="快速切换纯色背景"
+                    >
+                        <Paintbrush className="size-5" />
+                    </button>
                     <button type="button" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-white dark:hover:bg-white/10" style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }} onClick={() => setShortcutsOpen(true)} aria-label="快捷键" title="快捷键">
                         <Keyboard className="size-5" />
                     </button>
