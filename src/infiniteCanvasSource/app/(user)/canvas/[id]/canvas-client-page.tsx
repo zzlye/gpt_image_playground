@@ -27,7 +27,7 @@ import { primeImageCache, useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
 import { cropDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
-import { App, Button, Dropdown, Modal } from "antd";
+import { App, Button, Dropdown, Input, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { ActiveConnectionPath, ConnectionPath } from "../components/canvas-connections";
 import { CanvasConfigNodePanel } from "../components/canvas-config-node-panel";
@@ -74,6 +74,14 @@ type QuickNodeCreateMenuState = {
     position: Position;
 };
 
+type AssetCategory = "人物" | "场景" | "物品" | "风格" | "其他";
+
+type PendingAssetSave = {
+    node: CanvasNodeData;
+    title: string;
+    category: AssetCategory;
+};
+
 type CreatableCanvasNodeType = CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video;
 
 type CanvasHistoryEntry = Pick<CanvasClipboard, "nodes" | "connections"> & {
@@ -88,6 +96,8 @@ const VIDEO_NODE_MAX_HEIGHT = 420;
 const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
+// 资产保存弹窗和资产库筛选共用这组分类，避免两个入口展示不一致。
+const ASSET_CATEGORIES: AssetCategory[] = ["人物", "场景", "物品", "风格", "其他"];
 
 function createCanvasNode(type: CanvasNodeType, position: Position, metadata?: CanvasNodeMetadata): CanvasNodeData {
     const spec = getNodeSpec(type);
@@ -330,6 +340,7 @@ function InfiniteCanvasPage() {
     const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
     const [assetPickerTab, setAssetPickerTab] = useState<AssetPickerTab>("my-assets");
+    const [pendingAssetSave, setPendingAssetSave] = useState<PendingAssetSave | null>(null);
     const [projectLoaded, setProjectLoaded] = useState(false);
     const [toolbarNodeId, setToolbarNodeId] = useState<string | null>(null);
     const [nodeImageSettingsOpen, setNodeImageSettingsOpen] = useState(false);
@@ -568,6 +579,15 @@ function InfiniteCanvasPage() {
         },
         [nodeImageSettingsOpen],
     );
+
+    const closeNodeToolbarImmediately = useCallback(() => {
+        if (toolbarHideTimerRef.current) {
+            clearTimeout(toolbarHideTimerRef.current);
+            toolbarHideTimerRef.current = null;
+        }
+        setHoveredNodeId(null);
+        setToolbarNodeId(null);
+    }, []);
 
     const hideNodeToolbar = useCallback(() => {
         if (toolbarHideTimerRef.current) clearTimeout(toolbarHideTimerRef.current);
@@ -1103,8 +1123,11 @@ function InfiniteCanvasPage() {
     const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
         event.stopPropagation();
         setContextMenu(null);
-        setHoveredNodeId(null);
-        setToolbarNodeId(null);
+        closeNodeToolbarImmediately();
+
+        // 右键只负责打开菜单，不能进入左键点击后的节点编辑和拖拽流程。
+        if (event.button !== 0) return;
+
         setSelectedConnectionId(null);
 
         const currentSelected = selectedNodeIdsRef.current;
@@ -1137,7 +1160,7 @@ function InfiniteCanvasPage() {
         historyPausedRef.current = true;
         nodeDraggingRef.current = true;
         setIsNodeDragging(true);
-    }, []);
+    }, [closeNodeToolbarImmediately]);
 
     const finishNodeDrag = useCallback((clientX?: number, clientY?: number) => {
         if (rafRef.current) {
@@ -1579,43 +1602,81 @@ function InfiniteCanvasPage() {
         [message, setLightboxImageId],
     );
 
+    const getDefaultAssetTitle = useCallback((node: CanvasNodeData) => {
+        const sourceTitle = node.title || node.metadata?.prompt || node.metadata?.content || "";
+        const trimmed = sourceTitle.trim();
+        if (trimmed) return trimmed.slice(0, 32);
+        if (node.type === CanvasNodeType.Text) return "画布文本";
+        if (node.type === CanvasNodeType.Video) return "画布视频";
+        return "画布图片";
+    }, []);
+
     const saveNodeAsset = useCallback(
-        async (node: CanvasNodeData) => {
-            if (node.type === CanvasNodeType.Text) {
-                const content = node.metadata?.content?.trim();
-                if (!content) return message.error("没有可保存的文本");
-                addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || "画布文本", coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id } });
-                message.success("已加入我的素材");
-                return;
-            }
-            if (node.type === CanvasNodeType.Video) {
-                if (!node.metadata?.content) return message.error("没有可保存的视频");
-                addAsset({ kind: "video", title: node.metadata?.prompt?.slice(0, 24) || "画布视频", coverUrl: "", tags: [], source: "Canvas", data: { url: node.metadata.content, storageKey: node.metadata.storageKey, width: node.width, height: node.height, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "video/mp4" }, metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt } });
-                message.success("已加入我的素材");
-                return;
-            }
-            if (!node.metadata?.content) return message.error("没有可保存的图片");
-            const dataUrl = node.metadata.storageKey ? "" : node.metadata.content;
-            addAsset({
-                kind: "image",
-                title: node.metadata?.prompt?.slice(0, 24) || "画布图片",
-                coverUrl: node.metadata.content,
-                tags: [],
-                source: "Canvas",
-                data: {
-                    dataUrl,
-                    storageKey: node.metadata.storageKey,
-                    width: node.metadata.naturalWidth || node.width,
-                    height: node.metadata.naturalHeight || node.height,
-                    bytes: node.metadata.bytes || getDataUrlByteSize(dataUrl),
-                    mimeType: node.metadata.mimeType || "image/png",
-                },
-                metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt },
-            });
-            message.success("已加入我的素材");
+        (node: CanvasNodeData) => {
+            if (node.type === CanvasNodeType.Text && !node.metadata?.content?.trim()) return message.error("没有可保存的文本");
+            if (node.type === CanvasNodeType.Video && !node.metadata?.content) return message.error("没有可保存的视频");
+            if (node.type === CanvasNodeType.Image && !node.metadata?.content) return message.error("没有可保存的图片");
+            if (node.type !== CanvasNodeType.Text && node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video) return message.error("当前节点不能保存为素材");
+
+            const category = ASSET_CATEGORIES.includes(node.metadata?.assetCategory as AssetCategory) ? (node.metadata?.assetCategory as AssetCategory) : "其他";
+            setPendingAssetSave({ node, title: getDefaultAssetTitle(node), category });
         },
-        [addAsset, message],
+        [getDefaultAssetTitle, message],
     );
+
+    const confirmSaveNodeAsset = useCallback(() => {
+        if (!pendingAssetSave) return;
+        const node = pendingAssetSave.node;
+        const title = pendingAssetSave.title.trim() || getDefaultAssetTitle(node);
+        const category = pendingAssetSave.category;
+
+        if (node.type === CanvasNodeType.Text) {
+            const content = node.metadata?.content?.trim();
+            if (!content) return message.error("没有可保存的文本");
+            addAsset({ kind: "text", title, coverUrl: "", tags: [category], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id, category } });
+            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, assetCategory: category } } : item)));
+            setPendingAssetSave(null);
+            message.success("已加入我的素材");
+            return;
+        }
+        if (node.type === CanvasNodeType.Video) {
+            if (!node.metadata?.content) return message.error("没有可保存的视频");
+            addAsset({
+                kind: "video",
+                title,
+                coverUrl: "",
+                tags: [category],
+                source: "Canvas",
+                data: { url: node.metadata.content, storageKey: node.metadata.storageKey, width: node.width, height: node.height, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "video/mp4" },
+                metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt, category },
+            });
+            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, assetCategory: category } } : item)));
+            setPendingAssetSave(null);
+            message.success("已加入我的素材");
+            return;
+        }
+        if (!node.metadata?.content) return message.error("没有可保存的图片");
+        const dataUrl = node.metadata.storageKey ? "" : node.metadata.content;
+        addAsset({
+            kind: "image",
+            title,
+            coverUrl: node.metadata.content,
+            tags: [category],
+            source: "Canvas",
+            data: {
+                dataUrl,
+                storageKey: node.metadata.storageKey,
+                width: node.metadata.naturalWidth || node.width,
+                height: node.metadata.naturalHeight || node.height,
+                bytes: node.metadata.bytes || getDataUrlByteSize(dataUrl),
+                mimeType: node.metadata.mimeType || "image/png",
+            },
+            metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt, category },
+        });
+        setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, assetCategory: category } } : item)));
+        setPendingAssetSave(null);
+        message.success("已加入我的素材");
+    }, [addAsset, getDefaultAssetTitle, message, pendingAssetSave]);
 
     const cropImageNode = useCallback(async (node: CanvasNodeData, crop: CanvasImageCropRect) => {
         if (!node.metadata?.content) return;
@@ -2456,6 +2517,7 @@ function InfiniteCanvasPage() {
                                 }
                                 event.preventDefault();
                                 event.stopPropagation();
+                                closeNodeToolbarImmediately();
                                 setContextMenu({ type: "node", x: event.clientX, y: event.clientY, position: screenToCanvas(event.clientX, event.clientY), nodeId: id });
                             }}
                         />
@@ -2662,14 +2724,79 @@ function InfiniteCanvasPage() {
                     defaultTab={assetPickerTab}
                     canvasNodes={nodes}
                     onRenameCanvasNode={(nodeId, title) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title } : node)))}
+                    onChangeCanvasNodeCategory={(nodeId, category) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, assetCategory: category } } : node)))}
+                    onDeleteCanvasNode={(nodeId) => deleteNodes(new Set([nodeId]))}
                     onInsert={handleAssetInsert}
                     onClose={() => {
                         assetInsertPositionRef.current = null;
                         setAssetPickerOpen(false);
                     }}
                 />
+
+                <Modal
+                    title="加入我的素材"
+                    open={Boolean(pendingAssetSave)}
+                    centered
+                    destroyOnHidden
+                    okText="保存"
+                    cancelText="取消"
+                    onCancel={() => setPendingAssetSave(null)}
+                    onOk={confirmSaveNodeAsset}
+                >
+                    <div className="space-y-4 pt-1">
+                        <AssetSavePreview node={pendingAssetSave?.node || null} />
+                        <label className="block space-y-1.5">
+                            <span className="text-sm font-medium text-stone-700 dark:text-stone-200">名称</span>
+                            <Input value={pendingAssetSave?.title || ""} placeholder="输入素材名称" onChange={(event) => setPendingAssetSave((current) => (current ? { ...current, title: event.target.value } : current))} />
+                        </label>
+                        <label className="block space-y-1.5">
+                            <span className="text-sm font-medium text-stone-700 dark:text-stone-200">子分类</span>
+                            <div className="flex overflow-hidden rounded-lg border border-stone-300 bg-stone-100 divide-x divide-stone-300 dark:border-stone-700 dark:bg-stone-950 dark:divide-stone-700">
+                                {ASSET_CATEGORIES.map((category) => {
+                                    const active = (pendingAssetSave?.category || "其他") === category;
+                                    return (
+                                        <button
+                                            key={category}
+                                            type="button"
+                                            className={`h-9 min-w-0 flex-1 px-2 text-sm transition ${active ? "bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-950" : "text-stone-700 hover:bg-stone-200 dark:text-stone-200 dark:hover:bg-stone-800"}`}
+                                            onClick={() => setPendingAssetSave((current) => (current ? { ...current, category } : current))}
+                                        >
+                                            {category}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </label>
+                    </div>
+                </Modal>
             </section>
         </main>
+    );
+}
+
+function AssetSavePreview({ node }: { node: CanvasNodeData | null }) {
+    if (!node) return null;
+    const content = node.metadata?.content || "";
+    const label = node.type === CanvasNodeType.Image ? "图片预览" : node.type === CanvasNodeType.Video ? "视频预览" : "文本预览";
+
+    return (
+        <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-900">
+            <div className="flex items-center justify-between border-b border-stone-200 px-3 py-2 text-xs text-stone-500 dark:border-stone-700 dark:text-stone-400">
+                <span>{label}</span>
+                <span>{node.type === CanvasNodeType.Image ? "图片" : node.type === CanvasNodeType.Video ? "视频" : "文本"}</span>
+            </div>
+            {node.type === CanvasNodeType.Image && content ? (
+                <div className="flex max-h-64 items-center justify-center bg-black/5 p-2 dark:bg-black/25">
+                    <img src={content} alt={node.title || "素材预览"} className="max-h-60 max-w-full rounded-lg object-contain" />
+                </div>
+            ) : node.type === CanvasNodeType.Video && content ? (
+                <div className="flex max-h-64 items-center justify-center bg-black p-2">
+                    <video src={content} className="max-h-60 max-w-full rounded-lg object-contain" controls muted playsInline />
+                </div>
+            ) : (
+                <div className="max-h-40 overflow-auto p-3 text-sm leading-6 text-stone-700 dark:text-stone-200">{content || node.title || "暂无内容"}</div>
+            )}
+        </div>
     );
 }
 

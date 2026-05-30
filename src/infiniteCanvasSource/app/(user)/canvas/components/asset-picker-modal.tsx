@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Empty, Input, Modal, Pagination, Tabs, Tag } from "antd";
-import { Edit3, Search } from "lucide-react";
+import { Dropdown, Empty, Input, Modal, Pagination, Tabs, Tag } from "antd";
+import { Search, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 
 export type AssetPickerTab = "canvas" | "my-assets";
+export type AssetCategory = "人物" | "场景" | "物品" | "风格" | "其他";
 
 export type InsertAssetPayload = { kind: "text"; content: string; title: string } | { kind: "image"; dataUrl: string; title: string; storageKey?: string } | { kind: "video"; url: string; title: string; storageKey?: string; width?: number; height?: number };
 
@@ -17,11 +18,22 @@ type Props = {
     defaultTab?: AssetPickerTab;
     canvasNodes: CanvasNodeData[];
     onRenameCanvasNode: (nodeId: string, title: string) => void;
+    onChangeCanvasNodeCategory: (nodeId: string, category: AssetCategory) => void;
+    onDeleteCanvasNode: (nodeId: string) => void;
     onInsert: (payload: InsertAssetPayload) => void;
     onClose: () => void;
 };
 
 const PAGE_SIZE = 8;
+const assetCategoryOptions: Array<{ label: "全部" | AssetCategory; value: "all" | AssetCategory }> = [
+    { label: "全部", value: "all" },
+    { label: "人物", value: "人物" },
+    { label: "场景", value: "场景" },
+    { label: "物品", value: "物品" },
+    { label: "风格", value: "风格" },
+    { label: "其他", value: "其他" },
+];
+const assetCategoryValues = assetCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
 
 const kindOptions = [
     { label: "全部", value: "all" },
@@ -30,7 +42,7 @@ const kindOptions = [
     { label: "视频", value: "video" },
 ];
 
-export function AssetPickerModal({ open, defaultTab = "my-assets", canvasNodes, onRenameCanvasNode, onInsert, onClose }: Props) {
+export function AssetPickerModal({ open, defaultTab = "my-assets", canvasNodes, onRenameCanvasNode, onChangeCanvasNodeCategory, onDeleteCanvasNode, onInsert, onClose }: Props) {
     const [activeTab, setActiveTab] = useState<AssetPickerTab>(defaultTab);
 
     useEffect(() => {
@@ -43,7 +55,7 @@ export function AssetPickerModal({ open, defaultTab = "my-assets", canvasNodes, 
                 activeKey={activeTab}
                 onChange={(key) => setActiveTab(key as AssetPickerTab)}
                 items={[
-                    { key: "canvas", label: "画布", children: <CanvasAssetsTab nodes={canvasNodes} onRename={onRenameCanvasNode} onInsert={onInsert} /> },
+                    { key: "canvas", label: "画布", children: <CanvasAssetsTab nodes={canvasNodes} onRename={onRenameCanvasNode} onChangeCategory={onChangeCanvasNodeCategory} onDelete={onDeleteCanvasNode} onInsert={onInsert} /> },
                     { key: "my-assets", label: "我的素材", children: <MyAssetsTab onInsert={onInsert} /> },
                 ]}
             />
@@ -51,9 +63,10 @@ export function AssetPickerModal({ open, defaultTab = "my-assets", canvasNodes, 
     );
 }
 
-function CanvasAssetsTab({ nodes, onRename, onInsert }: { nodes: CanvasNodeData[]; onRename: (nodeId: string, title: string) => void; onInsert: (payload: InsertAssetPayload) => void }) {
+function CanvasAssetsTab({ nodes, onRename, onChangeCategory, onDelete, onInsert }: { nodes: CanvasNodeData[]; onRename: (nodeId: string, title: string) => void; onChangeCategory: (nodeId: string, category: AssetCategory) => void; onDelete: (nodeId: string) => void; onInsert: (payload: InsertAssetPayload) => void }) {
     const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState("all");
+    const [categoryFilter, setCategoryFilter] = useState<"all" | AssetCategory>("all");
     const [page, setPage] = useState(1);
 
     const assets = useMemo(
@@ -68,8 +81,9 @@ function CanvasAssetsTab({ nodes, onRename, onInsert }: { nodes: CanvasNodeData[
         const query = keyword.trim().toLowerCase();
         return assets
             .filter((node) => kindFilter === "all" || node.type === kindFilter)
+            .filter((node) => categoryFilter === "all" || getCanvasNodeAssetCategory(node) === categoryFilter)
             .filter((node) => !query || [node.title, node.metadata?.content, node.metadata?.prompt].filter(Boolean).join(" ").toLowerCase().includes(query));
-    }, [assets, keyword, kindFilter]);
+    }, [assets, categoryFilter, keyword, kindFilter]);
 
     const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
@@ -94,6 +108,7 @@ function CanvasAssetsTab({ nodes, onRename, onInsert }: { nodes: CanvasNodeData[
         <PickerList
             keyword={keyword}
             kindFilter={kindFilter}
+            categoryFilter={categoryFilter}
             total={filtered.length}
             page={page}
             empty="当前画布没有可插入素材"
@@ -105,10 +120,14 @@ function CanvasAssetsTab({ nodes, onRename, onInsert }: { nodes: CanvasNodeData[
                 setPage(1);
                 setKindFilter(value);
             }}
+            onCategoryChange={(value) => {
+                setPage(1);
+                setCategoryFilter(value);
+            }}
             onPageChange={setPage}
         >
             {visible.map((node) => (
-                <CanvasPickerCard key={node.id} node={node} onInsert={() => handleInsert(node)} onRename={(title) => onRename(node.id, title)} />
+                <CanvasPickerCard key={node.id} node={node} onInsert={() => handleInsert(node)} onRename={(title) => onRename(node.id, title)} onChangeCategory={(category) => onChangeCategory(node.id, category)} onDelete={() => onDelete(node.id)} />
             ))}
         </PickerList>
     );
@@ -117,8 +136,10 @@ function CanvasAssetsTab({ nodes, onRename, onInsert }: { nodes: CanvasNodeData[
 function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => void }) {
     const assets = useAssetStore((state) => state.assets);
     const updateAsset = useAssetStore((state) => state.updateAsset);
+    const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState("all");
+    const [categoryFilter, setCategoryFilter] = useState<"all" | AssetCategory>("all");
     const [page, setPage] = useState(1);
 
     const filtered = useMemo(() => {
@@ -126,8 +147,9 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
         return assets
             .filter((asset) => asset.kind === "text" || asset.kind === "image" || asset.kind === "video")
             .filter((asset) => kindFilter === "all" || asset.kind === kindFilter)
+            .filter((asset) => categoryFilter === "all" || getStoredAssetCategory(asset) === categoryFilter)
             .filter((asset) => !query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query));
-    }, [assets, keyword, kindFilter]);
+    }, [assets, categoryFilter, keyword, kindFilter]);
 
     const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
@@ -148,6 +170,7 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
         <PickerList
             keyword={keyword}
             kindFilter={kindFilter}
+            categoryFilter={categoryFilter}
             total={filtered.length}
             page={page}
             empty="没有素材"
@@ -159,16 +182,27 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
                 setPage(1);
                 setKindFilter(value);
             }}
+            onCategoryChange={(value) => {
+                setPage(1);
+                setCategoryFilter(value);
+            }}
             onPageChange={setPage}
         >
             {visible.map((asset) => (
-                <StoredPickerCard key={asset.id} asset={asset} onInsert={() => handleInsert(asset)} onRename={(title) => updateAsset(asset.id, { title })} />
+                <StoredPickerCard
+                    key={asset.id}
+                    asset={asset}
+                    onInsert={() => handleInsert(asset)}
+                    onRename={(title) => updateAsset(asset.id, { title })}
+                    onChangeCategory={(category) => updateAsset(asset.id, { tags: [category], metadata: { ...(asset.metadata || {}), category } })}
+                    onDelete={() => removeAsset(asset.id)}
+                />
             ))}
         </PickerList>
     );
 }
 
-function PickerList({ keyword, kindFilter, total, page, empty, onKeywordChange, onKindChange, onPageChange, children }: { keyword: string; kindFilter: string; total: number; page: number; empty: string; onKeywordChange: (value: string) => void; onKindChange: (value: string) => void; onPageChange: (page: number) => void; children: React.ReactNode }) {
+function PickerList({ keyword, kindFilter, categoryFilter, total, page, empty, onKeywordChange, onKindChange, onCategoryChange, onPageChange, children }: { keyword: string; kindFilter: string; categoryFilter: "all" | AssetCategory; total: number; page: number; empty: string; onKeywordChange: (value: string) => void; onKindChange: (value: string) => void; onCategoryChange: (value: "all" | AssetCategory) => void; onPageChange: (page: number) => void; children: React.ReactNode }) {
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -176,6 +210,14 @@ function PickerList({ keyword, kindFilter, total, page, empty, onKeywordChange, 
                 <div className="flex gap-1.5">
                     {kindOptions.map((opt) => (
                         <Tag.CheckableTag key={opt.value} checked={kindFilter === opt.value} className={cn("prompt-filter-tag", kindFilter === opt.value && "is-active")} onChange={() => onKindChange(opt.value)}>
+                            {opt.label}
+                        </Tag.CheckableTag>
+                    ))}
+                </div>
+                <div className="h-5 w-px bg-stone-200 dark:bg-stone-700" />
+                <div className="flex gap-1.5">
+                    {assetCategoryOptions.map((opt) => (
+                        <Tag.CheckableTag key={opt.value} checked={categoryFilter === opt.value} className={cn("prompt-filter-tag", categoryFilter === opt.value && "is-active")} onChange={() => onCategoryChange(opt.value)}>
                             {opt.label}
                         </Tag.CheckableTag>
                     ))}
@@ -193,17 +235,17 @@ function PickerList({ keyword, kindFilter, total, page, empty, onKeywordChange, 
     );
 }
 
-function CanvasPickerCard({ node, onInsert, onRename }: { node: CanvasNodeData; onInsert: () => void; onRename: (title: string) => void }) {
-    return <PickerCard title={node.title} kind={node.type} cover={node.type === CanvasNodeType.Image ? node.metadata?.content || "" : node.type === CanvasNodeType.Video ? node.metadata?.content || "" : ""} text={node.type === CanvasNodeType.Text ? node.metadata?.content || node.title : ""} onInsert={onInsert} onRename={onRename} />;
+function CanvasPickerCard({ node, onInsert, onRename, onChangeCategory, onDelete }: { node: CanvasNodeData; onInsert: () => void; onRename: (title: string) => void; onChangeCategory: (category: AssetCategory) => void; onDelete: () => void }) {
+    return <PickerCard title={node.title} kind={node.type} category={getCanvasNodeAssetCategory(node)} cover={node.type === CanvasNodeType.Image ? node.metadata?.content || "" : node.type === CanvasNodeType.Video ? node.metadata?.content || "" : ""} text={node.type === CanvasNodeType.Text ? node.metadata?.content || node.title : ""} onInsert={onInsert} onRename={onRename} onChangeCategory={onChangeCategory} onDelete={onDelete} />;
 }
 
-function StoredPickerCard({ asset, onInsert, onRename }: { asset: Asset; onInsert: () => void; onRename: (title: string) => void }) {
+function StoredPickerCard({ asset, onInsert, onRename, onChangeCategory, onDelete }: { asset: Asset; onInsert: () => void; onRename: (title: string) => void; onChangeCategory: (category: AssetCategory) => void; onDelete: () => void }) {
     const cover = asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : asset.kind === "video" ? asset.data.url : "");
     const text = asset.kind === "text" ? asset.data.content : "";
-    return <PickerCard title={asset.title} kind={asset.kind} cover={cover} text={text} onInsert={onInsert} onRename={onRename} />;
+    return <PickerCard title={asset.title} kind={asset.kind} category={getStoredAssetCategory(asset)} cover={cover} text={text} onInsert={onInsert} onRename={onRename} onChangeCategory={onChangeCategory} onDelete={onDelete} />;
 }
 
-function PickerCard({ title, kind, cover, text, onInsert, onRename }: { title: string; kind: string; cover: string; text?: string; onInsert: () => void; onRename: (title: string) => void }) {
+function PickerCard({ title, kind, category, cover, text, onInsert, onRename, onChangeCategory, onDelete }: { title: string; kind: string; category: AssetCategory; cover: string; text?: string; onInsert: () => void; onRename: (title: string) => void; onChangeCategory: (category: AssetCategory) => void; onDelete: () => void }) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(title);
 
@@ -216,6 +258,19 @@ function PickerCard({ title, kind, cover, text, onInsert, onRename }: { title: s
         setEditing(false);
         if (next && next !== title) onRename(next);
         else setDraft(title);
+    };
+
+    const confirmDelete = (event: React.MouseEvent) => {
+        event.stopPropagation();
+        Modal.confirm({
+            title: "删除素材？",
+            content: "删除后不会再显示在这个素材列表里。",
+            okText: "删除",
+            okButtonProps: { danger: true },
+            cancelText: "取消",
+            centered: true,
+            onOk: onDelete,
+        });
     };
 
     return (
@@ -242,25 +297,55 @@ function PickerCard({ title, kind, cover, text, onInsert, onRename }: { title: s
                             onClick={(event) => event.stopPropagation()}
                         />
                     ) : (
-                        <button type="button" className="min-w-0 flex-1 cursor-pointer truncate text-left text-xs font-medium text-stone-800 dark:text-stone-200" onClick={onInsert} title={title}>
+                        <button type="button" className="min-w-0 flex-1 cursor-text truncate text-left text-xs font-medium text-stone-800 dark:text-stone-200" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            setEditing(true);
+                        }} title={`${title}，双击重命名`}>
                             {title}
                         </button>
                     )}
                     <Tag className="m-0 shrink-0 text-[10px]">{kind === "image" ? "图片" : kind === "video" ? "视频" : "文本"}</Tag>
                 </div>
-                <button
-                    type="button"
-                    className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        setEditing(true);
-                    }}
-                >
-                    <Edit3 className="size-3" />
-                    重命名
-                </button>
+                <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400">
+                    <Dropdown
+                        trigger={["click"]}
+                        menu={{
+                            items: assetCategoryValues.map((item) => ({ key: item, label: item })),
+                            onClick: ({ key }) => onChangeCategory(key as AssetCategory),
+                        }}
+                    >
+                        <button
+                            type="button"
+                            className="rounded-md bg-stone-100 px-1.5 py-0.5 transition hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700"
+                            onClick={(event) => event.stopPropagation()}
+                            title="点击修改子分类"
+                        >
+                            {category}
+                        </button>
+                    </Dropdown>
+                    <span>双击名称重命名</span>
+                </div>
             </div>
             <div className="pointer-events-none absolute inset-x-0 top-0 flex aspect-[4/3] items-center justify-center bg-stone-950/0 text-sm font-medium text-white opacity-0 transition group-hover:bg-stone-950/45 group-hover:opacity-100">插入</div>
+            <button
+                type="button"
+                className="absolute bottom-2 right-2 z-10 grid size-8 translate-y-1 place-items-center rounded-full border border-red-200 bg-white/95 text-red-500 opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100 hover:bg-red-50 dark:border-red-500/40 dark:bg-stone-950/95 dark:hover:bg-red-950/40"
+                onClick={confirmDelete}
+                aria-label="删除素材"
+                title="删除"
+            >
+                <Trash2 className="size-4" />
+            </button>
         </div>
     );
+}
+
+function getCanvasNodeAssetCategory(node: CanvasNodeData): AssetCategory {
+    const value = node.metadata?.assetCategory;
+    return assetCategoryValues.includes(value as AssetCategory) ? (value as AssetCategory) : "其他";
+}
+
+function getStoredAssetCategory(asset: Asset): AssetCategory {
+    const value = asset.metadata?.category || asset.tags?.[0];
+    return assetCategoryValues.includes(value as AssetCategory) ? (value as AssetCategory) : "其他";
 }
