@@ -13,6 +13,7 @@ type InfiniteCanvasProps = {
     isPureBackground?: boolean;
     onViewportChange: (viewport: ViewportTransform) => void;
     onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
+    onCanvasDoubleClick?: (event: React.PointerEvent<HTMLDivElement>) => void;
     onCanvasDeselect?: () => void;
     onContextMenu?: (event: React.MouseEvent) => void;
     onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -26,6 +27,7 @@ export function InfiniteCanvas({
     isPureBackground = false,
     onViewportChange,
     onCanvasMouseDown,
+    onCanvasDoubleClick,
     onCanvasDeselect,
     onContextMenu,
     onDrop,
@@ -40,6 +42,7 @@ export function InfiniteCanvas({
         initialY: 0,
         hasMoved: false,
     });
+    const lastBackgroundClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
     const scaleRef = useRef(viewport.k);
     const frameRef = useRef<number | null>(null);
     const nextViewportRef = useRef<ViewportTransform | null>(null);
@@ -101,7 +104,21 @@ export function InfiniteCanvas({
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest("[data-canvas-no-zoom]")) return;
         if (target?.closest("[data-connection-create-menu]")) return;
+        if (target?.closest("[data-canvas-node-create-menu]")) return;
         const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
+
+        if (event.button === 0 && isBackgroundClick && !event.ctrlKey && !event.metaKey && !isSpacePressed) {
+            const now = window.performance.now();
+            const lastClick = lastBackgroundClickRef.current;
+            const isDoubleClick = lastClick && now - lastClick.time < 360 && Math.hypot(event.clientX - lastClick.x, event.clientY - lastClick.y) < 10;
+            lastBackgroundClickRef.current = isDoubleClick ? null : { time: now, x: event.clientX, y: event.clientY };
+            if (isDoubleClick) {
+                event.preventDefault();
+                event.stopPropagation();
+                onCanvasDoubleClick?.(event);
+                return;
+            }
+        }
 
         if (event.button === 0 && (event.ctrlKey || event.metaKey) && isBackgroundClick) {
             event.preventDefault();
@@ -138,6 +155,7 @@ export function InfiniteCanvas({
             const dy = event.clientY - panState.current.startY;
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
                 panState.current.hasMoved = true;
+                lastBackgroundClickRef.current = null;
             }
 
             nextViewportRef.current = {

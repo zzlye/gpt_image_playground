@@ -68,6 +68,12 @@ type PendingConnectionCreate = {
     position: Position;
 };
 
+type QuickNodeCreateMenuState = {
+    position: Position;
+};
+
+type CreatableCanvasNodeType = CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video;
+
 type CanvasHistoryEntry = Pick<CanvasClipboard, "nodes" | "connections"> & {
     chatSessions: CanvasAssistantSession[];
     activeChatId: string | null;
@@ -146,7 +152,7 @@ function CanvasRefreshShell() {
     );
 }
 
-function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video) => void; onClose: () => void }) {
+function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CreatableCanvasNodeType) => void; onClose: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     return (
         <div
@@ -174,6 +180,48 @@ function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: Pending
     );
 }
 
+function QuickNodeCreateMenu({
+    menu,
+    onCreate,
+    onUpload,
+    onOpenAssetLibrary,
+    onClose,
+}: {
+    menu: QuickNodeCreateMenuState;
+    onCreate: (type: CreatableCanvasNodeType) => void;
+    onUpload: () => void;
+    onOpenAssetLibrary: () => void;
+    onClose: () => void;
+}) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    return (
+        <div
+            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
+            data-canvas-node-create-menu
+            style={{ left: menu.position.x, top: menu.position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+        >
+            <div className="mb-2 flex items-center justify-between px-1">
+                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
+                    快速选择节点
+                </span>
+                <button type="button" className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:bg-white/10 hover:opacity-100" onClick={onClose} aria-label="关闭">
+                    ×
+                </button>
+            </div>
+            <div className="grid gap-1">
+                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
+                <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
+                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
+                <ConnectionCreateOption theme={theme} icon={<Upload className="size-5" />} title="上传" description="图片、视频文件" onClick={onUpload} />
+                <ConnectionCreateOption theme={theme} icon={<Images className="size-5" />} title="素材库" description="从素材库选择插入" onClick={onOpenAssetLibrary} />
+            </div>
+        </div>
+    );
+}
+
 function ConnectionCreateOption({ theme, icon, title, description, onClick }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
     return (
         <button type="button" className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left transition" style={{ color: theme.node.text }} onClick={onClick} onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)} onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}>
@@ -196,6 +244,7 @@ function InfiniteCanvasPage() {
     const containerRef = useRef<HTMLDivElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const uploadTargetRef = useRef<{ nodeId?: string; position?: Position } | null>(null);
+    const assetInsertPositionRef = useRef<Position | null>(null);
     const clipboardRef = useRef<CanvasClipboard | null>(null);
     const historyRef = useRef<{ past: CanvasHistoryEntry[]; future: CanvasHistoryEntry[] }>({ past: [], future: [] });
     const lastHistoryRef = useRef<CanvasHistoryEntry | null>(null);
@@ -269,6 +318,7 @@ function InfiniteCanvasPage() {
     const [connectingParams, setConnectingParams] = useState<ConnectionHandle | null>(null);
     const [connectionTargetNodeId, setConnectionTargetNodeId] = useState<string | null>(null);
     const [pendingConnectionCreate, setPendingConnectionCreate] = useState<PendingConnectionCreate | null>(null);
+    const [quickNodeCreateMenu, setQuickNodeCreateMenu] = useState<QuickNodeCreateMenuState | null>(null);
     const [mouseWorld, setMouseWorld] = useState<Position>({ x: 0, y: 0 });
     const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -714,6 +764,37 @@ function InfiniteCanvasPage() {
         [effectiveConfig.imageModel, effectiveConfig.model, effectiveConfig.size, getCanvasCenter],
     );
 
+    const handleCanvasDoubleClick = useCallback(
+        (event: ReactPointerEvent<HTMLDivElement>) => {
+            const position = screenToCanvas(event.clientX, event.clientY);
+            setQuickNodeCreateMenu({ position });
+            setContextMenu(null);
+            setPendingConnectionCreate(null);
+            setConnecting(null);
+            setSelectedNodeIds(new Set());
+            setSelectedConnectionId(null);
+            setSelectionBox(null);
+        },
+        [screenToCanvas, setConnecting],
+    );
+
+    const createQuickNode = useCallback(
+        (type: CreatableCanvasNodeType) => {
+            if (!quickNodeCreateMenu) return;
+            createNode(type, quickNodeCreateMenu.position);
+            setQuickNodeCreateMenu(null);
+        },
+        [createNode, quickNodeCreateMenu],
+    );
+
+    const openAssetLibraryFromQuickMenu = useCallback(() => {
+        if (!quickNodeCreateMenu) return;
+        assetInsertPositionRef.current = quickNodeCreateMenu.position;
+        setAssetPickerTab("library");
+        setAssetPickerOpen(true);
+        setQuickNodeCreateMenu(null);
+    }, [quickNodeCreateMenu]);
+
     const deleteNodes = useCallback(
         (ids: Set<string>) => {
             if (!ids.size) return;
@@ -771,6 +852,7 @@ function InfiniteCanvasPage() {
 
     const deselectCanvas = useCallback(() => {
         cancelPendingConnectionCreate();
+        setQuickNodeCreateMenu(null);
         setSelectedNodeIds(new Set());
         setSelectedConnectionId(null);
         setContextMenu(null);
@@ -956,6 +1038,7 @@ function InfiniteCanvasPage() {
 
     const handleCanvasMouseDown = useCallback(
         (event: ReactPointerEvent<HTMLDivElement>) => {
+            setQuickNodeCreateMenu(null);
             setContextMenu(null);
             if (pendingConnectionCreateRef.current) cancelPendingConnectionCreate();
             if (event.button !== 0) return;
@@ -1558,6 +1641,12 @@ function InfiniteCanvasPage() {
         imageInputRef.current?.click();
     }, []);
 
+    const uploadFromQuickMenu = useCallback(() => {
+        if (!quickNodeCreateMenu) return;
+        handleUploadRequest(undefined, quickNodeCreateMenu.position);
+        setQuickNodeCreateMenu(null);
+    }, [handleUploadRequest, quickNodeCreateMenu]);
+
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
             const file = event.target.files?.[0];
@@ -2059,11 +2148,11 @@ function InfiniteCanvasPage() {
     );
 
     const insertAssistantImage = useCallback(
-        async (image: CanvasAssistantImage) => {
+        async (image: CanvasAssistantImage, position?: Position) => {
             const storedImage = image.storageKey ? { url: image.dataUrl, storageKey: image.storageKey, width: 1, height: 1, bytes: 0, mimeType: "image/png" } : await uploadImage(image.dataUrl);
             const meta = storedImage.width === 1 && storedImage.height === 1 ? await readImageMeta(storedImage.url) : storedImage;
             const config = fitNodeSize(meta.width, meta.height);
-            const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+            const center = position || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const id = `image-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             const node: CanvasNodeData = {
                 id,
@@ -2084,8 +2173,8 @@ function InfiniteCanvasPage() {
     );
 
     const insertAssistantText = useCallback(
-        (text: string) => {
-            const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+        (text: string, position?: Position) => {
+            const center = position || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const node = {
                 ...createCanvasNode(CanvasNodeType.Text, center, { content: text, status: NODE_STATUS_SUCCESS }),
                 title: text.slice(0, 32) || "Assistant Text",
@@ -2100,18 +2189,20 @@ function InfiniteCanvasPage() {
 
     const handleAssetInsert = useCallback(
         (payload: InsertAssetPayload) => {
+            const insertPosition = assetInsertPositionRef.current || undefined;
             if (payload.kind === "text") {
-                insertAssistantText(payload.content);
+                insertAssistantText(payload.content, insertPosition);
             } else if (payload.kind === "video") {
                 const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
-                const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+                const center = insertPosition || screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
                 const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
                 const nextSize = fitNodeSize(payload.width || spec.width, payload.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
                 setNodes((prev) => [...prev, { id, type: CanvasNodeType.Video, title: payload.title, position: { x: center.x - nextSize.width / 2, y: center.y - nextSize.height / 2 }, width: nextSize.width, height: nextSize.height, metadata: { content: payload.url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, naturalWidth: payload.width, naturalHeight: payload.height } }]);
                 setSelectedNodeIds(new Set([id]));
             } else {
-                insertAssistantImage({ id: `asset-${Date.now()}`, prompt: payload.title, dataUrl: payload.dataUrl, storageKey: payload.storageKey });
+                insertAssistantImage({ id: `asset-${Date.now()}`, prompt: payload.title, dataUrl: payload.dataUrl, storageKey: payload.storageKey }, insertPosition);
             }
+            assetInsertPositionRef.current = null;
             setAssetPickerOpen(false);
         },
         [insertAssistantImage, insertAssistantText, screenToCanvas, size.height, size.width],
@@ -2155,9 +2246,11 @@ function InfiniteCanvasPage() {
                     isPureBackground={isPureBackground}
                     onViewportChange={(next) => {
                         setViewport(next);
+                        setQuickNodeCreateMenu(null);
                         setContextMenu(null);
                     }}
                     onCanvasMouseDown={handleCanvasMouseDown}
+                    onCanvasDoubleClick={handleCanvasDoubleClick}
                     onCanvasDeselect={deselectCanvas}
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
@@ -2311,6 +2404,7 @@ function InfiniteCanvasPage() {
                         />
                     ) : null}
                     {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
+                    {quickNodeCreateMenu ? <QuickNodeCreateMenu menu={quickNodeCreateMenu} onCreate={createQuickNode} onUpload={uploadFromQuickMenu} onOpenAssetLibrary={openAssetLibraryFromQuickMenu} onClose={() => setQuickNodeCreateMenu(null)} /> : null}
                 </InfiniteCanvas>
 
                 <CanvasNodeHoverToolbar
@@ -2354,10 +2448,12 @@ function InfiniteCanvasPage() {
                     onBackgroundModeChange={setBackgroundMode}
                     onShowImageInfoChange={setShowImageInfo}
                     onOpenAssetLibrary={() => {
+                        assetInsertPositionRef.current = null;
                         setAssetPickerTab("library");
                         setAssetPickerOpen(true);
                     }}
                     onOpenMyAssets={() => {
+                        assetInsertPositionRef.current = null;
                         setAssetPickerTab("my-assets");
                         setAssetPickerOpen(true);
                     }}
@@ -2425,7 +2521,15 @@ function InfiniteCanvasPage() {
                     <p className="text-sm opacity-60">这会删除当前画布上的所有节点和连线。</p>
                 </Modal>
 
-                <AssetPickerModal open={assetPickerOpen} defaultTab={assetPickerTab} onInsert={handleAssetInsert} onClose={() => setAssetPickerOpen(false)} />
+                <AssetPickerModal
+                    open={assetPickerOpen}
+                    defaultTab={assetPickerTab}
+                    onInsert={handleAssetInsert}
+                    onClose={() => {
+                        assetInsertPositionRef.current = null;
+                        setAssetPickerOpen(false);
+                    }}
+                />
             </section>
         </main>
     );
