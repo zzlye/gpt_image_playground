@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Sparkles } from 'lucide-react'
+import { AppProviders } from './infiniteCanvasSource/components/layout/app-providers'
+import { PromptSelectDialog } from './infiniteCanvasSource/components/prompts/prompt-select-dialog'
+import { useConfigStore } from './infiniteCanvasSource/stores/use-config-store'
+import { useThemeStore } from './infiniteCanvasSource/stores/use-theme-store'
+import { getActiveApiProfile, normalizeSettings } from './lib/apiProfiles'
 import { flushSync } from 'react-dom'
 import { initStore } from './store'
 import { useStore } from './store'
@@ -42,6 +48,41 @@ export default function App() {
   const appearanceBackgroundBlur = useStore((s) => s.settings.appearanceBackgroundBlur)
   const appearanceNightMode = useStore((s) => s.settings.appearanceNightMode)
   const [workspaceMode, setWorkspaceMode] = useState<'gallery' | 'canvas'>('gallery')
+  const [promptSelectOpen, setPromptSelectOpen] = useState(false)
+
+  useEffect(() => {
+    if (workspaceMode !== 'gallery') return
+    const normalizedSettings = normalizeSettings(settings)
+    const activeProfile = getActiveApiProfile(normalizedSettings)
+    const appearanceTheme: 'light' | 'dark' = normalizedSettings.appearanceNightMode ? 'dark' : 'light'
+
+    useThemeStore.getState().setTheme(appearanceTheme)
+    useConfigStore.setState((state) => ({
+      config: {
+        ...state.config,
+        channelMode: 'local',
+        baseUrl: activeProfile.baseUrl,
+        apiKey: activeProfile.apiKey,
+        timeout: activeProfile.timeout,
+        model: activeProfile.model,
+        imageModel: activeProfile.model,
+        textVideoBaseUrl: normalizedSettings.textVideoBaseUrl,
+        textVideoApiKey: normalizedSettings.textVideoApiKey,
+        textVideoApiProxy: normalizedSettings.textVideoApiProxy,
+        textVideoTimeout: normalizedSettings.textVideoTimeout,
+        textBaseUrl: normalizedSettings.textBaseUrl,
+        textApiKey: normalizedSettings.textApiKey,
+        textApiProxy: normalizedSettings.textApiProxy,
+        textTimeout: normalizedSettings.textTimeout,
+        videoBaseUrl: normalizedSettings.videoBaseUrl,
+        videoApiKey: normalizedSettings.videoApiKey,
+        videoApiProxy: normalizedSettings.videoApiProxy,
+        videoTimeout: normalizedSettings.videoTimeout,
+        textModel: normalizedSettings.textModel || state.config.textModel,
+        videoModel: normalizedSettings.videoModel || state.config.videoModel,
+      },
+    }))
+  }, [settings, workspaceMode])
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementContent, setAnnouncementContent] = useState('')
   const [announcementPublishedAt, setAnnouncementPublishedAt] = useState<string | undefined>(undefined)
@@ -165,7 +206,8 @@ export default function App() {
   }
 
   return (
-    <>
+    <AppProviders>
+      <>
       <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-white dark:bg-gray-950" />
       {appearanceBackgroundImageUrl.trim() && (
         <>
@@ -225,6 +267,27 @@ export default function App() {
         >
           公告
         </button>
+        {workspaceMode === 'gallery' && (
+          <button
+            type="button"
+            onClick={() => setPromptSelectOpen(true)}
+            className="fixed bottom-4 right-4 z-50 rounded-full border border-gray-200/70 bg-white/85 px-3 py-2 text-xs font-medium text-gray-700 shadow-lg backdrop-blur transition hover:bg-white hover:text-gray-900 dark:border-white/[0.08] dark:bg-gray-900/85 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            提示词库
+          </button>
+        )}
+        <PromptSelectDialog
+          open={promptSelectOpen}
+          onOpenChange={setPromptSelectOpen}
+          onSelect={(selectedPrompt) => {
+            const currentPrompt = useStore.getState().prompt
+            if (currentPrompt.trim()) {
+              useStore.getState().setPrompt(currentPrompt + '\n' + selectedPrompt)
+            } else {
+              useStore.getState().setPrompt(selectedPrompt)
+            }
+          }}
+        />
         {announcementOpen && (
           <AnnouncementModal
             content={announcementContent}
@@ -238,6 +301,7 @@ export default function App() {
           />
         )}
       </div>
-    </>
+      </>
+    </AppProviders>
   )
 }

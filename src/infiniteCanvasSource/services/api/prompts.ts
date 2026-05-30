@@ -252,9 +252,17 @@ function cleanMarkdownText(value: string) {
 }
 
 function findFirstImageUrl(block: string) {
-    const markdownImage = block.match(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
-    const htmlImage = block.match(/<img[^>]+src=["']([^"']+)["']/i);
-    return markdownImage?.[1] || htmlImage?.[1] || "";
+    // 跳过 shields.io badge 和其他小图标，只提取实际的封面图片
+    const badgePattern = /img\.shields\.io|badge\.svg|badge-/i;
+    // 尝试匹配所有 markdown 图片和 HTML img 标签
+    const markdownImages = [...block.matchAll(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)];
+    const htmlImages = [...block.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)];
+    const allUrls = [
+        ...markdownImages.map((m) => m[1]),
+        ...htmlImages.map((m) => m[1]),
+    ];
+    // 过滤掉 badge 类的 URL，返回第一个有效封面图
+    return allUrls.find((url) => !badgePattern.test(url)) || "";
 }
 
 function resolvePromptCover(value: string, title: string, category: string) {

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
 export type CanvasRoute = {
   pathname: string
@@ -31,9 +31,10 @@ function useCanvasNavigation() {
   return value
 }
 
+// 使用 useMemo 缓存 router 对象，避免每次渲染返回新引用导致依赖了 router 的 useEffect 无限循环
 export function useRouter() {
   const navigation = useCanvasNavigation()
-  return {
+  return useMemo(() => ({
     push: navigation.navigate,
     replace: navigation.navigate,
     back: navigation.backToHome,
@@ -42,7 +43,7 @@ export function useRouter() {
     setAppearanceTheme: navigation.setAppearanceTheme,
     refresh: () => undefined,
     prefetch: async () => undefined,
-  }
+  }), [navigation])
 }
 
 export function useParams<T extends Record<string, string> = Record<string, string>>() {

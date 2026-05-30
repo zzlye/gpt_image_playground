@@ -111,7 +111,15 @@ export function AppTopNav() {
 
             {!hideHeader ? (
                 <nav className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
-                    <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full border border-gray-200/90 bg-white/98 p-1 shadow-[0_14px_38px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/[0.14] dark:bg-gray-950/96 dark:shadow-[0_14px_38px_rgba(0,0,0,0.44)]">
+                    <div
+                        className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full p-1.5 shadow-[0_12px_34px_rgba(15,23,42,0.18)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.52)]"
+                        style={{
+                            backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+                            border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.08)',
+                            backdropFilter: 'blur(24px) saturate(1.12)',
+                            WebkitBackdropFilter: 'blur(24px) saturate(1.12)'
+                        }}
+                    >
                         {navigationTools.map((tool) => {
                             const Icon = tool.icon;
                             const active = tool.slug === activeToolSlug;

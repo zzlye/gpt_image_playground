@@ -74,6 +74,8 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
   const appearanceTheme: 'light' | 'dark' = normalizedSettings.appearanceNightMode ? 'dark' : 'light'
   const [route, setRoute] = useState<CanvasRoute>({ pathname: '/canvas', params: {} })
 
+
+
   useEffect(() => {
     // 画布工坊复用文运工坊设置，避免打开画布时继续拉取原项目的后端配置。
     useThemeStore.getState().setTheme(appearanceTheme)

@@ -30,7 +30,21 @@ export function PromptCard({
             styles={{ body: { padding: 0 } }}
             cover={
                 <button type="button" className="block w-full text-left" onClick={onOpen}>
-                    <img src={item.coverUrl} alt={item.title} className="aspect-[4/3] w-full object-cover" />
+                    <img
+                        src={item.coverUrl}
+                        alt={item.title}
+                        className="aspect-[4/3] w-full object-cover"
+                        onError={(e) => {
+                            // 封面图加载失败时，隐藏破损图标并显示渐变占位背景
+                            const img = e.currentTarget;
+                            img.style.display = "none";
+                            const wrapper = img.parentElement;
+                            if (wrapper) {
+                                wrapper.style.background = "linear-gradient(135deg, #e0e7ff 0%, #f8fafc 100%)";
+                                wrapper.style.aspectRatio = "4/3";
+                            }
+                        }}
+                    />
                 </button>
             }
         >
