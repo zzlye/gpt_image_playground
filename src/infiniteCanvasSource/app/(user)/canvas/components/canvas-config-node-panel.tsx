@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Edit3, Eye, Image as ImageIcon, LoaderCircle, MessageSquare, Play, Video } from "lucide-react";
 import { App, Button, Empty, Input, Modal, Segmented } from "antd";
 
@@ -10,11 +10,12 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getFixedImageModelUnitCostText } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getFixedImageModelUnitCostText, getImageModelOptionsForProfile, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import type { NodeGenerationInput } from "./canvas-node-generation";
 import type { CanvasGenerationMode, CanvasNodeData, CanvasNodeMetadata } from "../types";
+import { useStore } from "../../../../../store";
 
 type CanvasConfigNodePanelProps = {
     node: CanvasNodeData;
@@ -34,9 +35,12 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
     const globalConfig = useEffectiveConfig();
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const settings = useStore((state) => state.settings);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const mode = node.metadata?.generationMode || "image";
-    const config = buildNodeConfig(globalConfig, node, mode);
+    const config = buildNodeConfig(globalConfig, node, mode, activeProfile.id);
+    const imageModelOptions = getImageModelOptionsForProfile(activeProfile.id);
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(node.metadata?.count || 3)) || 1)));
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? count : 1 });
     const imageCostText = mode === "image" ? getFixedImageModelUnitCostText(config.model) || "HUHN --" : null;
@@ -121,7 +125,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
             </div>
 
             <div className={`mb-2 grid min-w-0 cursor-default items-center gap-2 ${mode === "text" ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_148px]"}`} onMouseDown={(event) => event.stopPropagation()}>
-                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} options={mode === "image" ? [...FIXED_IMAGE_MODEL_OPTIONS] : undefined} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} fullWidth />
+                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} options={mode === "image" ? imageModelOptions : undefined} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} fullWidth />
                 {mode === "video" ? (
                     <CanvasVideoSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, key === "videoSeconds" ? { seconds: value } : { [key]: value })} />
                 ) : mode === "image" ? (
@@ -137,7 +141,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
                 onClick={() => onGenerate(node.id)}
             >
                 <span className="inline-flex items-center gap-1.5">
-                    {imageCostText ? (
+                    {mode === "video" ? null : imageCostText ? (
                         <span className="inline-flex items-center gap-1">{imageCostText}</span>
                     ) : (
                         <span className="inline-flex items-center gap-1">
@@ -321,10 +325,10 @@ function InputChip({ label, value, style }: { label: string; value: string; styl
     );
 }
 
-function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasGenerationMode): AiConfig {
+function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasGenerationMode, activeProfileId: string): AiConfig {
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : globalConfig.textModel;
     const model = node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model;
-    const resolvedModel = mode === "image" ? normalizeFixedImageModel(model) : model;
+    const resolvedModel = mode === "image" ? normalizeImageModelForProfile(model, activeProfileId) : model;
     return {
         ...globalConfig,
         model: resolvedModel,
@@ -335,9 +339,4 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 3 : globalConfig.count) || defaultConfig.count),
     };
-}
-
-function normalizeFixedImageModel(model: string) {
-    const normalized = model.trim();
-    return FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_IMAGES_MODEL;
 }

@@ -64,6 +64,17 @@ export function getFixedImageModelUnitCostText(model: string): string | null {
   return /^Nano-Banana-Pro(?:-(?:1k|2k|4k))?$/i.test(normalized) ? 'HUHN 0.18' : 'HUHN 0.09'
 }
 
+export function getImageModelOptionsForProfile(profileId: string) {
+  return profileId === LOCKED_PUBLIC_PROFILE_ID
+    ? FIXED_IMAGE_MODEL_OPTIONS.filter((option) => option.value === DEFAULT_IMAGES_MODEL)
+    : [...FIXED_IMAGE_MODEL_OPTIONS]
+}
+
+export function normalizeImageModelForProfile(model: string, profileId: string): string {
+  if (profileId === LOCKED_PUBLIC_PROFILE_ID) return DEFAULT_IMAGES_MODEL
+  return normalizeFixedImageModel(model)
+}
+
 function normalizeFixedImageModel(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_IMAGES_MODEL
   const model = value.trim()

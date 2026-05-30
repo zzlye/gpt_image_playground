@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUp, LoaderCircle } from "lucide-react";
 import { Button } from "antd";
 
@@ -9,11 +9,12 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getFixedImageModelUnitCostText } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getFixedImageModelUnitCostText, getImageModelOptionsForProfile, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData } from "../types";
+import { useStore } from "../../../../../store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -30,9 +31,12 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const globalConfig = useEffectiveConfig();
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
+    const settings = useStore((state) => state.settings);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const mode = defaultMode(node.type);
-    const config = buildNodeConfig(globalConfig, node, mode);
+    const config = buildNodeConfig(globalConfig, node, mode, activeProfile.id);
+    const imageModelOptions = getImageModelOptionsForProfile(activeProfile.id);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const isEditingExistingContent = hasTextContent || hasImageContent;
@@ -82,7 +86,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} options={[...FIXED_IMAGE_MODEL_OPTIONS]} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} />
+                            <ModelPicker config={config} value={config.model} options={imageModelOptions} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} />
                             <CanvasImageSettingsPopover
                                 config={config}
                                 placement="topLeft"
@@ -109,7 +113,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     aria-label="生成"
                 >
                     <span className="flex items-center gap-1.5">
-                        {imageCostText ? (
+                        {mode === "video" ? null : imageCostText ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">{imageCostText}</span>
                         ) : (
                             <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
@@ -129,10 +133,10 @@ function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {
     return type === CanvasNodeType.Text ? "text" : type === CanvasNodeType.Video ? "video" : "image";
 }
 
-function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode): AiConfig {
+function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode, activeProfileId: string): AiConfig {
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : globalConfig.textModel;
     const model = node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model;
-    const resolvedModel = mode === "image" ? normalizeFixedImageModel(model) : model;
+    const resolvedModel = mode === "image" ? normalizeImageModelForProfile(model, activeProfileId) : model;
     return {
         ...globalConfig,
         model: resolvedModel,
@@ -143,9 +147,4 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 3 : globalConfig.count) || defaultConfig.count),
     };
-}
-
-function normalizeFixedImageModel(model: string) {
-    const normalized = model.trim();
-    return FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_IMAGES_MODEL;
 }

@@ -468,10 +468,17 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
     const metaLabel = [sizeLabel, bytesLabel].filter(Boolean).join(" · ");
 
     return (
-        <div className="flex h-full w-full flex-col gap-2.5 p-3" style={{ background: `linear-gradient(145deg, ${theme.toolbar.panel}, ${theme.node.fill})`, color: theme.node.text }}>
+        <div
+            className="flex h-full w-full flex-col gap-2.5 p-3 backdrop-blur-md"
+            style={{
+                background: theme.toolbar.panel,
+                color: theme.node.text,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18), 0 16px 42px rgba(28,25,23,.08)",
+            }}
+        >
             <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
                 <div className="flex min-w-0 items-center gap-2">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-xl" style={{ background: theme.toolbar.activeBg, color: theme.node.text }}>
+                    <span className="grid size-8 shrink-0 place-items-center rounded-xl border" style={{ background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text }}>
                         <Video className="size-4" />
                     </span>
                     <div className="min-w-0">
@@ -484,7 +491,7 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 </span>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-inner" style={{ background: "#050505", borderColor: theme.node.stroke }}>
+            <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-inner" style={{ background: "linear-gradient(180deg, #050505, #111111)", borderColor: theme.node.stroke }}>
                 {videoUrl ? (
                     <video src={videoUrl} controls loop playsInline preload="metadata" className="h-full w-full bg-black object-contain" data-canvas-no-zoom />
                 ) : (
