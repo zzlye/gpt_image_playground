@@ -10,7 +10,6 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getFixedImageModelUnitCostText } from "../../../../../lib/apiProfiles";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import type { NodeGenerationInput } from "./canvas-node-generation";
@@ -39,7 +38,6 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
     const config = buildNodeConfig(globalConfig, node, mode);
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(node.metadata?.count || 3)) || 1)));
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? count : 1 });
-    const videoCostText = mode === "video" ? getFixedImageModelUnitCostText(config.model) || "HUHN --" : null;
     const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
     const textInputs = inputs.filter((input) => input.type === "text");
     const imageInputs = inputs.filter((input) => input.type === "image");
@@ -121,7 +119,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
             </div>
 
             <div className={`mb-2 grid min-w-0 cursor-default items-center gap-2 ${mode === "text" ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_148px]"}`} onMouseDown={(event) => event.stopPropagation()}>
-                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} options={mode === "video" ? [...FIXED_IMAGE_MODEL_OPTIONS] : undefined} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} fullWidth />
+                <ModelPicker className="canvas-compact-control h-10" config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} fullWidth />
                 {mode === "video" ? (
                     <CanvasVideoSettingsPopover config={config} placement="topRight" buttonClassName="canvas-compact-control !h-10 !w-full !justify-start !rounded-lg !px-2" onConfigChange={(key, value) => onConfigChange(node.id, key === "videoSeconds" ? { seconds: value } : { [key]: value })} />
                 ) : mode === "image" ? (
@@ -137,14 +135,10 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
                 onClick={() => onGenerate(node.id)}
             >
                 <span className="inline-flex items-center gap-1.5">
-                    {videoCostText ? (
-                        <span className="inline-flex items-center gap-1">{videoCostText}</span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1">
-                            <CreditSymbol />
-                            {credits.toLocaleString()}
-                        </span>
-                    )}
+                    <span className="inline-flex items-center gap-1">
+                        <CreditSymbol />
+                        {credits.toLocaleString()}
+                    </span>
                     {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4" />}
                     <span>开始生成</span>
                 </span>
@@ -323,20 +317,13 @@ function InputChip({ label, value, style }: { label: string; value: string; styl
 
 function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : globalConfig.textModel;
-    const model = node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model;
     return {
         ...globalConfig,
-        model: mode === "video" ? normalizeFixedVideoModel(model) : model,
-        videoModel: mode === "video" ? normalizeFixedVideoModel(model) : globalConfig.videoModel,
+        model: node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model,
         quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 3 : globalConfig.count) || defaultConfig.count),
     };
-}
-
-function normalizeFixedVideoModel(model: string) {
-    const normalized = model.trim();
-    return FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_IMAGES_MODEL;
 }

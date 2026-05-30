@@ -9,7 +9,6 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getFixedImageModelUnitCostText } from "../../../../../lib/apiProfiles";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
@@ -38,7 +37,6 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const isEditingExistingContent = hasTextContent || hasImageContent;
     const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? config.count : 1 });
-    const videoCostText = mode === "video" ? getFixedImageModelUnitCostText(config.model) || "HUHN --" : null;
 
     useEffect(() => {
         setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");
@@ -94,7 +92,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                         </>
                     ) : mode === "video" ? (
                         <>
-                            <ModelPicker config={config} value={config.model} options={[...FIXED_IMAGE_MODEL_OPTIONS]} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} />
+                            <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} />
                             <CanvasVideoSettingsPopover config={config} buttonClassName="!h-10 !max-w-[170px] !justify-start !rounded-full !px-3" onConfigChange={(key, value) => onConfigChange(node.id, key === "videoSeconds" ? { seconds: value } : { [key]: value })} />
                         </>
                     ) : (
@@ -109,14 +107,10 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
                     aria-label="生成"
                 >
                     <span className="flex items-center gap-1.5">
-                        {videoCostText ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">{videoCostText}</span>
-                        ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
-                                <CreditSymbol />
-                                {credits.toLocaleString()}
-                            </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums">
+                            <CreditSymbol />
+                            {credits.toLocaleString()}
+                        </span>
                         {isRunning ? <LoaderCircle className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
                     </span>
                 </Button>
@@ -131,20 +125,13 @@ function defaultMode(type: CanvasNodeData["type"]): CanvasNodeGenerationMode {
 
 function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: CanvasNodeGenerationMode): AiConfig {
     const defaultModel = mode === "image" ? globalConfig.imageModel : mode === "video" ? globalConfig.videoModel : globalConfig.textModel;
-    const model = node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model;
     return {
         ...globalConfig,
-        model: mode === "video" ? normalizeFixedVideoModel(model) : model,
-        videoModel: mode === "video" ? normalizeFixedVideoModel(model) : globalConfig.videoModel,
+        model: node.metadata?.model || defaultModel || globalConfig.model || defaultConfig.model,
         quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 3 : globalConfig.count) || defaultConfig.count),
     };
-}
-
-function normalizeFixedVideoModel(model: string) {
-    const normalized = model.trim();
-    return FIXED_IMAGE_MODEL_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_IMAGES_MODEL;
 }
