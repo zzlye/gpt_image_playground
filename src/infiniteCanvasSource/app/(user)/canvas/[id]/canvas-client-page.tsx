@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Home, ImageIcon, Images, Keyboard, List, Menu, Paintbrush, Plus, Redo2, RefreshCw, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
+import { Home, ImageIcon, Images, Keyboard, List, Menu, Paintbrush, Plus, Redo2, Settings, Settings2, Trash2, Undo2, Upload, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
@@ -2474,16 +2474,16 @@ function CanvasTopBar({
                     </div>
                 </div>
 
-                {/* 中间的查询余额小面板 */}
-                <div className="pointer-events-auto flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-sm backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}>
-                    <span>额度: {apiBalanceText || "暂无额度"}</span>
+                {/* 中间余额面板和文运工坊保持一致，展示当前固定站点名称。 */}
+                <div className="pointer-events-auto flex max-w-[48vw] items-center gap-2 rounded-full border py-1 pl-3 pr-1 text-xs font-medium shadow-sm backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}>
+                    <span className="min-w-0 truncate">{activeProfile?.name || "当前站点"}：{apiBalanceText || "未查询"}</span>
                     <button
                         type="button"
                         onClick={onQueryBalance}
                         disabled={isQueryingBalance}
-                        className="flex h-5 w-5 items-center justify-center rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition"
+                        className="shrink-0 rounded-full bg-blue-500 px-2 py-0.5 text-[11px] font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <RefreshCw className={cn("size-3.5", isQueryingBalance && "animate-spin")} />
+                        {isQueryingBalance ? "查询中" : "查询"}
                     </button>
                 </div>
 

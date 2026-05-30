@@ -378,7 +378,27 @@ function ExternalApiConfigSection({
   onToggleShowApiKey,
   onFetchModels,
 }: ExternalApiConfigSectionProps) {
-  const modelListId = `${idPrefix}-model-options`
+  const modelInputId = `${idPrefix}-model-input`
+  const modelMenuRef = useRef<HTMLDivElement>(null)
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const modelQuery = model.trim().toLowerCase()
+  const visibleModelOptions = modelOptions
+    .filter((item) => !modelQuery || item.toLowerCase().includes(modelQuery))
+    .slice(0, 80)
+
+  useEffect(() => {
+    if (modelOptions.length) setModelMenuOpen(true)
+  }, [modelOptions])
+
+  useEffect(() => {
+    if (!modelMenuOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (modelMenuRef.current?.contains(event.target as Node)) return
+      setModelMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [modelMenuOpen])
 
   return (
     <section className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/55 p-4 dark:border-white/[0.08] dark:bg-white/[0.025]" aria-label={title} title={description}>
@@ -429,7 +449,7 @@ function ExternalApiConfigSection({
         </div>
       </div>
 
-      <label className="block">
+      <div ref={modelMenuRef} className="relative block">
         <div className="mb-1.5 flex items-center justify-between gap-3">
           <span className="block text-sm text-gray-600 dark:text-gray-300">模型 ID</span>
           <button
@@ -442,20 +462,47 @@ function ExternalApiConfigSection({
           </button>
         </div>
         <input
+          id={modelInputId}
           value={model}
-          list={modelOptions.length ? modelListId : undefined}
-          onChange={(e) => onModelDraftChange(e.target.value)}
+          onFocus={() => {
+            if (modelOptions.length) setModelMenuOpen(true)
+          }}
+          onChange={(e) => {
+            onModelDraftChange(e.target.value)
+            if (modelOptions.length) setModelMenuOpen(true)
+          }}
           onBlur={(e) => onModelCommit(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setModelMenuOpen(false)
+          }}
           type="text"
           placeholder="填写模型 ID，或点击获取模型后选择"
           className="w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
         />
-        {modelOptions.length ? (
-          <datalist id={modelListId}>
-            {modelOptions.map((item) => <option key={item} value={item} />)}
-          </datalist>
+        {modelMenuOpen && modelOptions.length ? (
+          <div className="absolute left-0 right-0 top-full z-[120] mt-1 max-h-56 overflow-y-auto rounded-xl border border-gray-200/70 bg-white/95 py-1 text-sm shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10 custom-scrollbar">
+            {visibleModelOptions.length ? (
+              visibleModelOptions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className={`block w-full truncate px-3 py-2 text-left transition ${item === model ? 'bg-blue-50 font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300' : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/[0.06]'}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onModelDraftChange(item)
+                    onModelCommit(item)
+                    setModelMenuOpen(false)
+                  }}
+                >
+                  {item}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">没有匹配模型</div>
+            )}
+          </div>
         ) : null}
-      </label>
+      </div>
 
       <label className="block">
         <span className="mb-1.5 block text-sm text-gray-600 dark:text-gray-300">请求超时 (秒)</span>
