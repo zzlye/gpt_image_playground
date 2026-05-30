@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Image as ImageIcon, RefreshCw, Star, Video } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Plus, RefreshCw, Star, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes } from "@/lib/image-utils";
@@ -20,6 +20,7 @@ type CanvasNodeProps = {
     isFocusRelated: boolean;
     isConnectionTarget: boolean;
     isConnecting: boolean;
+    handlePointerY?: number | null;
     editRequestNonce?: number;
     showPanel: boolean;
     showImageInfo: boolean;
@@ -71,6 +72,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     isFocusRelated,
     isConnectionTarget,
     isConnecting,
+    handlePointerY,
     editRequestNonce = 0,
     showPanel,
     showImageInfo,
@@ -309,8 +311,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 <ResizeHandle corner="bottom-right" onMouseDown={handleResizeMouseDown} />
             </div>
 
-            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
-            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
+            <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} pointerY={handlePointerY} onMouseDown={(event) => onConnectStart(event, data.id, "target")} />
+            <ConnectionHandleDot side="right" visible={data.type !== CanvasNodeType.Config && (hovered || isSelected || isConnecting)} pointerY={handlePointerY} onMouseDown={(event) => onConnectStart(event, data.id, "source")} />
 
             {showPanel && renderPanel && data.type !== CanvasNodeType.Config ? <div className="absolute left-1/2 top-full z-[70] w-[500px] -translate-x-1/2 pt-4">{renderPanel(data)}</div> : null}
         </div>
@@ -616,17 +618,25 @@ function ResizeHandle({ corner, onMouseDown }: { corner: ResizeCorner; onMouseDo
     return <div className={`absolute z-50 size-7 ${positionClass}`} onMouseDown={(event) => onMouseDown(event, corner)} />;
 }
 
-function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "right"; visible: boolean; onMouseDown: (event: React.MouseEvent) => void }) {
+function ConnectionHandleDot({ side, visible, pointerY, onMouseDown }: { side: "left" | "right"; visible: boolean; pointerY?: number | null; onMouseDown: (event: React.MouseEvent) => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const yPercent = typeof pointerY === "number" ? Math.min(92, Math.max(8, pointerY)) : 50;
 
     return (
         <div
-            className={`absolute top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150 ${
-                side === "left" ? "-left-6" : "-right-6"
+            className={`group/handle absolute z-40 flex h-28 w-20 -translate-y-1/2 cursor-crosshair items-center justify-center transition-[top,opacity] duration-100 ease-out ${
+                side === "left" ? "-left-10 justify-start pl-3" : "-right-10 justify-end pr-3"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+            style={{ top: `${yPercent}%` }}
             onMouseDown={onMouseDown}
+            title="拖拽连接节点"
         >
-            <div className="size-3 rounded-full border-2 transition-all hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+            <div
+                className="grid size-7 place-items-center rounded-full border shadow-lg backdrop-blur-md transition-all duration-150 group-hover/handle:scale-110 group-hover/handle:opacity-100"
+                style={{ background: `${theme.toolbar.panel}cc`, borderColor: `${theme.node.activeStroke}cc`, color: theme.node.activeStroke, opacity: 0.72 }}
+            >
+                <Plus className="size-4 stroke-[2.5]" />
+            </div>
         </div>
     );
 }

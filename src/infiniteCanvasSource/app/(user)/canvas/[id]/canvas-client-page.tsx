@@ -265,6 +265,7 @@ function InfiniteCanvasPage() {
     const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
     const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    const [nodeHandlePointer, setNodeHandlePointer] = useState<{ nodeId: string; y: number } | null>(null);
     const [connectingParams, setConnectingParams] = useState<ConnectionHandle | null>(null);
     const [connectionTargetNodeId, setConnectionTargetNodeId] = useState<string | null>(null);
     const [pendingConnectionCreate, setPendingConnectionCreate] = useState<PendingConnectionCreate | null>(null);
@@ -498,6 +499,7 @@ function InfiniteCanvasPage() {
     const setConnecting = useCallback((next: ConnectionHandle | null) => {
         connectingParamsRef.current = next;
         setConnectingParams(next);
+        if (!next) setNodeHandlePointer(null);
         if (!next) {
             connectionTargetNodeIdRef.current = null;
             setConnectionTargetNodeId(null);
@@ -571,20 +573,34 @@ function InfiniteCanvasPage() {
     const getConnectableNodeAtPoint = useCallback(
         (clientX: number, clientY: number, current: ConnectionHandle) => {
             const world = screenToCanvas(clientX, clientY);
-            return (
-                [...nodesRef.current]
-                    .filter((node) => !isHiddenBatchChild(node, nodesRef.current))
-                    .reverse()
-                    .find(
-                        (node) =>
-                            node.id !== current.nodeId &&
-                            Boolean(normalizeConnection(current.nodeId, node.id, nodesRef.current, current.handleType)) &&
-                            world.x >= node.position.x &&
-                            world.x <= node.position.x + node.width &&
-                            world.y >= node.position.y &&
-                            world.y <= node.position.y + node.height,
-                    )?.id || null
-            );
+            const hitPadding = 56 / Math.max(viewportRef.current.k, 0.35);
+            const target = [...nodesRef.current]
+                .filter((node) => !isHiddenBatchChild(node, nodesRef.current))
+                .reverse()
+                .find((node) => {
+                    if (node.id === current.nodeId) return false;
+                    if (!normalizeConnection(current.nodeId, node.id, nodesRef.current, current.handleType)) return false;
+                    const left = node.position.x - hitPadding;
+                    const right = node.position.x + node.width + hitPadding;
+                    const top = node.position.y - hitPadding;
+                    const bottom = node.position.y + node.height + hitPadding;
+                    if (world.x < left || world.x > right || world.y < top || world.y > bottom) return false;
+
+                    // 靠近目标节点左右边缘时优先吸附，节点间距很近时也能稳定选中。
+                    const nearLeftHandle = Math.abs(world.x - node.position.x) <= hitPadding;
+                    const nearRightHandle = Math.abs(world.x - (node.position.x + node.width)) <= hitPadding;
+                    const insideNode = world.x >= node.position.x && world.x <= node.position.x + node.width && world.y >= node.position.y && world.y <= node.position.y + node.height;
+                    return insideNode || nearLeftHandle || nearRightHandle;
+                });
+            if (target) {
+                setNodeHandlePointer({
+                    nodeId: target.id,
+                    y: ((world.y - target.position.y) / Math.max(target.height, 1)) * 100,
+                });
+                return target.id;
+            }
+            setNodeHandlePointer(null);
+            return null;
         },
         [screenToCanvas],
     );
@@ -721,6 +737,11 @@ function InfiniteCanvasPage() {
         },
         [chatSessions, cleanupCanvasFiles, projectId],
     );
+
+    const deleteConnection = useCallback((connectionId: string) => {
+        setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+        setSelectedConnectionId((current) => (current === connectionId ? null : current));
+    }, []);
 
     const deselectCanvas = useCallback(() => {
         cancelPendingConnectionCreate();
@@ -1104,6 +1125,7 @@ function InfiniteCanvasPage() {
                     connectNodes(currentConnection, targetNodeId);
                     setConnecting(null);
                 } else {
+                    setNodeHandlePointer(null);
                     setMouseWorld(screenToCanvas(event.clientX, event.clientY));
                     setPendingConnectionCreate({ connection: currentConnection, position: screenToCanvas(event.clientX, event.clientY) });
                 }
@@ -1256,8 +1278,7 @@ function InfiniteCanvasPage() {
                 if (selectedNodeIdsRef.current.size) {
                     deleteNodes(new Set(selectedNodeIdsRef.current));
                 } else if (selectedConnectionId) {
-                    setConnections((prev) => prev.filter((conn) => conn.id !== selectedConnectionId));
-                    setSelectedConnectionId(null);
+                    deleteConnection(selectedConnectionId);
                 }
             }
 
@@ -1279,7 +1300,7 @@ function InfiniteCanvasPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [copySelectedNodes, deleteNodes, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
+    }, [copySelectedNodes, deleteConnection, deleteNodes, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
 
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
@@ -1288,6 +1309,7 @@ function InfiniteCanvasPage() {
             setConnecting({ nodeId, handleType });
             connectionTargetNodeIdRef.current = null;
             setConnectionTargetNodeId(null);
+            setNodeHandlePointer(null);
             setSelectedConnectionId(null);
         },
         [screenToCanvas, setConnecting],
@@ -2133,11 +2155,13 @@ function InfiniteCanvasPage() {
                                         from={from}
                                         to={to}
                                         active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
+                                        selected={selectedConnectionId === connection.id}
                                         onSelect={() => {
                                             setSelectedConnectionId(connection.id);
                                             setSelectedNodeIds(new Set());
                                             setContextMenu(null);
                                         }}
+                                        onDelete={() => deleteConnection(connection.id)}
                                     />
                                 );
                             })}
@@ -2154,6 +2178,7 @@ function InfiniteCanvasPage() {
                             isFocusRelated={activeNodeId === node.id}
                             isConnectionTarget={connectionTargetNodeId === node.id}
                             isConnecting={Boolean(connectingParams)}
+                            handlePointerY={nodeHandlePointer?.nodeId === node.id ? nodeHandlePointer.y : null}
                             editRequestNonce={editingNodeId === node.id ? editRequestNonce : 0}
                             showPanel={dialogNodeId === node.id && !selectionBox}
                             batchCount={batchChildCountById.get(node.id) || 0}

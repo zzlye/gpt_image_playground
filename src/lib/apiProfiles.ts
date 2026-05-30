@@ -1,7 +1,6 @@
 import type {
   ApiMode,
   ApiBalanceSnapshot,
-  ApiModelUnitCostSnapshot,
   ApiProfile,
   ApiProvider,
   AppSettings,
@@ -19,6 +18,33 @@ import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '..
 import { normalizeBaseUrl, shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
+import {
+  DEFAULT_IMAGES_MODEL,
+  FIXED_IMAGE_MODEL_OPTIONS,
+  GPT_IMAGE_2_4K_MODEL,
+  GPT_IMAGE_2_4K_REQUEST_MODEL,
+  getBananaPricedImageModel,
+  getImageModelSubmitCostText,
+  getFixedImageModelUnitCostText,
+  getFixedImageRequestModel,
+  getImageModelOptionsForProfile,
+  isBananaImageModel,
+  normalizeFixedImageModel,
+} from './modelPricing'
+
+export {
+  DEFAULT_IMAGES_MODEL,
+  FIXED_IMAGE_MODEL_OPTIONS,
+  GPT_IMAGE_2_4K_MODEL,
+  GPT_IMAGE_2_4K_REQUEST_MODEL,
+  getBananaPricedImageModel,
+  getImageModelSubmitCostText,
+  getFixedImageModelUnitCostText,
+  getFixedImageRequestModel,
+  getImageModelOptionsForProfile,
+  isBananaImageModel,
+  normalizeFixedImageModel,
+} from './modelPricing'
 
 export const LOCKED_WENYUN_PROFILE_ID = 'wenyun-site'
 export const LOCKED_PUBLIC_PROFILE_ID = 'public-site'
@@ -33,112 +59,19 @@ const DOCKER_DEPLOYMENT = readRuntimeEnv(import.meta.env.VITE_DOCKER_DEPLOYMENT)
 const DEFAULT_BASE_URL = isImportableConfigUrl(RAW_DEFAULT_API_URL)
   ? ''
   : RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : OPENAI_DEFAULT_BASE_URL)
-export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
-export const GPT_IMAGE_2_4K_MODEL = 'gpt-image-2-4k'
-export const GPT_IMAGE_2_4K_REQUEST_MODEL = 'gpt-image-2-vip'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = LOCKED_WENYUN_PROFILE_ID
 export const DEFAULT_API_TIMEOUT = 600
 
-export const FIXED_IMAGE_MODEL_OPTIONS = [
-  { value: DEFAULT_IMAGES_MODEL, label: DEFAULT_IMAGES_MODEL },
-  { value: GPT_IMAGE_2_4K_MODEL, label: GPT_IMAGE_2_4K_MODEL },
-  { value: 'Nano-Banana-2', label: 'Nano Banana 2' },
-  { value: 'Nano-Banana-Pro', label: 'Nano Banana Pro' },
-] as const
-
-const FIXED_IMAGE_MODEL_VALUES = new Set<string>(FIXED_IMAGE_MODEL_OPTIONS.map((option) => option.value))
-
-export function isBananaImageModel(model: string): boolean {
-  return /^Nano-Banana(?:-|$)/i.test(model.trim())
-}
-
-export function getBananaPricedImageModel(model: string): string {
-  const normalized = model.trim()
-  if (!isBananaImageModel(normalized)) return model
-  return /^Nano-Banana-Pro$/i.test(normalized) ? 'nano-banana-pro' : 'nano-banana-2'
-}
-
-export function getFixedImageRequestModel(model: string): string {
-  const normalized = model.trim()
-  // 4K 展示模型固定走文运站的 VIP 上游模型。
-  if (/^gpt-image-2-(?:4k|vip)$/i.test(normalized)) return GPT_IMAGE_2_4K_REQUEST_MODEL
-  if (isBananaImageModel(normalized)) return getBananaPricedImageModel(normalized)
-  return normalized
-}
-
-export function getFixedImageModelUnitCostText(model: string): string | null {
-  const normalized = model.trim()
-  if (normalized === DEFAULT_IMAGES_MODEL) return 'HUHN 0.06'
-  if (/^gpt-image-2-(?:4k|vip)$/i.test(normalized)) return 'HUHN 0.15'
-  if (!isBananaImageModel(normalized)) return null
-  return /^Nano-Banana-Pro(?:-(?:1k|2k|4k))?$/i.test(normalized) ? 'HUHN 0.18' : 'HUHN 0.09'
-}
-
-export function getApiModelUnitCostKey(profileId: string, model: string): string {
-  return `${profileId}:${getFixedImageRequestModel(model).trim().toLowerCase()}`
-}
-
-export function getApiModelUnitCostSnapshot(
-  settings: Pick<AppSettings, 'apiModelUnitCostByProfileModel' | 'apiModelUnitCostProfileId' | 'apiModelUnitCostText' | 'apiModelUnitCostUpdatedAt'>,
-  profileId: string,
-  model: string,
-): ApiModelUnitCostSnapshot | null {
-  const key = getApiModelUnitCostKey(profileId, model)
-  return settings.apiModelUnitCostByProfileModel[key] ?? (
-    settings.apiModelUnitCostProfileId === key && settings.apiModelUnitCostText
-      ? {
-          text: settings.apiModelUnitCostText,
-          updatedAt: settings.apiModelUnitCostUpdatedAt,
-        }
-      : null
-  )
-}
-
-export function getApiModelUnitCostText(settings: AppSettings, profileId: string, model: string): string | null {
-  return getApiModelUnitCostSnapshot(settings, profileId, model)?.text ?? getFixedImageModelUnitCostText(model)
-}
-
-export function setApiModelUnitCostSnapshot(
-  settings: AppSettings,
-  profileId: string,
-  model: string,
-  snapshot: ApiModelUnitCostSnapshot,
-): Partial<AppSettings> {
-  const key = getApiModelUnitCostKey(profileId, model)
-  return {
-    apiModelUnitCostText: snapshot.text,
-    apiModelUnitCostUpdatedAt: snapshot.updatedAt,
-    apiModelUnitCostProfileId: key,
-    apiModelUnitCostByProfileModel: {
-      ...settings.apiModelUnitCostByProfileModel,
-      [key]: snapshot,
-    },
-  }
-}
-
-export function getImageModelOptionsForProfile(profileId: string) {
-  return profileId === LOCKED_PUBLIC_PROFILE_ID
-    ? FIXED_IMAGE_MODEL_OPTIONS.filter((option) => option.value === DEFAULT_IMAGES_MODEL)
-    : [...FIXED_IMAGE_MODEL_OPTIONS]
-}
-
 export function normalizeImageModelForProfile(model: string, profileId: string): string {
   if (profileId === LOCKED_PUBLIC_PROFILE_ID) return DEFAULT_IMAGES_MODEL
   return normalizeFixedImageModel(model)
 }
 
-function normalizeFixedImageModel(value: unknown): string {
-  if (typeof value !== 'string') return DEFAULT_IMAGES_MODEL
-  const model = value.trim()
-  if (/^gpt-image-2-(?:4k|vip)$/i.test(model)) return GPT_IMAGE_2_4K_MODEL
-  if (/^Nano-Banana$/i.test(model)) return 'Nano-Banana-2'
-  if (/^Nano-Banana-Pro-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-Pro'
-  if (/^Nano-Banana-2-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'
-  if (/^Nano-Banana-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'
-  return FIXED_IMAGE_MODEL_VALUES.has(model) ? model : DEFAULT_IMAGES_MODEL
+export function getApiModelUnitCostText(_settings: AppSettings, _profileId: string, model: string): string | null {
+  return getFixedImageModelUnitCostText(model)
 }
 
 const LOCKED_OPENAI_PROFILE_DEFINITIONS = [
@@ -318,50 +251,6 @@ function normalizeAppearanceUrl(value: unknown): string {
   // 旧版本曾保存随机入口本身，会导致刷新或打开设置时重新随机，这里直接迁移清空。
   if (/^https:\/\/i\.mukyu\.ru\/random(?:\?|$)/i.test(url)) return ''
   return url
-}
-
-function normalizeModelUnitCostText(value: unknown): string {
-  if (typeof value !== 'string') return 'HUHN 0.06'
-  const text = value.trim()
-  if (!text) return 'HUHN 0.06'
-  return text.replace(/^单次\s*/u, '')
-}
-
-function normalizeApiModelUnitCostSnapshot(value: unknown): ApiModelUnitCostSnapshot | null {
-  if (!isRecord(value)) return null
-  const rawText = typeof value.text === 'string' ? value.text.trim() : ''
-  if (!rawText) return null
-  const text = normalizeModelUnitCostText(rawText)
-  const rawPrice = typeof value.rawPrice === 'number' ? value.rawPrice : Number(value.rawPrice)
-  return {
-    text,
-    updatedAt: normalizeApiBalanceUpdatedAt(value.updatedAt),
-    rawPrice: Number.isFinite(rawPrice) ? rawPrice : undefined,
-  }
-}
-
-function normalizeApiModelUnitCostByProfileModel(record: Record<string, unknown>, profileIds: Set<string>): Record<string, ApiModelUnitCostSnapshot> {
-  const costs: Record<string, ApiModelUnitCostSnapshot> = {}
-  if (isRecord(record.apiModelUnitCostByProfileModel)) {
-    for (const [key, value] of Object.entries(record.apiModelUnitCostByProfileModel)) {
-      const profileId = key.split(':', 1)[0]
-      if (!profileIds.has(profileId)) continue
-      const snapshot = normalizeApiModelUnitCostSnapshot(value)
-      if (snapshot) costs[key] = snapshot
-    }
-  }
-
-  const legacyKey = typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : ''
-  const legacyProfileId = legacyKey.split(':', 1)[0]
-  if (profileIds.has(legacyProfileId) && legacyKey && !costs[legacyKey]) {
-    const legacySnapshot = normalizeApiModelUnitCostSnapshot({
-      text: record.apiModelUnitCostText,
-      updatedAt: record.apiModelUnitCostUpdatedAt,
-    })
-    if (legacySnapshot) costs[legacyKey] = legacySnapshot
-  }
-
-  return costs
 }
 
 function lockOpenAIProfile(profile: ApiProfile): ApiProfile {
@@ -764,7 +653,6 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const profiles = createLockedOpenAIProfiles(record.profiles, legacyProfile)
   const profileIds = new Set(profiles.map((profile) => profile.id))
   const apiBalanceByProfileId = normalizeApiBalanceByProfileId(record, profileIds)
-  const apiModelUnitCostByProfileModel = normalizeApiModelUnitCostByProfileModel(record, profileIds)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -828,10 +716,6 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     apiBalanceUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiBalanceUpdatedAt),
     apiBalanceProfileId: typeof record.apiBalanceProfileId === 'string' ? record.apiBalanceProfileId : undefined,
     apiBalanceByProfileId,
-    apiModelUnitCostText: normalizeModelUnitCostText(record.apiModelUnitCostText),
-    apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
-    apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),
-    apiModelUnitCostByProfileModel,
     announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
     announcementDismissedHash: typeof record.announcementDismissedHash === 'string' ? record.announcementDismissedHash : undefined,
     announcementDismissedForever: typeof record.announcementDismissedForever === 'boolean' ? record.announcementDismissedForever : false,
@@ -1141,7 +1025,6 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   videoModel: '',
   videoTimeout: DEFAULT_API_TIMEOUT,
   videoApiProxy: false,
-  apiModelUnitCostText: 'HUHN 0.06',
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,

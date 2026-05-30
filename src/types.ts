@@ -79,12 +79,6 @@ export interface ApiBalanceSnapshot {
   updatedAt?: number
 }
 
-export interface ApiModelUnitCostSnapshot {
-  text: string
-  updatedAt?: number
-  rawPrice?: number
-}
-
 export interface AppSettings {
   /** 旧版单配置字段：保留用于导入/查询参数兼容，实际请求以 active profile 为准 */
   baseUrl: string
@@ -154,14 +148,6 @@ export interface AppSettings {
   apiBalanceProfileId?: string
   /** 各固定站点最近一次查询到的 Key 余额 */
   apiBalanceByProfileId: Record<string, ApiBalanceSnapshot>
-  /** 当前模型调用费用展示文本 */
-  apiModelUnitCostText: string
-  /** 当前模型调用费用对应的固定配置 ID */
-  apiModelUnitCostProfileId?: string
-  /** 当前模型调用费用更新时间戳 */
-  apiModelUnitCostUpdatedAt?: number
-  /** 各固定站点、各模型最近一次读取到的调用费用 */
-  apiModelUnitCostByProfileModel: Record<string, ApiModelUnitCostSnapshot>
   /** 公告当天不再提醒日期，格式为 YYYY-MM-DD */
   announcementDismissedDate?: string
   /** 当天不再提醒对应的公告内容指纹，公告更新后会重新弹出 */
