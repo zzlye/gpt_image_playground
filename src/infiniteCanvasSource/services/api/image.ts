@@ -3,10 +3,13 @@ import axios from "axios";
 import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import { nanoid } from "nanoid";
-import { dataUrlToFile } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
-import { getFixedImageRequestModel } from "../../../lib/apiProfiles";
+import { callImageApi } from "../../../lib/api";
+import { normalizeSettings } from "../../../lib/apiProfiles";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
+import { useStore } from "../../../store";
+import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from "../../../types";
 
 export type ChatCompletionMessage = {
     role: "system" | "user" | "assistant";
@@ -71,6 +74,48 @@ function resolveRequestSize(quality: string | undefined, size: string) {
     return (quality && resolveSize(quality, value)) || value;
 }
 
+function resolveTaskQuality(config: AiConfig): TaskParams["quality"] {
+    const quality = normalizeQuality(config.quality);
+    return quality === "low" || quality === "medium" || quality === "high" ? quality : DEFAULT_PARAMS.quality;
+}
+
+function buildTaskParams(config: AiConfig): TaskParams {
+    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const quality = resolveTaskQuality(config);
+    return {
+        ...DEFAULT_PARAMS,
+        n,
+        quality,
+        size: resolveRequestSize(quality === "auto" ? undefined : quality, config.size) || DEFAULT_PARAMS.size,
+    };
+}
+
+function buildCanvasImageSettings(config: AiConfig): AppSettings {
+    const current = normalizeSettings(useStore.getState().settings);
+    const model = config.imageModel || config.model || current.model;
+
+    return normalizeSettings({
+        ...current,
+        apiKey: config.apiKey || current.apiKey,
+        model,
+        timeout: config.timeout || current.timeout,
+        profiles: current.profiles.map((profile) =>
+            profile.id === current.activeProfileId
+                ? {
+                      ...profile,
+                      apiKey: config.apiKey || profile.apiKey,
+                      model,
+                      timeout: config.timeout || profile.timeout,
+                  }
+                : profile,
+        ),
+    });
+}
+
+function toCanvasImages(images: string[]) {
+    return images.map((dataUrl) => ({ id: nanoid(), dataUrl }));
+}
+
 function resolveImageDataUrl(item: Record<string, unknown>) {
     if (typeof item.b64_json === "string" && item.b64_json) {
         return `data:image/png;base64,${item.b64_json}`;
@@ -127,7 +172,11 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
 
 function aiApiUrl(config: AiConfig, path: string, target: "image" | "textVideo" = "image") {
     const baseUrl = target === "textVideo" && (config.textBaseUrl.trim() || config.textVideoBaseUrl.trim()) ? config.textBaseUrl.trim() || config.textVideoBaseUrl : config.baseUrl;
-    return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(baseUrl, path);
+    if (config.channelMode === "remote") return `/api/v1${path}`;
+
+    const proxyConfig = readClientDevProxyConfig();
+    const useApiProxy = target === "textVideo" ? shouldUseApiProxy(config.textApiProxy || config.textVideoApiProxy, proxyConfig) : false;
+    return buildDevApiUrl(baseUrl, path, proxyConfig, useApiProxy);
 }
 
 function aiHeaders(config: AiConfig, contentType?: string, target: "image" | "textVideo" = "image") {
@@ -159,58 +208,31 @@ function withSystemMessage(config: AiConfig, messages: ChatCompletionMessage[]) 
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string) {
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
-    const requestModel = getFixedImageRequestModel(config.imageModel || config.model);
     try {
-        const response = await axios.post<ImageApiResponse>(
-            aiApiUrl(config, "/images/generations"),
-            {
-                model: requestModel,
-                prompt: withSystemPrompt(config, prompt),
-                n,
-                ...(quality ? { quality } : {}),
-                ...(requestSize ? { size: requestSize } : {}),
-                response_format: "b64_json",
-            },
-            {
-                headers: aiHeaders(config, "application/json"),
-                timeout: requestTimeout(config),
-            },
-        );
-        const images = parseImagePayload(response.data);
+        const result = await callImageApi({
+            settings: buildCanvasImageSettings(config),
+            prompt: withSystemPrompt(config, prompt),
+            params: buildTaskParams(config),
+            inputImageDataUrls: [],
+        });
         refreshRemoteUser(config);
-        return images;
+        return toCanvasImages(result.images);
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[]) {
-    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
-    const requestModel = getFixedImageRequestModel(config.imageModel || config.model);
-    const formData = new FormData();
-    formData.set("model", requestModel);
-    formData.set("prompt", withSystemPrompt(config, prompt));
-    formData.set("n", String(n));
-    formData.set("response_format", "b64_json");
-    if (quality) {
-        formData.set("quality", quality);
-    }
-    if (requestSize) {
-        formData.set("size", requestSize);
-    }
-    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => formData.append("image", file));
-
     try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(config, "/images/edits"), formData, { headers: aiHeaders(config), timeout: requestTimeout(config) });
-        const images = parseImagePayload(response.data);
+        const inputImageDataUrls = (await Promise.all(references.map((image) => imageToDataUrl(image)))).filter((dataUrl): dataUrl is string => Boolean(dataUrl));
+        const result = await callImageApi({
+            settings: buildCanvasImageSettings(config),
+            prompt: withSystemPrompt(config, prompt),
+            params: buildTaskParams(config),
+            inputImageDataUrls,
+        });
         refreshRemoteUser(config);
-        return images;
+        return toCanvasImages(result.images);
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }

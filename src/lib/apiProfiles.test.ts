@@ -9,6 +9,7 @@ import {
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
   findEquivalentApiProfile,
+  getActiveApiProfile,
   getApiBalanceSnapshot,
   getBananaPricedImageModel,
   getFixedImageRequestModel,
@@ -633,6 +634,20 @@ describe('custom providers', () => {
 
     expect(settings.codexCli).toBe(false)
     expect(settings.profiles.every((profile) => profile.codexCli === false)).toBe(true)
+  })
+
+  it('preserves API proxy settings for locked profiles', () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      apiProxy: true,
+      profiles: DEFAULT_SETTINGS.profiles.map((profile, index) => ({
+        ...profile,
+        apiProxy: index === 0,
+      })),
+    })
+
+    expect(settings.profiles[0].apiProxy).toBe(true)
+    expect(getActiveApiProfile(settings).apiProxy).toBe(true)
   })
 
   it('keeps the fixed 4K GPT image model on Wenyun and disables it on public site', () => {

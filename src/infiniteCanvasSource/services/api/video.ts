@@ -3,16 +3,20 @@ import axios from "axios";
 
 import { dataUrlToFile } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
-import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
+import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { ReferenceImage } from "@/types/image";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string } };
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
 
 function aiApiUrl(config: AiConfig, path: string) {
     const baseUrl = config.videoBaseUrl.trim() || config.textVideoBaseUrl.trim() || config.baseUrl;
-    return config.channelMode === "remote" ? `/api/v1${path}` : buildApiUrl(baseUrl, path);
+    if (config.channelMode === "remote") return `/api/v1${path}`;
+
+    const proxyConfig = readClientDevProxyConfig();
+    return buildDevApiUrl(baseUrl, path, proxyConfig, shouldUseApiProxy(config.videoApiProxy || config.textVideoApiProxy, proxyConfig));
 }
 
 function aiHeaders(config: AiConfig) {
