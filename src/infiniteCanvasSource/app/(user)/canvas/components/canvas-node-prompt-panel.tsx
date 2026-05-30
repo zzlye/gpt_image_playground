@@ -9,7 +9,7 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { getActiveApiProfile, getFixedImageModelUnitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getApiModelUnitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
@@ -43,7 +43,7 @@ export function CanvasNodePromptPanel({ node, isRunning, onPromptChange, onConfi
     const isEditingExistingContent = hasTextContent || hasImageContent;
     const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? config.count : 1 });
-    const imageCostText = mode === "image" ? getFixedImageModelUnitCostText(config.model) || "HUHN --" : null;
+    const imageCostText = mode === "image" ? getApiModelUnitCostText(settings, activeProfile.id, config.model) || "HUHN --" : null;
 
     useEffect(() => {
         setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");

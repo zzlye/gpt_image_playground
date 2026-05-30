@@ -1,4 +1,5 @@
 import type { ApiProfile } from '../types'
+import { getFixedImageRequestModel } from './apiProfiles'
 
 export interface NewApiBalanceResult {
   text: string
@@ -610,21 +611,20 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
 
   try {
     const status = await fetchNewApiStatus(apiRoot, origin)
-    const statusPrice = readModelUnitCostFromPayload(status.raw, profile.model)
-    if (statusPrice != null) {
-      return {
-        text: formatModelUnitCost(statusPrice, status),
-        updatedAt: Date.now(),
-        found: true,
-      }
-    }
+    const requestModel = getFixedImageRequestModel(profile.model)
+    let price = readModelUnitCostFromPayload(status.raw, requestModel)
+      ?? readModelUnitCostFromPayload(status.raw, profile.model)
 
-    let price: number | null = null
     if (profile.apiKey.trim()) {
       for (const url of getPublicPriceUrls(origin, apiRoot)) {
         try {
-          price = readModelUnitCostFromPayload(await fetchPublicPriceJson(url, profile.apiKey), profile.model)
-          if (price != null) break
+          const payload = await fetchPublicPriceJson(url, profile.apiKey)
+          const nextPrice = readModelUnitCostFromPayload(payload, requestModel)
+            ?? readModelUnitCostFromPayload(payload, profile.model)
+          if (nextPrice != null) {
+            price = nextPrice
+            break
+          }
         } catch (err) {
           // 文运站未登录或限流时不要继续打备用公开接口，避免控制台刷 401/429。
           if (isAuthOrRateLimitFailure(err)) break
@@ -653,31 +653,19 @@ export async function queryNewApiPriceTable(profile: ApiProfile): Promise<NewApi
     const addEntries = (items: Array<{ model: string; price: number }>) => {
       for (const item of items) {
         const key = item.model.trim().toLowerCase()
-        if (!key || entries.has(key)) continue
+        if (!key) continue
         entries.set(key, item)
       }
     }
 
     addEntries(collectModelPricesFromPayload(status.raw, false))
-    if (entries.size > 0) {
-      return {
-        items: Array.from(entries.values())
-          .map((item) => ({
-            model: item.model,
-            rawPrice: item.price,
-            text: formatModelUnitCost(item.price, status),
-          }))
-          .sort((a, b) => a.model.localeCompare(b.model)),
-        updatedAt: Date.now(),
-        found: true,
-      }
-    }
 
     if (profile.apiKey.trim()) {
       for (const url of getPublicPriceUrls(origin, apiRoot)) {
         try {
-          addEntries(collectModelPricesFromPayload(await fetchPublicPriceJson(url, profile.apiKey), true))
-          if (entries.size > 0) break
+          const fetchedEntries = collectModelPricesFromPayload(await fetchPublicPriceJson(url, profile.apiKey), true)
+          addEntries(fetchedEntries)
+          if (fetchedEntries.length > 0) break
         } catch (err) {
           // NewAPI 文档里 pricing/ratio_config 是价格来源，但当前文运站会对未授权或限流请求返回 401/429。
           if (isAuthOrRateLimitFailure(err)) break

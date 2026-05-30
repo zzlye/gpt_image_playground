@@ -6,6 +6,8 @@ import { useStore } from '../store'
 import {
   getFixedImageModelUnitCostText,
   getFixedImageRequestModel,
+  getApiModelUnitCostText,
+  setApiModelUnitCostSnapshot,
   getImageModelOptionsForProfile,
   LOCKED_PUBLIC_PROFILE_ID,
 } from '../lib/apiProfiles'
@@ -25,6 +27,7 @@ type PriceRow = {
 
 export default function PriceTableButton({ activeProfile, buttonClassName, buttonStyle }: PriceTableButtonProps) {
   const settings = useStore((state) => state.settings)
+  const setSettings = useStore((state) => state.setSettings)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -56,6 +59,7 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
         if (cancelled) return
         setItems(result.items)
         setUpdatedAt(result.updatedAt)
+        syncFetchedImageModelCosts(activeProfile.id, result.items, result.updatedAt, setSettings)
         if (!result.found && buildPriceRows(activeProfile.id, result.items, settings).length === 0) {
           setError('没有从 NewAPI 读取到模型价格。')
         }
@@ -73,11 +77,11 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
     return () => {
       cancelled = true
     }
-  }, [activeProfile.baseUrl, activeProfile.id, open, priceApiKey, profileQueryKey, settings])
+  }, [activeProfile.baseUrl, activeProfile.id, open, priceApiKey, profileQueryKey, setSettings])
 
   const rows = useMemo(
     () => buildPriceRows(activeProfile.id, items, settings),
-    [activeProfile.id, items, settings.textModel, settings.textVideoModel, settings.videoModel],
+    [activeProfile.id, items, settings.apiModelUnitCostByProfileModel, settings.textModel, settings.textVideoModel, settings.videoModel],
   )
 
   return (
@@ -158,6 +162,27 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
   )
 }
 
+function syncFetchedImageModelCosts(
+  profileId: string,
+  fetchedItems: NewApiPriceTableItem[],
+  updatedAt: number,
+  setSettings: (settings: Partial<AppSettings>) => void,
+) {
+  if (fetchedItems.length === 0) return
+  const fetchedByModel = new Map(fetchedItems.map((item) => [item.model.trim().toLowerCase(), item]))
+  for (const option of getImageModelOptionsForProfile(profileId)) {
+    const model = String(option.value)
+    const upstreamModel = getFixedImageRequestModel(model)
+    const fetched = fetchedByModel.get(upstreamModel.toLowerCase()) || fetchedByModel.get(model.toLowerCase())
+    if (!fetched) continue
+    setSettings(setApiModelUnitCostSnapshot(useStore.getState().settings, profileId, model, {
+      text: fetched.text,
+      rawPrice: fetched.rawPrice,
+      updatedAt,
+    }))
+  }
+}
+
 function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[], settings?: AppSettings): PriceRow[] {
   const fetchedByModel = new Map(fetchedItems.map((item) => [item.model.trim().toLowerCase(), item]))
   const fixedOptions = getImageModelOptionsForProfile(profileId)
@@ -173,7 +198,7 @@ function buildPriceRows(profileId: string, fetchedItems: NewApiPriceTableItem[],
     return {
       model,
       upstreamModel: upstreamModel !== model ? upstreamModel : undefined,
-      priceText: fetched?.text || getFixedImageModelUnitCostText(model) || 'HUHN --',
+      priceText: fetched?.text || (settings ? getApiModelUnitCostText(settings, profileId, model) : getFixedImageModelUnitCostText(model)) || 'HUHN --',
     }
   })
 

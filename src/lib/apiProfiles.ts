@@ -1,6 +1,7 @@
 import type {
   ApiMode,
   ApiBalanceSnapshot,
+  ApiModelUnitCostSnapshot,
   ApiProfile,
   ApiProvider,
   AppSettings,
@@ -74,6 +75,48 @@ export function getFixedImageModelUnitCostText(model: string): string | null {
   if (/^gpt-image-2-(?:4k|vip)$/i.test(normalized)) return 'HUHN 0.15'
   if (!isBananaImageModel(normalized)) return null
   return /^Nano-Banana-Pro(?:-(?:1k|2k|4k))?$/i.test(normalized) ? 'HUHN 0.18' : 'HUHN 0.09'
+}
+
+export function getApiModelUnitCostKey(profileId: string, model: string): string {
+  return `${profileId}:${getFixedImageRequestModel(model).trim().toLowerCase()}`
+}
+
+export function getApiModelUnitCostSnapshot(
+  settings: Pick<AppSettings, 'apiModelUnitCostByProfileModel' | 'apiModelUnitCostProfileId' | 'apiModelUnitCostText' | 'apiModelUnitCostUpdatedAt'>,
+  profileId: string,
+  model: string,
+): ApiModelUnitCostSnapshot | null {
+  const key = getApiModelUnitCostKey(profileId, model)
+  return settings.apiModelUnitCostByProfileModel[key] ?? (
+    settings.apiModelUnitCostProfileId === key && settings.apiModelUnitCostText
+      ? {
+          text: settings.apiModelUnitCostText,
+          updatedAt: settings.apiModelUnitCostUpdatedAt,
+        }
+      : null
+  )
+}
+
+export function getApiModelUnitCostText(settings: AppSettings, profileId: string, model: string): string | null {
+  return getApiModelUnitCostSnapshot(settings, profileId, model)?.text ?? getFixedImageModelUnitCostText(model)
+}
+
+export function setApiModelUnitCostSnapshot(
+  settings: AppSettings,
+  profileId: string,
+  model: string,
+  snapshot: ApiModelUnitCostSnapshot,
+): Partial<AppSettings> {
+  const key = getApiModelUnitCostKey(profileId, model)
+  return {
+    apiModelUnitCostText: snapshot.text,
+    apiModelUnitCostUpdatedAt: snapshot.updatedAt,
+    apiModelUnitCostProfileId: key,
+    apiModelUnitCostByProfileModel: {
+      ...settings.apiModelUnitCostByProfileModel,
+      [key]: snapshot,
+    },
+  }
 }
 
 export function getImageModelOptionsForProfile(profileId: string) {
@@ -282,6 +325,43 @@ function normalizeModelUnitCostText(value: unknown): string {
   const text = value.trim()
   if (!text) return 'HUHN 0.06'
   return text.replace(/^单次\s*/u, '')
+}
+
+function normalizeApiModelUnitCostSnapshot(value: unknown): ApiModelUnitCostSnapshot | null {
+  if (!isRecord(value)) return null
+  const rawText = typeof value.text === 'string' ? value.text.trim() : ''
+  if (!rawText) return null
+  const text = normalizeModelUnitCostText(rawText)
+  const rawPrice = typeof value.rawPrice === 'number' ? value.rawPrice : Number(value.rawPrice)
+  return {
+    text,
+    updatedAt: normalizeApiBalanceUpdatedAt(value.updatedAt),
+    rawPrice: Number.isFinite(rawPrice) ? rawPrice : undefined,
+  }
+}
+
+function normalizeApiModelUnitCostByProfileModel(record: Record<string, unknown>, profileIds: Set<string>): Record<string, ApiModelUnitCostSnapshot> {
+  const costs: Record<string, ApiModelUnitCostSnapshot> = {}
+  if (isRecord(record.apiModelUnitCostByProfileModel)) {
+    for (const [key, value] of Object.entries(record.apiModelUnitCostByProfileModel)) {
+      const profileId = key.split(':', 1)[0]
+      if (!profileIds.has(profileId)) continue
+      const snapshot = normalizeApiModelUnitCostSnapshot(value)
+      if (snapshot) costs[key] = snapshot
+    }
+  }
+
+  const legacyKey = typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : ''
+  const legacyProfileId = legacyKey.split(':', 1)[0]
+  if (profileIds.has(legacyProfileId) && legacyKey && !costs[legacyKey]) {
+    const legacySnapshot = normalizeApiModelUnitCostSnapshot({
+      text: record.apiModelUnitCostText,
+      updatedAt: record.apiModelUnitCostUpdatedAt,
+    })
+    if (legacySnapshot) costs[legacyKey] = legacySnapshot
+  }
+
+  return costs
 }
 
 function lockOpenAIProfile(profile: ApiProfile): ApiProfile {
@@ -684,6 +764,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const profiles = createLockedOpenAIProfiles(record.profiles, legacyProfile)
   const profileIds = new Set(profiles.map((profile) => profile.id))
   const apiBalanceByProfileId = normalizeApiBalanceByProfileId(record, profileIds)
+  const apiModelUnitCostByProfileModel = normalizeApiModelUnitCostByProfileModel(record, profileIds)
   const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
     : profiles[0].id
@@ -750,6 +831,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     apiModelUnitCostText: normalizeModelUnitCostText(record.apiModelUnitCostText),
     apiModelUnitCostProfileId: typeof record.apiModelUnitCostProfileId === 'string' ? record.apiModelUnitCostProfileId : undefined,
     apiModelUnitCostUpdatedAt: normalizeApiBalanceUpdatedAt(record.apiModelUnitCostUpdatedAt),
+    apiModelUnitCostByProfileModel,
     announcementDismissedDate: typeof record.announcementDismissedDate === 'string' ? record.announcementDismissedDate : undefined,
     announcementDismissedHash: typeof record.announcementDismissedHash === 'string' ? record.announcementDismissedHash : undefined,
     announcementDismissedForever: typeof record.announcementDismissedForever === 'boolean' ? record.announcementDismissedForever : false,

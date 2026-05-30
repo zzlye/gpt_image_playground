@@ -7,8 +7,9 @@ describe('newApi model unit cost', () => {
     vi.restoreAllMocks()
   })
 
-  it('uses ModelPrice from status without waiting for slower pricing endpoints', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+  it('uses ModelPrice from status when protected price endpoints are unavailable', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
       data: {
         'general_setting.custom_currency_symbol': 'HUHN',
         ModelPrice: JSON.stringify({
@@ -20,6 +21,10 @@ describe('newApi model unit cost', () => {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }))
 
     const result = await queryNewApiModelUnitCost({
       ...DEFAULT_SETTINGS.profiles[0],
@@ -29,11 +34,11 @@ describe('newApi model unit cost', () => {
     })
 
     expect(result).toMatchObject({ text: 'HUHN 0.09', found: true })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('collects NewAPI model prices for the price table', async () => {
-    vi.spyOn(globalThis, 'fetch')
+  it('lets pricing endpoints override stale status model prices', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({
         data: {
           'general_setting.custom_currency_symbol': 'HUHN',
@@ -46,8 +51,13 @@ describe('newApi model unit cost', () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }))
-      .mockResolvedValue(new Response(JSON.stringify({}), {
-        status: 404,
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: [
+          { model_name: 'gpt-image-2-vip', model_price: 0.09 },
+        ],
+      }), {
+        status: 200,
         headers: { 'Content-Type': 'application/json' },
       }))
 
@@ -60,8 +70,37 @@ describe('newApi model unit cost', () => {
     expect(result.found).toBe(true)
     expect(result.items).toEqual([
       { model: 'gpt-image-2', rawPrice: 0.06, text: 'HUHN 0.06' },
-      { model: 'gpt-image-2-vip', rawPrice: 0.15, text: 'HUHN 0.15' },
+      { model: 'gpt-image-2-vip', rawPrice: 0.09, text: 'HUHN 0.09' },
     ])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('queries the upstream VIP model when displaying the fixed 4K model cost', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          'general_setting.custom_currency_symbol': 'HUHN',
+          ModelPrice: JSON.stringify({ 'gpt-image-2-vip': 0.15 }),
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: { 'gpt-image-2-vip': 0.09 },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+
+    const result = await queryNewApiModelUnitCost({
+      ...DEFAULT_SETTINGS.profiles[0],
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'test-key',
+      model: 'gpt-image-2-4k',
+    })
+
+    expect(result).toMatchObject({ text: 'HUHN 0.09', found: true })
   })
 
   it('reads the NewAPI pricing data array when status has no model price map', async () => {
