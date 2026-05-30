@@ -61,6 +61,7 @@ export function CanvasZoomControls({ scale, onScaleChange, onReset, isMiniMapOpe
                 <div className="space-y-3 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut label="拖动画布" value="平移视图" />
                     <Shortcut label="滚轮" value="缩放画布" />
+                    <Shortcut label="双击空白处" value="快速添加节点" />
                     <Shortcut label="Ctrl / Cmd + 拖动" value="框选多个节点" />
                     <Shortcut label="Shift / Ctrl / Cmd + 点击" value="追加选择节点" />
                     <Shortcut label="Ctrl / Cmd + C / V" value="复制 / 粘贴节点" />

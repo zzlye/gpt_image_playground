@@ -20,6 +20,7 @@ import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { copyImageSourceToClipboard, getClipboardFailureMessage } from "../../../../../lib/clipboard";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
 import { useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
@@ -153,17 +154,16 @@ function CanvasRefreshShell() {
 }
 
 function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: PendingConnectionCreate; onCreate: (type: CreatableCanvasNodeType) => void; onClose: () => void }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     return (
         <div
-            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
+            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl"
             data-connection-create-menu
-            style={{ left: pending.position.x, top: pending.position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: pending.position.x, top: pending.position.y, background: "#1f1f1f", borderColor: "rgba(255,255,255,.1)", color: "#f8fafc" }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
             <div className="mb-2 flex items-center justify-between px-1">
-                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
+                <span className="text-sm font-medium text-white/60">
                     引用该节点生成
                 </span>
                 <button type="button" className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:bg-white/10 hover:opacity-100" onClick={onClose} aria-label="关闭">
@@ -171,10 +171,10 @@ function ConnectionCreateMenu({ pending, onCreate, onClose }: { pending: Pending
                 </button>
             </div>
             <div className="grid gap-1">
-                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
-                <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
-                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
+                <ConnectionCreateOption icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
+                <ConnectionCreateOption icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
+                <ConnectionCreateOption icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
             </div>
         </div>
     );
@@ -193,17 +193,16 @@ function QuickNodeCreateMenu({
     onOpenAssetLibrary: () => void;
     onClose: () => void;
 }) {
-    const theme = canvasThemes[useThemeStore((state) => state.theme)];
     return (
         <div
-            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl backdrop-blur"
+            className="absolute z-[120] w-[300px] rounded-[18px] border p-3 shadow-2xl"
             data-canvas-node-create-menu
-            style={{ left: menu.position.x, top: menu.position.y, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+            style={{ left: menu.position.x, top: menu.position.y, background: "#1f1f1f", borderColor: "rgba(255,255,255,.1)", color: "#f8fafc" }}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
         >
             <div className="mb-2 flex items-center justify-between px-1">
-                <span className="text-sm font-medium" style={{ color: theme.node.muted }}>
+                <span className="text-sm font-medium text-white/60">
                     快速选择节点
                 </span>
                 <button type="button" className="grid size-7 place-items-center rounded-lg text-base opacity-55 transition hover:bg-white/10 hover:opacity-100" onClick={onClose} aria-label="关闭">
@@ -211,26 +210,26 @@ function QuickNodeCreateMenu({
                 </button>
             </div>
             <div className="grid gap-1">
-                <ConnectionCreateOption theme={theme} icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
-                <ConnectionCreateOption theme={theme} icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
-                <ConnectionCreateOption theme={theme} icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
-                <ConnectionCreateOption theme={theme} icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
-                <ConnectionCreateOption theme={theme} icon={<Upload className="size-5" />} title="上传" description="图片、视频文件" onClick={onUpload} />
-                <ConnectionCreateOption theme={theme} icon={<Images className="size-5" />} title="素材库" description="从素材库选择插入" onClick={onOpenAssetLibrary} />
+                <ConnectionCreateOption icon={<List className="size-5" />} title="文本生成" description="脚本、广告词、品牌文案" onClick={() => onCreate(CanvasNodeType.Text)} />
+                <ConnectionCreateOption icon={<ImageIcon className="size-5" />} title="图片生成" onClick={() => onCreate(CanvasNodeType.Image)} />
+                <ConnectionCreateOption icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
+                <ConnectionCreateOption icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
+                <ConnectionCreateOption icon={<Upload className="size-5" />} title="上传" description="图片、视频文件" onClick={onUpload} />
+                <ConnectionCreateOption icon={<Images className="size-5" />} title="素材库" description="从素材库选择插入" onClick={onOpenAssetLibrary} />
             </div>
         </div>
     );
 }
 
-function ConnectionCreateOption({ theme, icon, title, description, onClick }: { theme: (typeof canvasThemes)[keyof typeof canvasThemes]; icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
+function ConnectionCreateOption({ icon, title, description, onClick }: { icon: React.ReactNode; title: string; description?: string; onClick?: () => void }) {
     return (
-        <button type="button" className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left transition" style={{ color: theme.node.text }} onClick={onClick} onMouseEnter={(event) => (event.currentTarget.style.background = theme.node.fill)} onMouseLeave={(event) => (event.currentTarget.style.background = "transparent")}>
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl" style={{ background: theme.node.fill, color: theme.node.muted }}>
+        <button type="button" className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left text-white transition hover:bg-white/10" onClick={onClick}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/10 text-white/70">
                 {icon}
             </span>
             <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-base font-semibold leading-5">{title}</span>
-                {description ? <span className="mt-1 block truncate text-sm" style={{ color: theme.node.muted }}>{description}</span> : null}
+                {description ? <span className="mt-1 block truncate text-sm text-white/45">{description}</span> : null}
             </span>
         </button>
     );
@@ -695,6 +694,7 @@ function InfiniteCanvasPage() {
     const cropNode = cropNodeId ? nodeById.get(cropNodeId) || null : null;
     const angleNode = angleNodeId ? nodeById.get(angleNodeId) || null : null;
     const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
+    const contextNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
     const hasMultipleSelectedNodes = selectedNodeIds.size > 1;
     const activeNodeId = hasMultipleSelectedNodes ? null : hoveredNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
     const batchChildCountById = useMemo(() => {
@@ -979,6 +979,21 @@ function InfiniteCanvasPage() {
                 metadata: node.metadata ? { ...node.metadata } : undefined,
             })),
             connections: connectionsRef.current.map((connection) => ({ ...connection })),
+        };
+    }, []);
+
+    const copySingleNode = useCallback((nodeId: string) => {
+        const source = nodesRef.current.find((node) => node.id === nodeId);
+        if (!source) return;
+        clipboardRef.current = {
+            nodes: [
+                {
+                    ...source,
+                    position: { ...source.position },
+                    metadata: source.metadata ? { ...source.metadata } : undefined,
+                },
+            ],
+            connections: [],
         };
     }, []);
 
@@ -1532,6 +1547,19 @@ function InfiniteCanvasPage() {
         if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video) || !node.metadata?.content) return;
         saveAs(node.metadata.content, `canvas-${node.type}-${node.id}.${node.type === CanvasNodeType.Video ? "mp4" : imageExtension(node.metadata.content)}`);
     }, []);
+
+    const copyNodeImage = useCallback(
+        async (node: CanvasNodeData) => {
+            if (node.type !== CanvasNodeType.Image || !node.metadata?.content) return;
+            try {
+                await copyImageSourceToClipboard(node.metadata.content);
+                message.success("图片已复制");
+            } catch (error) {
+                message.error(getClipboardFailureMessage("复制图片失败", error));
+            }
+        },
+        [message],
+    );
 
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
@@ -2487,6 +2515,8 @@ function InfiniteCanvasPage() {
                         canUndo={historyState.canUndo}
                         canRedo={historyState.canRedo}
                         canPaste={Boolean(clipboardRef.current?.nodes.length)}
+                        isImageNode={contextNode?.type === CanvasNodeType.Image}
+                        hasNodeContent={Boolean(contextNode && (contextNode.type === CanvasNodeType.Text ? contextNode.metadata?.content?.trim() : contextNode.metadata?.content))}
                         onClose={() => setContextMenu(null)}
                         onDuplicate={() => {
                             if (contextMenu.type !== "node") return;
@@ -2496,6 +2526,31 @@ function InfiniteCanvasPage() {
                         onDelete={() => {
                             if (contextMenu.type !== "node") return;
                             deleteNodes(new Set([contextMenu.nodeId]));
+                            setContextMenu(null);
+                        }}
+                        onSaveAsset={() => {
+                            if (!contextNode) return;
+                            void saveNodeAsset(contextNode);
+                            setContextMenu(null);
+                        }}
+                        onShowInfo={() => {
+                            if (contextMenu.type !== "node") return;
+                            setInfoNodeId(contextMenu.nodeId);
+                            setContextMenu(null);
+                        }}
+                        onViewImage={() => {
+                            if (contextMenu.type !== "node") return;
+                            setPreviewNodeId(contextMenu.nodeId);
+                            setContextMenu(null);
+                        }}
+                        onCopyImage={() => {
+                            if (!contextNode) return;
+                            void copyNodeImage(contextNode);
+                            setContextMenu(null);
+                        }}
+                        onCopyNode={() => {
+                            if (contextMenu.type !== "node") return;
+                            copySingleNode(contextMenu.nodeId);
                             setContextMenu(null);
                         }}
                         onUpload={() => {
@@ -2521,8 +2576,14 @@ function InfiniteCanvasPage() {
                             setContextMenu(null);
                         }}
                         onPaste={() => {
-                            if (contextMenu.type !== "canvas") return;
-                            pasteCopiedNodes(contextMenu.position);
+                            if (contextMenu.type === "canvas") {
+                                pasteCopiedNodes(contextMenu.position);
+                            } else if (contextNode) {
+                                pasteCopiedNodes({
+                                    x: contextNode.position.x + contextNode.width / 2 + 48,
+                                    y: contextNode.position.y + contextNode.height / 2 + 48,
+                                });
+                            }
                             setContextMenu(null);
                         }}
                     />
@@ -2774,6 +2835,7 @@ function CanvasTopBar({
                 <div className="space-y-2 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut keys={["拖动画布"]} value="平移视图" />
                     <Shortcut keys={["滚轮"]} value="缩放画布" />
+                    <Shortcut keys={["双击空白处"]} value="快速添加节点" />
                     <Shortcut keys={["缩放滑杆"]} value="精确调整缩放" />
                     <Shortcut keys={["Ctrl / Cmd", "拖动"]} value="框选多个节点" />
                     <Shortcut keys={["Shift / Ctrl / Cmd", "点击"]} value="追加选择节点" />
