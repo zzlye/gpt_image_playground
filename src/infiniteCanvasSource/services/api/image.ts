@@ -8,6 +8,7 @@ import type { ReferenceImage } from "@/types/image";
 import { callImageApi } from "../../../lib/api";
 import { normalizeSettings } from "../../../lib/apiProfiles";
 import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
+import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 import { useStore } from "../../../store";
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from "../../../types";
 
@@ -146,9 +147,9 @@ function parseImagePayload(payload: ImageApiResponse) {
 function readAxiosError(error: unknown, fallback: string) {
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
         const responseData = error.response?.data;
-        return responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback);
+        return sanitizeApiErrorMessage(responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback));
     }
-    return error instanceof Error ? error.message : fallback;
+    return sanitizeApiErrorMessage(error instanceof Error ? error.message : fallback);
 }
 
 function parseStreamChunk(chunk: string, onDelta: (value: string) => void) {

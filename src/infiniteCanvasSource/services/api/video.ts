@@ -7,6 +7,7 @@ import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { ReferenceImage } from "@/types/image";
 import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
+import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string } };
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
@@ -94,9 +95,9 @@ function unwrapVideoResponse(payload: ApiVideoResponse) {
 function readAxiosError(error: unknown, fallback: string) {
     if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
         const responseData = error.response?.data;
-        return responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback);
+        return sanitizeApiErrorMessage(responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback));
     }
-    return error instanceof Error ? error.message : fallback;
+    return sanitizeApiErrorMessage(error instanceof Error ? error.message : fallback);
 }
 
 async function assertVideoBlob(blob: Blob) {

@@ -14,6 +14,7 @@ import {
   mergeActualParams,
   MIME_MAP,
   normalizeBase64Image,
+  sanitizeApiErrorMessage,
 } from './imageApiShared'
 
 const DEFAULT_FAL_IMAGE_SIZE = { width: 1360, height: 1024 }
@@ -221,7 +222,7 @@ export async function callFalAiImageApi(opts: CallApiOptions, profile: ApiProfil
     return parseFalResult(payload, opts.params, getFalCustomBaseUrlLabel(profile))
   } catch (err) {
     const falMessage = getFalErrorMessage(err)
-    if (falMessage) throw new Error(falMessage)
+    if (falMessage) throw new Error(sanitizeApiErrorMessage(falMessage))
     throw err
   }
 }

@@ -18,6 +18,7 @@ import {
   MIME_MAP,
   normalizeBase64Image,
   pickActualParams,
+  sanitizeApiErrorMessage,
 } from './imageApiShared'
 
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
@@ -140,13 +141,13 @@ function getStreamEventErrorMessage(event: Record<string, unknown>): string | nu
   const error = event.error
   if (isRecordValue(error)) {
     const message = getStringValue(error, 'message')
-    if (message) return message
+    if (message) return sanitizeApiErrorMessage(message)
   }
-  if (typeof error === 'string' && error.trim()) return error
+  if (typeof error === 'string' && error.trim()) return sanitizeApiErrorMessage(error)
 
   const type = getStringValue(event, 'type')
   if (type?.endsWith('.failed')) {
-    return getStringValue(event, 'message') ?? '流式请求失败'
+    return sanitizeApiErrorMessage(getStringValue(event, 'message') ?? '流式请求失败')
   }
   return null
 }
@@ -958,7 +959,7 @@ async function pollCustomTaskResult(
     const state = getTaskState(taskPayload, poll)
     if (state === 'failure') {
       const message = getByPath(taskPayload, poll.errorPath) || getByPath(taskPayload, 'message') || getByPath(taskPayload, 'data.fail_reason') || getByPath(taskPayload, 'error.message')
-      throw new Error(typeof message === 'string' && message.trim() ? message : '异步任务失败')
+      throw new Error(typeof message === 'string' && message.trim() ? sanitizeApiErrorMessage(message) : '异步任务失败')
     }
     if (state === 'success') {
       try {
