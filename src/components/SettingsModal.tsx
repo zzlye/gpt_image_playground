@@ -381,10 +381,7 @@ function ExternalApiConfigSection({
   const modelInputId = `${idPrefix}-model-input`
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
-  const modelQuery = model.trim().toLowerCase()
   const visibleModelOptions = modelOptions
-    .filter((item) => !modelQuery || item.toLowerCase().includes(modelQuery))
-    .slice(0, 80)
 
   useEffect(() => {
     if (modelOptions.length) setModelMenuOpen(true)
