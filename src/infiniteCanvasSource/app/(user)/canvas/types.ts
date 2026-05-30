@@ -20,6 +20,19 @@ export type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
 export type CanvasGenerationMode = "text" | "image" | "video";
 export type CanvasImageGenerationType = "generation" | "edit";
 
+export type CanvasReferenceImage = {
+    id: string;
+    name: string;
+    type: string;
+    dataUrl: string;
+    url?: string;
+    storageKey?: string;
+    width?: number;
+    height?: number;
+    bytes?: number;
+    mimeType?: string;
+};
+
 export type CanvasNodeMetadata = {
     content?: string;
     prompt?: string;
@@ -35,6 +48,9 @@ export type CanvasNodeMetadata = {
     seconds?: string;
     vquality?: string;
     references?: string[];
+    referenceImages?: CanvasReferenceImage[];
+    generationStartedAt?: number;
+    generationElapsedMs?: number;
     naturalWidth?: number;
     naturalHeight?: number;
     freeResize?: boolean;

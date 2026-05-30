@@ -110,6 +110,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     const [view, setView] = useState<"info" | "json">("info");
     const imageBytes = node?.type === CanvasNodeType.Image && node.metadata?.content ? getDataUrlByteSize(node.metadata.content) : 0;
     const batchCount = node?.type === CanvasNodeType.Image ? node.metadata?.batchChildIds?.length || 0 : 0;
+    const generationDuration = formatGenerationDuration(node?.metadata?.generationElapsedMs);
     const json = useMemo(() => {
         if (!node) return "";
         return JSON.stringify(
@@ -155,6 +156,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             <InfoRow label="尺寸" value={`${Math.round(node.width)} x ${Math.round(node.height)}`} />
                             <InfoRow label="位置" value={`${Math.round(node.position.x)}, ${Math.round(node.position.y)}`} />
                             <InfoRow label="状态" value={node.metadata?.status || "idle"} />
+                            {generationDuration ? <InfoRow label="生成用时" value={generationDuration} /> : null}
                             {batchCount > 1 ? <InfoRow label="图片组" value={`${batchCount} 张`} /> : null}
                             {node.metadata?.prompt ? <InfoRow label="提示词" value={node.metadata.prompt} /> : null}
                             {imageBytes ? <InfoRow label="图片大小" value={formatBytes(imageBytes)} /> : null}
@@ -201,6 +203,14 @@ function IconAction({ title, icon, onClick }: { title: string; icon: ReactNode; 
 
 function ToolbarDivider() {
     return <span className="mx-1 h-7 w-px scale-x-50 bg-[#dedee2]" />;
+}
+
+function formatGenerationDuration(ms?: number) {
+    if (typeof ms !== "number" || !Number.isFinite(ms)) return "";
+    const seconds = Math.max(0, Math.round(ms / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return minutes ? `${minutes}分${rest}秒` : `${seconds}秒`;
 }
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
