@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useStore } from "../../../store";
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot } from "../../../lib/apiProfiles";
 import { queryNewApiBalance } from "../../../lib/newApi";
+import PriceTableButton from "../../../components/PriceTableButton";
 
 export function AppTopNav() {
     const pathname = usePathname();
@@ -81,6 +82,7 @@ export function AppTopNav() {
                                 >
                                     {isQueryingBalance ? "查询中" : "查询"}
                                 </button>
+                                <PriceTableButton activeProfile={activeProfile} />
                             </div>
                         </div>
 

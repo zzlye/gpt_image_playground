@@ -141,6 +141,7 @@ function ImageSizePortal({
 function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiConfig; onConfigChange: (key: keyof AiConfig, value: string) => void; theme: CanvasTheme }) {
     const currentPreset = useMemo(() => findPresetForSize(config.size || "1024x1024"), [config.size]);
     const currentCustomRatio = useMemo(() => readRatioFromSize(config.size || ""), [config.size]);
+    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const [tier, setTier] = useState<SizeTier>(currentPreset?.tier || "1K");
     const [ratio, setRatio] = useState(currentPreset?.ratio || (currentCustomRatio ? "custom" : "1:1"));
     const [customRatio, setCustomRatio] = useState(currentPreset?.ratio || currentCustomRatio || "16:9");
@@ -179,7 +180,7 @@ function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiCon
     return (
         <ImageSettingsTheme theme={theme}>
             <div className="space-y-4" style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
-                <div className="text-lg font-semibold">图像尺寸</div>
+                <div className="text-lg font-semibold">图像设置</div>
                 <SettingGroup title="基准分辨率" color={theme.node.muted}>
                     <div className="grid grid-cols-3 gap-2.5">
                         {TIERS.map((item) => (
@@ -217,6 +218,16 @@ function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiCon
                         />
                     </SettingGroup>
                 ) : null}
+                <SettingGroup title="生成张数" color={theme.node.muted}>
+                    <div className="grid grid-cols-5 gap-2">
+                        {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                            <OptionPill key={value} selected={count === value} theme={theme} onClick={() => onConfigChange("count", String(value))}>
+                                {value} 张
+                            </OptionPill>
+                        ))}
+                    </div>
+                    <CountInput value={count} max={15} theme={theme} onChange={(value) => onConfigChange("count", String(value || 1))} />
+                </SettingGroup>
                 <div className="rounded-2xl px-4 py-3" style={{ background: theme.node.fill, color: theme.node.text }}>
                     <div className="text-xs" style={{ color: theme.node.muted }}>
                         将使用
@@ -233,6 +244,23 @@ function OptionPill({ selected, theme, onClick, children }: { selected: boolean;
         <button type="button" className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
             {children}
         </button>
+    );
+}
+
+function CountInput({ value, max, theme, onChange }: { value: number; max: number; theme: CanvasTheme; onChange: (value: number | null) => void }) {
+    return (
+        <label className="flex h-9 overflow-hidden rounded-full border text-sm" style={{ borderColor: theme.node.stroke, color: theme.node.text }}>
+            <input
+                type="number"
+                min={1}
+                max={max}
+                className="min-w-0 flex-1 bg-transparent px-3 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                style={{ color: theme.node.text, WebkitTextFillColor: theme.node.text }}
+                value={value || ""}
+                onChange={(event) => onChange(Number(event.target.value) || null)}
+                onMouseDown={(event) => event.stopPropagation()}
+            />
+        </label>
     );
 }
 

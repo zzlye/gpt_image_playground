@@ -22,6 +22,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
 import { useStore } from "../../../../../store";
+import PriceTableButton from "../../../../../components/PriceTableButton";
 import { cropDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
 import { App, Button, Dropdown, Modal } from "antd";
@@ -2485,6 +2486,11 @@ function CanvasTopBar({
                     >
                         {isQueryingBalance ? "查询中" : "查询"}
                     </button>
+                    <PriceTableButton
+                        activeProfile={activeProfile}
+                        buttonClassName="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-85"
+                        buttonStyle={{ background: theme.node.fill, color: theme.node.text }}
+                    />
                 </div>
 
                 <div className="pointer-events-auto flex items-center gap-1.5">

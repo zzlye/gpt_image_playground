@@ -26,6 +26,18 @@ export interface NewApiModelUnitCostResult {
   found?: boolean
 }
 
+export interface NewApiPriceTableItem {
+  model: string
+  text: string
+  rawPrice: number
+}
+
+export interface NewApiPriceTableResult {
+  items: NewApiPriceTableItem[]
+  updatedAt: number
+  found: boolean
+}
+
 interface NewApiStatusInfo {
   currencySymbol: string
   quotaPerUnit: number
@@ -521,6 +533,48 @@ function readModelUnitCostFromPayload(payload: unknown, model: string): number |
     ?? readModelPriceValue(getPayloadData(payload), model)
 }
 
+function collectModelPriceValues(input: unknown): Array<{ model: string; price: number }> {
+  const payload = parseJsonLike(input)
+  const items: Array<{ model: string; price: number }> = []
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      if (!isRecord(item)) continue
+      const model = readString(item, ['model', 'model_name', 'name', 'id'])
+      const price = readNumber(item, ['model_price', 'modelPrice', 'price', 'cost', 'quota', 'value'])
+      if (model && price != null) items.push({ model, price })
+    }
+    return items
+  }
+
+  if (!isRecord(payload)) return items
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === 'number') {
+      items.push({ model: key, price: value })
+      continue
+    }
+    if (typeof value === 'string') {
+      const numeric = Number(value)
+      if (Number.isFinite(numeric)) items.push({ model: key, price: numeric })
+      continue
+    }
+    if (isRecord(value)) {
+      const model = readString(value, ['model', 'model_name', 'name', 'id']) || key
+      const price = readNumber(value, ['model_price', 'modelPrice', 'price', 'cost', 'quota', 'value'])
+      if (model && price != null) items.push({ model, price })
+    }
+  }
+
+  return items
+}
+
+function collectModelPricesFromPayload(payload: unknown, allowDirectPayload: boolean): Array<{ model: string; price: number }> {
+  const nested = collectModelPriceValues(findModelPricePayload(payload))
+  if (nested.length) return nested
+  return allowDirectPayload ? collectModelPriceValues(getPayloadData(payload)) : []
+}
+
 export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<NewApiModelUnitCostResult> {
   const apiRoot = getApiRoot(profile.baseUrl)
   const origin = getApiOrigin(profile.baseUrl)
@@ -564,5 +618,57 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
     }
   } catch {
     return { text: FALLBACK_MODEL_UNIT_COST, updatedAt: Date.now(), found: false }
+  }
+}
+
+export async function queryNewApiPriceTable(profile: ApiProfile): Promise<NewApiPriceTableResult> {
+  const apiRoot = getApiRoot(profile.baseUrl)
+  const origin = getApiOrigin(profile.baseUrl)
+  if (!apiRoot || !origin) return { items: [], updatedAt: Date.now(), found: false }
+
+  try {
+    const status = await fetchNewApiStatus(apiRoot, origin)
+    const entries = new Map<string, { model: string; price: number }>()
+    const addEntries = (items: Array<{ model: string; price: number }>) => {
+      for (const item of items) {
+        const key = item.model.trim().toLowerCase()
+        if (!key || entries.has(key)) continue
+        entries.set(key, item)
+      }
+    }
+
+    addEntries(collectModelPricesFromPayload(status.raw, false))
+
+    const priceAttempts = [
+      `${origin}/api/ratio_config`,
+      `${apiRoot}/api/ratio_config`,
+      `${origin}/api/pricing`,
+      `${apiRoot}/api/pricing`,
+    ]
+
+    const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
+      try {
+        return await fetchJsonWithTimeout(url, profile.apiKey, 2500)
+      } catch {
+        // 单个公开定价接口失败不影响其它价格来源。
+        return undefined
+      }
+    }))
+
+    fetchedPricePayloads.forEach((payload) => addEntries(collectModelPricesFromPayload(payload, true)))
+
+    return {
+      items: Array.from(entries.values())
+        .map((item) => ({
+          model: item.model,
+          rawPrice: item.price,
+          text: formatModelUnitCost(item.price, status),
+        }))
+        .sort((a, b) => a.model.localeCompare(b.model)),
+      updatedAt: Date.now(),
+      found: entries.size > 0,
+    }
+  } catch {
+    return { items: [], updatedAt: Date.now(), found: false }
   }
 }

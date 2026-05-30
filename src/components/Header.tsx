@@ -8,6 +8,7 @@ import { AnimatedThemeToggler } from '../infiniteCanvasSource/components/ui/anim
 import ViewportTooltip from './ViewportTooltip'
 import HelpModal from './HelpModal'
 import { HelpCircleIcon, SettingsIcon, SparklesIcon } from './icons'
+import PriceTableButton from './PriceTableButton'
 
 type HeaderProps = {
   onOpenCanvas?: () => void
@@ -71,6 +72,7 @@ export default function Header({ onOpenCanvas }: HeaderProps) {
               >
                 {isQueryingBalance ? '查询中' : '查询'}
               </button>
+              <PriceTableButton activeProfile={activeProfile} />
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">

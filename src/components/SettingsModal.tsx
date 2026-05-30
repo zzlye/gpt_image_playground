@@ -34,6 +34,7 @@ import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdo
 import Select from './Select'
 import { Checkbox } from './Checkbox'
 import ViewportTooltip from './ViewportTooltip'
+import PriceTableButton from './PriceTableButton'
 import { ChevronDownIcon, CloseIcon, CopyIcon, PlusIcon, TrashIcon, ExportIcon, ImportIcon, DragHandleIcon, LinkIcon } from './icons'
 
 function newId(prefix: string) {
@@ -2175,14 +2176,20 @@ export default function SettingsModal() {
                   <div className="block">
                     <div className="mb-1.5 flex items-center justify-between gap-3">
                       <span className="block text-sm text-gray-600 dark:text-gray-300">Key 余额</span>
-                      <button
-                        type="button"
-                        onClick={queryActiveProfileBalance}
-                        disabled={isQueryingBalance}
-                        className="rounded-xl bg-blue-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isQueryingBalance ? '查询中...' : '查询'}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={queryActiveProfileBalance}
+                          disabled={isQueryingBalance}
+                          className="rounded-xl bg-blue-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isQueryingBalance ? '查询中...' : '查询'}
+                        </button>
+                        <PriceTableButton
+                          activeProfile={activeProfile}
+                          buttonClassName="rounded-xl border border-gray-200/70 bg-white/70 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-300 dark:hover:border-blue-400/30 dark:hover:bg-blue-500/15 dark:hover:text-blue-200"
+                        />
+                      </div>
                     </div>
                     <div className="min-h-[42px] rounded-xl border border-gray-200/70 bg-white/60 px-3 py-2.5 text-sm text-gray-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200">
                       {activeProfileBalanceText ? (
