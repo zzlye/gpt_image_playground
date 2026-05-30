@@ -2421,7 +2421,10 @@ function CanvasTopBar({
     return (
         <>
             <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between px-4">
-                <div className="pointer-events-auto flex min-w-0 items-center gap-3">
+                <div
+                    className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-2xl border px-2 py-1.5 shadow-sm backdrop-blur-md"
+                    style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
+                >
                     <Dropdown
                         trigger={["click"]}
                         menu={{
@@ -2688,6 +2691,8 @@ function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefine
         ...config,
         model: resolvedModel,
         imageModel: mode === "image" ? resolvedModel : config.imageModel,
+        textModel: mode === "text" ? resolvedModel : config.textModel,
+        videoModel: mode === "video" ? resolvedModel : config.videoModel,
         quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
         size: node?.metadata?.size || config.size || defaultConfig.size,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
