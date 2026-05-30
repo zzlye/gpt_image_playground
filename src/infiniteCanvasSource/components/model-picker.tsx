@@ -12,17 +12,26 @@ type ModelPickerProps = {
     config: AiConfig;
     value?: string;
     onChange: (model: string) => void;
+    options?: Array<string | { value: string; label: string }>;
     className?: string;
     fullWidth?: boolean;
     placeholder?: string;
     onMissingConfig?: () => void;
 };
 
-export function ModelPicker({ config, value, onChange, className, fullWidth = false, placeholder = "选择模型", onMissingConfig }: ModelPickerProps) {
+export function ModelPicker({ config, value, onChange, options: fixedOptions, className, fullWidth = false, placeholder = "选择模型", onMissingConfig }: ModelPickerProps) {
     const pickerId = useId();
     const [open, setOpen] = useState(false);
-    const options = useMemo(() => Array.from(new Set([...(config.channelMode === "local" ? [value] : []), ...config.models].filter(Boolean))), [config.channelMode, config.models, value]);
+    const options = useMemo(() => {
+        if (fixedOptions?.length) {
+            return fixedOptions
+                .map((item) => (typeof item === "string" ? { value: item, label: item } : item))
+                .filter((item) => item.value);
+        }
+        return Array.from(new Set([...(config.channelMode === "local" ? [value] : []), ...config.models].filter(Boolean))).map((model) => ({ value: model, label: model }));
+    }, [config.channelMode, config.models, fixedOptions, value]);
     const current = value || "";
+    const currentLabel = options.find((item) => item.value === current)?.label || current;
 
     useEffect(() => {
         const closeOtherPicker = (event: Event) => {
@@ -55,10 +64,10 @@ export function ModelPicker({ config, value, onChange, className, fullWidth = fa
                 )}
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
-                title={current || placeholder}
+                title={currentLabel || placeholder}
             >
                 <ModelIcon model={current} />
-                <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{current || placeholder}</span>
+                <span className="canvas-model-picker-text min-w-0 flex-1 truncate text-left">{currentLabel || placeholder}</span>
             </SelectTrigger>
             <SelectContent
                 data-canvas-no-zoom
@@ -71,9 +80,9 @@ export function ModelPicker({ config, value, onChange, className, fullWidth = fa
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 {options.length ? (
-                    options.map((model) => (
-                        <SelectItem key={model} value={model} textValue={model}>
-                            <ModelLabel model={model} />
+                    options.map((item) => (
+                        <SelectItem key={item.value} value={item.value} textValue={item.label}>
+                            <ModelLabel model={item.value} label={item.label} />
                         </SelectItem>
                     ))
                 ) : (
@@ -86,11 +95,11 @@ export function ModelPicker({ config, value, onChange, className, fullWidth = fa
     );
 }
 
-function ModelLabel({ model }: { model: string }) {
+function ModelLabel({ model, label = model }: { model: string; label?: string }) {
     return (
         <span className="flex min-w-0 items-center gap-2">
             <ModelIcon model={model} />
-            <span className="truncate">{model}</span>
+            <span className="truncate">{label}</span>
         </span>
     );
 }
