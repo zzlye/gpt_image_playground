@@ -10,7 +10,7 @@ import { saveAs } from "file-saver";
 import { requestEdit, requestGeneration, requestImageQuestion } from "@/services/api/image";
 import { requestVideoGeneration } from "@/services/api/video";
 import { defaultConfig, type AiConfig, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
-import { resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
+import { imageToDataUrl, resolveImageUrl, uploadImage, type UploadedImage } from "@/services/image-storage";
 import { resolveMediaUrl, uploadMediaFile, type UploadedFile } from "@/services/file-storage";
 import { nanoid } from "nanoid";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { copyImageSourceToClipboard, getClipboardFailureMessage } from "../../../../../lib/clipboard";
+import { storeImage } from "../../../../../lib/db";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
 import { useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
@@ -276,6 +277,7 @@ function InfiniteCanvasPage() {
     const settings = useStore((state) => state.settings);
     const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const setSettings = useStore((state) => state.setSettings);
+    const setLightboxImageId = useStore((state) => state.setLightboxImageId);
     const [isPureBackground, setIsPureBackground] = useState(false);
     const [isQueryingBalance, setIsQueryingBalance] = useState(false);
     const apiBalanceText = getApiBalanceSnapshot(settings, activeProfile.id)?.text ?? "";
@@ -1561,6 +1563,21 @@ function InfiniteCanvasPage() {
         [message],
     );
 
+    const openNodeLightbox = useCallback(
+        async (node: CanvasNodeData) => {
+            if (node.type !== CanvasNodeType.Image || !node.metadata?.content) return;
+            try {
+                const dataUrl = await imageToDataUrl({ url: node.metadata.content, storageKey: node.metadata.storageKey });
+                if (!dataUrl) throw new Error("图片不存在");
+                const imageId = await storeImage(dataUrl, "generated");
+                setLightboxImageId(imageId, [imageId]);
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : "打开图片失败");
+            }
+        },
+        [message, setLightboxImageId],
+    );
+
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
             if (node.type === CanvasNodeType.Text) {
@@ -2469,7 +2486,7 @@ function InfiniteCanvasPage() {
                     onSaveAsset={(node) => void saveNodeAsset(node)}
                     onCrop={(node) => setCropNodeId(node.id)}
                     onAngle={(node) => setAngleNodeId(node.id)}
-                    onViewImage={(node) => setPreviewNodeId(node.id)}
+                    onViewImage={(node) => void openNodeLightbox(node)}
                     onRetry={(node) => void handleRetryNode(node)}
                     onToggleFreeResize={(node) => toggleNodeFreeResize(node.id)}
                     onDelete={(node) => deleteNodes(new Set([node.id]))}
@@ -2539,8 +2556,8 @@ function InfiniteCanvasPage() {
                             setContextMenu(null);
                         }}
                         onViewImage={() => {
-                            if (contextMenu.type !== "node") return;
-                            setPreviewNodeId(contextMenu.nodeId);
+                            if (!contextNode) return;
+                            void openNodeLightbox(contextNode);
                             setContextMenu(null);
                         }}
                         onCopyImage={() => {

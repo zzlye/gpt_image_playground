@@ -249,7 +249,15 @@ export const CanvasNode = React.memo(function CanvasNode({
                 setHovered(false);
                 onHoverEnd(data.id);
             }}
-            onContextMenu={(event) => onContextMenu(event, data.id)}
+            onContextMenu={(event) => {
+                const target = event.target;
+                if (target instanceof Element && target.closest("[data-connection-handle]")) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+                onContextMenu(event, data.id);
+            }}
         >
             <div className="pointer-events-none absolute -top-7 left-1 z-50 max-w-[70%]">
                 <span
@@ -659,11 +667,16 @@ function ConnectionHandleDot({ side, visible, pointerY, onMouseDown }: { side: "
 
     return (
         <div
+            data-connection-handle
             className={`group/handle absolute z-40 flex h-28 w-20 -translate-y-1/2 cursor-crosshair items-center justify-center transition-[top,opacity] duration-100 ease-out ${
                 side === "left" ? "-left-10 justify-start pl-3" : "-right-10 justify-end pr-3"
             } ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             style={{ top: `${yPercent}%` }}
             onMouseDown={onMouseDown}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
             title="拖拽连接节点"
         >
             <div

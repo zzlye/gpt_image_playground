@@ -66,7 +66,7 @@ export function CanvasNodeContextMenu({
 
     return (
         <div
-            className="fixed z-[80] min-w-[180px] overflow-hidden rounded-xl border py-2 shadow-2xl"
+            className="fixed z-[80] w-[300px] rounded-[18px] border p-3 shadow-2xl"
             style={{ left: menu.x, top: menu.y, background: menuBackground, borderColor: menuBorder, color: "#f8fafc" }}
             onPointerDown={(event) => event.stopPropagation()}
         >
@@ -85,8 +85,8 @@ export function CanvasNodeContextMenu({
                 <>
                     <CanvasMenuButton icon={<Save className="size-4" />} label="加入我的素材" disabled={!hasNodeContent} onClick={onSaveAsset} />
                     <MenuDivider />
-                    <CanvasMenuButton icon={<Eye className="size-4" />} label="显示简介" onClick={onShowInfo} />
                     {isImageNode ? <CanvasMenuButton icon={<ZoomIn className="size-4" />} label="放大图片" disabled={!hasNodeContent} onClick={onViewImage} /> : null}
+                    <CanvasMenuButton icon={<Eye className="size-4" />} label="显示简介" onClick={onShowInfo} />
                     {isImageNode ? <CanvasMenuButton icon={<ImagePlus className="size-4" />} label="复制图片" disabled={!hasNodeContent} onClick={onCopyImage} /> : null}
                     <MenuDivider />
                     <CanvasMenuButton icon={<Layers className="size-4" />} label="创建副本" onClick={onDuplicate} />
@@ -100,15 +100,17 @@ export function CanvasNodeContextMenu({
 }
 
 function MenuDivider() {
-    return <div className="mx-5 my-2 h-px bg-white/10" />;
+    return <div className="mx-3 my-2 h-px bg-white/10" />;
 }
 
 function CanvasMenuButton({ icon, label, shortcut, disabled = false, danger = false, onClick }: { icon: ReactNode; label: string; shortcut?: string; disabled?: boolean; danger?: boolean; onClick?: () => void }) {
     return (
-        <button type="button" className="flex h-11 w-full items-center gap-3 px-5 text-left text-sm font-semibold transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25" style={{ color: danger ? "#f87171" : "#f8fafc" }} disabled={disabled} onClick={disabled ? undefined : onClick}>
-            <span className="grid size-4 shrink-0 place-items-center text-white/70">{icon}</span>
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-            {shortcut ? <span className="text-[11px] font-normal text-white/35">{shortcut}</span> : null}
+        <button type="button" className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25" style={{ color: danger ? "#f87171" : "#f8fafc" }} disabled={disabled} onClick={disabled ? undefined : onClick}>
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/10 text-white/70">{icon}</span>
+            <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-base font-semibold leading-5">{label}</span>
+                {shortcut ? <span className="mt-1 block truncate text-sm font-normal text-white/45">{shortcut}</span> : null}
+            </span>
         </button>
     );
 }
