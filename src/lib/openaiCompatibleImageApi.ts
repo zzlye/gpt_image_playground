@@ -1,6 +1,6 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
-import { getBananaPricedImageModel, isBananaImageModel } from './apiProfiles'
+import { getFixedImageRequestModel, isBananaImageModel } from './apiProfiles'
 import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
 import { formatImageRatio, normalizeImageSize } from './size'
 import {
@@ -518,10 +518,11 @@ export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile
     return callCustomHttpImageApi(opts, profile, customProvider)
   }
 
-  if (profile.provider === 'openai' && isBananaImageModel(profile.model)) {
+  const requestModel = getFixedImageRequestModel(profile.model)
+  if (profile.provider === 'openai' && requestModel !== profile.model) {
     return callImagesApi(opts, {
       ...profile,
-      model: getBananaPricedImageModel(profile.model),
+      model: requestModel,
     })
   }
 

@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
+import { getFixedImageRequestModel } from "../../../lib/apiProfiles";
 
 export type ChatCompletionMessage = {
     role: "system" | "user" | "assistant";
@@ -161,11 +162,12 @@ export async function requestGeneration(config: AiConfig, prompt: string) {
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
+    const requestModel = getFixedImageRequestModel(config.imageModel || config.model);
     try {
         const response = await axios.post<ImageApiResponse>(
             aiApiUrl(config, "/images/generations"),
             {
-                model: config.imageModel || config.model,
+                model: requestModel,
                 prompt: withSystemPrompt(config, prompt),
                 n,
                 ...(quality ? { quality } : {}),
@@ -189,8 +191,9 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
+    const requestModel = getFixedImageRequestModel(config.imageModel || config.model);
     const formData = new FormData();
-    formData.set("model", config.imageModel || config.model);
+    formData.set("model", requestModel);
     formData.set("prompt", withSystemPrompt(config, prompt));
     formData.set("n", String(n));
     formData.set("response_format", "b64_json");

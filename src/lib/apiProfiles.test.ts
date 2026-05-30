@@ -11,6 +11,7 @@ import {
   findEquivalentApiProfile,
   getApiBalanceSnapshot,
   getBananaPricedImageModel,
+  getFixedImageRequestModel,
   getFixedImageModelUnitCostText,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
@@ -634,7 +635,7 @@ describe('custom providers', () => {
     expect(settings.profiles.every((profile) => profile.codexCli === false)).toBe(true)
   })
 
-  it('normalizes removed fixed GPT image models to the default model', () => {
+  it('keeps the fixed 4K GPT image model on Wenyun and disables it on public site', () => {
     const settings = normalizeSettings({
       ...DEFAULT_SETTINGS,
       profiles: [
@@ -643,15 +644,17 @@ describe('custom providers', () => {
       ],
     })
 
-    expect(FIXED_IMAGE_MODEL_OPTIONS.map((option) => String(option.value))).not.toContain('gpt-image-2-4k')
-    expect(settings.profiles[0].model).toBe(DEFAULT_IMAGES_MODEL)
+    expect(FIXED_IMAGE_MODEL_OPTIONS.map((option) => String(option.value))).toContain('gpt-image-2-4k')
+    expect(settings.profiles[0].model).toBe('gpt-image-2-4k')
     expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
   })
 
   it('uses fixed display prices for built-in image models', () => {
     expect(getFixedImageModelUnitCostText(DEFAULT_IMAGES_MODEL)).toBe('HUHN 0.06')
+    expect(getFixedImageModelUnitCostText('gpt-image-2-4k')).toBe('HUHN 0.15')
     expect(getFixedImageModelUnitCostText('Nano-Banana-2')).toBe('HUHN 0.09')
     expect(getFixedImageModelUnitCostText('Nano-Banana-Pro')).toBe('HUHN 0.18')
+    expect(getFixedImageRequestModel('gpt-image-2-4k')).toBe('gpt-image-2-vip')
     expect(getBananaPricedImageModel('nano-banana-pro')).toBe('nano-banana-pro')
   })
 

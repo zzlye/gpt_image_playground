@@ -33,6 +33,8 @@ const DEFAULT_BASE_URL = isImportableConfigUrl(RAW_DEFAULT_API_URL)
   ? ''
   : RAW_DEFAULT_API_URL || (DOCKER_DEPLOYMENT && DEFAULT_OPENAI_API_PROXY ? '' : OPENAI_DEFAULT_BASE_URL)
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
+export const GPT_IMAGE_2_4K_MODEL = 'gpt-image-2-4k'
+export const GPT_IMAGE_2_4K_REQUEST_MODEL = 'gpt-image-2-vip'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
 export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
@@ -41,6 +43,7 @@ export const DEFAULT_API_TIMEOUT = 600
 
 export const FIXED_IMAGE_MODEL_OPTIONS = [
   { value: DEFAULT_IMAGES_MODEL, label: DEFAULT_IMAGES_MODEL },
+  { value: GPT_IMAGE_2_4K_MODEL, label: GPT_IMAGE_2_4K_MODEL },
   { value: 'Nano-Banana-2', label: 'Nano Banana 2' },
   { value: 'Nano-Banana-Pro', label: 'Nano Banana Pro' },
 ] as const
@@ -57,9 +60,18 @@ export function getBananaPricedImageModel(model: string): string {
   return /^Nano-Banana-Pro$/i.test(normalized) ? 'nano-banana-pro' : 'nano-banana-2'
 }
 
+export function getFixedImageRequestModel(model: string): string {
+  const normalized = model.trim()
+  // 4K 展示模型固定走文运站的 VIP 上游模型。
+  if (/^gpt-image-2-(?:4k|vip)$/i.test(normalized)) return GPT_IMAGE_2_4K_REQUEST_MODEL
+  if (isBananaImageModel(normalized)) return getBananaPricedImageModel(normalized)
+  return normalized
+}
+
 export function getFixedImageModelUnitCostText(model: string): string | null {
   const normalized = model.trim()
   if (normalized === DEFAULT_IMAGES_MODEL) return 'HUHN 0.06'
+  if (/^gpt-image-2-(?:4k|vip)$/i.test(normalized)) return 'HUHN 0.15'
   if (!isBananaImageModel(normalized)) return null
   return /^Nano-Banana-Pro(?:-(?:1k|2k|4k))?$/i.test(normalized) ? 'HUHN 0.18' : 'HUHN 0.09'
 }
@@ -78,6 +90,7 @@ export function normalizeImageModelForProfile(model: string, profileId: string):
 function normalizeFixedImageModel(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_IMAGES_MODEL
   const model = value.trim()
+  if (/^gpt-image-2-(?:4k|vip)$/i.test(model)) return GPT_IMAGE_2_4K_MODEL
   if (/^Nano-Banana$/i.test(model)) return 'Nano-Banana-2'
   if (/^Nano-Banana-Pro-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-Pro'
   if (/^Nano-Banana-2-(?:1k|2k|4k)$/i.test(model)) return 'Nano-Banana-2'

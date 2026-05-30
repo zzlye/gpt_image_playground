@@ -344,6 +344,41 @@ describe('callImageApi', () => {
     })
   })
 
+  it('routes fixed GPT Image 2 4K model through the VIP request model', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      data: [{ b64_json: 'ZmluYWw=' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      apiKey: 'test-key',
+      model: 'gpt-image-2-4k',
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        apiKey: 'test-key',
+        model: 'gpt-image-2-4k',
+      })),
+    }
+
+    await callImageApi({
+      settings,
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS },
+      inputImageDataUrls: [],
+    } as any)
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String((init as RequestInit).body))
+    expect(body).toMatchObject({
+      model: 'gpt-image-2-vip',
+      prompt: 'prompt',
+      size: DEFAULT_PARAMS.size,
+    })
+  })
+
   it('routes Banana image models through standard NewAPI image generations', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
       data: [{ b64_json: 'ZmluYWw=' }],
