@@ -173,6 +173,11 @@ function cacheThumbnail(id: string, thumbnail: { dataUrl: string; width?: number
   }
 }
 
+/** 缓存一张已写入图片库的图片，供跨工坊 Lightbox 立即读取。 */
+export function primeImageCache(id: string, dataUrl: string) {
+  cacheImage(id, dataUrl)
+}
+
 export async function ensureImageCached(id: string): Promise<string | undefined> {
   const cached = getCachedImage(id)
   if (cached) return cached

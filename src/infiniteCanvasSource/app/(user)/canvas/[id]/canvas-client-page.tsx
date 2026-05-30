@@ -23,7 +23,7 @@ import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, norm
 import { copyImageSourceToClipboard, getClipboardFailureMessage } from "../../../../../lib/clipboard";
 import { storeImage } from "../../../../../lib/db";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
-import { useStore } from "../../../../../store";
+import { primeImageCache, useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
 import { cropDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
@@ -216,7 +216,7 @@ function QuickNodeCreateMenu({
                 <ConnectionCreateOption icon={<Video className="size-5" />} title="视频生成" onClick={() => onCreate(CanvasNodeType.Video)} />
                 <ConnectionCreateOption icon={<Settings2 className="size-5" />} title="配置节点" description="模型、尺寸、数量和输入顺序" onClick={() => onCreate(CanvasNodeType.Config)} />
                 <ConnectionCreateOption icon={<Upload className="size-5" />} title="上传" description="图片、视频文件" onClick={onUpload} />
-                <ConnectionCreateOption icon={<Images className="size-5" />} title="素材库" description="从素材库选择插入" onClick={onOpenAssetLibrary} />
+                <ConnectionCreateOption icon={<Images className="size-5" />} title="画布" description="从当前画布选择插入" onClick={onOpenAssetLibrary} />
             </div>
         </div>
     );
@@ -792,7 +792,7 @@ function InfiniteCanvasPage() {
     const openAssetLibraryFromQuickMenu = useCallback(() => {
         if (!quickNodeCreateMenu) return;
         assetInsertPositionRef.current = quickNodeCreateMenu.position;
-        setAssetPickerTab("library");
+        setAssetPickerTab("canvas");
         setAssetPickerOpen(true);
         setQuickNodeCreateMenu(null);
     }, [quickNodeCreateMenu]);
@@ -836,7 +836,7 @@ function InfiniteCanvasPage() {
             setAngleNodeId((current) => (current && allIds.has(current) ? null : current));
             setPreviewNodeId((current) => (current && allIds.has(current) ? null : current));
             setRunningNodeId((current) => (current && allIds.has(current) ? null : current));
-            setContextMenu((current) => (current && allIds.has(current.nodeId) ? null : current));
+            setContextMenu((current) => (current?.type === "node" && allIds.has(current.nodeId) ? null : current));
             cleanupCanvasFiles({ projectId, nodes: nodesRef.current.filter((node) => !allIds.has(node.id)), chatSessions });
         },
         [chatSessions, cleanupCanvasFiles, projectId],
@@ -1570,6 +1570,7 @@ function InfiniteCanvasPage() {
                 const dataUrl = await imageToDataUrl({ url: node.metadata.content, storageKey: node.metadata.storageKey });
                 if (!dataUrl) throw new Error("图片不存在");
                 const imageId = await storeImage(dataUrl, "generated");
+                primeImageCache(imageId, dataUrl);
                 setLightboxImageId(imageId, [imageId]);
             } catch (error) {
                 message.error(error instanceof Error ? error.message : "打开图片失败");
@@ -2446,9 +2447,16 @@ function InfiniteCanvasPage() {
                             onGenerateImage={generateImageFromTextNode}
                             onUpload={handleUploadRequest}
                             onContextMenu={(event, id) => {
+                                const target = event.target;
+                                if (target instanceof Element && target.closest("[data-connection-handle]")) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setContextMenu(null);
+                                    return;
+                                }
                                 event.preventDefault();
                                 event.stopPropagation();
-                                setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId: id });
+                                setContextMenu({ type: "node", x: event.clientX, y: event.clientY, position: screenToCanvas(event.clientX, event.clientY), nodeId: id });
                             }}
                         />
                     ))}
@@ -2468,6 +2476,86 @@ function InfiniteCanvasPage() {
                     ) : null}
                     {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
                     {quickNodeCreateMenu ? <QuickNodeCreateMenu menu={quickNodeCreateMenu} onCreate={createQuickNode} onUpload={uploadFromQuickMenu} onOpenAssetLibrary={openAssetLibraryFromQuickMenu} onClose={() => setQuickNodeCreateMenu(null)} /> : null}
+                    {contextMenu ? (
+                        <CanvasNodeContextMenu
+                            menu={contextMenu}
+                            scale={viewport.k}
+                            canUndo={historyState.canUndo}
+                            canRedo={historyState.canRedo}
+                            canPaste={Boolean(clipboardRef.current?.nodes.length)}
+                            isImageNode={contextNode?.type === CanvasNodeType.Image}
+                            hasNodeContent={Boolean(contextNode && (contextNode.type === CanvasNodeType.Text ? contextNode.metadata?.content?.trim() : contextNode.metadata?.content))}
+                            onClose={() => setContextMenu(null)}
+                            onDuplicate={() => {
+                                if (contextMenu.type !== "node") return;
+                                duplicateNode(contextMenu.nodeId);
+                                setContextMenu(null);
+                            }}
+                            onDelete={() => {
+                                if (contextMenu.type !== "node") return;
+                                deleteNodes(new Set([contextMenu.nodeId]));
+                                setContextMenu(null);
+                            }}
+                            onSaveAsset={() => {
+                                if (!contextNode) return;
+                                void saveNodeAsset(contextNode);
+                                setContextMenu(null);
+                            }}
+                            onShowInfo={() => {
+                                if (contextMenu.type !== "node") return;
+                                setInfoNodeId(contextMenu.nodeId);
+                                setContextMenu(null);
+                            }}
+                            onViewImage={() => {
+                                if (!contextNode) return;
+                                void openNodeLightbox(contextNode);
+                                setContextMenu(null);
+                            }}
+                            onCopyImage={() => {
+                                if (!contextNode) return;
+                                void copyNodeImage(contextNode);
+                                setContextMenu(null);
+                            }}
+                            onCopyNode={() => {
+                                if (contextMenu.type !== "node") return;
+                                copySingleNode(contextMenu.nodeId);
+                                setContextMenu(null);
+                            }}
+                            onUpload={() => {
+                                if (contextMenu.type !== "canvas") return;
+                                handleUploadRequest(undefined, contextMenu.position);
+                                setContextMenu(null);
+                            }}
+                            onAddNode={() => {
+                                if (contextMenu.type !== "canvas") return;
+                                setQuickNodeCreateMenu({ position: contextMenu.position });
+                                setContextMenu(null);
+                            }}
+                            onUndo={() => {
+                                undoCanvas();
+                                setContextMenu(null);
+                            }}
+                            onRedo={() => {
+                                redoCanvas();
+                                setContextMenu(null);
+                            }}
+                            onCopyAll={() => {
+                                copyAllNodes();
+                                setContextMenu(null);
+                            }}
+                            onPaste={() => {
+                                if (contextMenu.type === "canvas") {
+                                    pasteCopiedNodes(contextMenu.position);
+                                } else if (contextNode) {
+                                    pasteCopiedNodes({
+                                        x: contextNode.position.x + contextNode.width / 2 + 48,
+                                        y: contextNode.position.y + contextNode.height / 2 + 48,
+                                    });
+                                }
+                                setContextMenu(null);
+                            }}
+                        />
+                    ) : null}
                 </InfiniteCanvas>
 
                 <CanvasNodeHoverToolbar
@@ -2512,7 +2600,7 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                     onOpenAssetLibrary={() => {
                         assetInsertPositionRef.current = null;
-                        setAssetPickerTab("library");
+                        setAssetPickerTab("canvas");
                         setAssetPickerOpen(true);
                     }}
                     onOpenMyAssets={() => {
@@ -2525,86 +2613,6 @@ function InfiniteCanvasPage() {
                 {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
 
                 <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
-
-                {contextMenu ? (
-                    <CanvasNodeContextMenu
-                        menu={contextMenu}
-                        canUndo={historyState.canUndo}
-                        canRedo={historyState.canRedo}
-                        canPaste={Boolean(clipboardRef.current?.nodes.length)}
-                        isImageNode={contextNode?.type === CanvasNodeType.Image}
-                        hasNodeContent={Boolean(contextNode && (contextNode.type === CanvasNodeType.Text ? contextNode.metadata?.content?.trim() : contextNode.metadata?.content))}
-                        onClose={() => setContextMenu(null)}
-                        onDuplicate={() => {
-                            if (contextMenu.type !== "node") return;
-                            duplicateNode(contextMenu.nodeId);
-                            setContextMenu(null);
-                        }}
-                        onDelete={() => {
-                            if (contextMenu.type !== "node") return;
-                            deleteNodes(new Set([contextMenu.nodeId]));
-                            setContextMenu(null);
-                        }}
-                        onSaveAsset={() => {
-                            if (!contextNode) return;
-                            void saveNodeAsset(contextNode);
-                            setContextMenu(null);
-                        }}
-                        onShowInfo={() => {
-                            if (contextMenu.type !== "node") return;
-                            setInfoNodeId(contextMenu.nodeId);
-                            setContextMenu(null);
-                        }}
-                        onViewImage={() => {
-                            if (!contextNode) return;
-                            void openNodeLightbox(contextNode);
-                            setContextMenu(null);
-                        }}
-                        onCopyImage={() => {
-                            if (!contextNode) return;
-                            void copyNodeImage(contextNode);
-                            setContextMenu(null);
-                        }}
-                        onCopyNode={() => {
-                            if (contextMenu.type !== "node") return;
-                            copySingleNode(contextMenu.nodeId);
-                            setContextMenu(null);
-                        }}
-                        onUpload={() => {
-                            if (contextMenu.type !== "canvas") return;
-                            handleUploadRequest(undefined, contextMenu.position);
-                            setContextMenu(null);
-                        }}
-                        onAddNode={() => {
-                            if (contextMenu.type !== "canvas") return;
-                            setQuickNodeCreateMenu({ position: contextMenu.position });
-                            setContextMenu(null);
-                        }}
-                        onUndo={() => {
-                            undoCanvas();
-                            setContextMenu(null);
-                        }}
-                        onRedo={() => {
-                            redoCanvas();
-                            setContextMenu(null);
-                        }}
-                        onCopyAll={() => {
-                            copyAllNodes();
-                            setContextMenu(null);
-                        }}
-                        onPaste={() => {
-                            if (contextMenu.type === "canvas") {
-                                pasteCopiedNodes(contextMenu.position);
-                            } else if (contextNode) {
-                                pasteCopiedNodes({
-                                    x: contextNode.position.x + contextNode.width / 2 + 48,
-                                    y: contextNode.position.y + contextNode.height / 2 + 48,
-                                });
-                            }
-                            setContextMenu(null);
-                        }}
-                    />
-                ) : null}
 
                 <input ref={imageInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleImageInputChange} />
 
@@ -2652,6 +2660,8 @@ function InfiniteCanvasPage() {
                 <AssetPickerModal
                     open={assetPickerOpen}
                     defaultTab={assetPickerTab}
+                    canvasNodes={nodes}
+                    onRenameCanvasNode={(nodeId, title) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title } : node)))}
                     onInsert={handleAssetInsert}
                     onClose={() => {
                         assetInsertPositionRef.current = null;

@@ -8,6 +8,7 @@ import type { ContextMenuState } from "../types";
 
 type CanvasContextMenuProps = {
     menu: ContextMenuState;
+    scale?: number;
     canUndo?: boolean;
     canRedo?: boolean;
     canPaste?: boolean;
@@ -31,6 +32,7 @@ type CanvasContextMenuProps = {
 
 export function CanvasNodeContextMenu({
     menu,
+    scale = 1,
     canUndo = false,
     canRedo = false,
     canPaste = false,
@@ -53,6 +55,8 @@ export function CanvasNodeContextMenu({
 }: CanvasContextMenuProps) {
     const menuBackground = "#1f1f1f";
     const menuBorder = "rgba(255,255,255,.1)";
+    const menuPosition = menu.position;
+    const inverseScale = 1 / Math.max(scale, 0.01);
 
     useEffect(() => {
         const close = (event: PointerEvent) => {
@@ -66,9 +70,13 @@ export function CanvasNodeContextMenu({
 
     return (
         <div
-            className="fixed z-[80] w-[300px] rounded-[18px] border p-3 shadow-2xl"
-            style={{ left: menu.x, top: menu.y, background: menuBackground, borderColor: menuBorder, color: "#f8fafc" }}
+            className="absolute z-[80] w-[240px] rounded-2xl border p-2 shadow-2xl"
+            style={{ left: menuPosition.x, top: menuPosition.y, background: menuBackground, borderColor: menuBorder, color: "#f8fafc", transform: `scale(${inverseScale})`, transformOrigin: "top left" }}
             onPointerDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
         >
             {menu.type === "canvas" ? (
                 <>
@@ -100,16 +108,16 @@ export function CanvasNodeContextMenu({
 }
 
 function MenuDivider() {
-    return <div className="mx-3 my-2 h-px bg-white/10" />;
+    return <div className="mx-2 my-1.5 h-px bg-white/10" />;
 }
 
 function CanvasMenuButton({ icon, label, shortcut, disabled = false, danger = false, onClick }: { icon: ReactNode; label: string; shortcut?: string; disabled?: boolean; danger?: boolean; onClick?: () => void }) {
     return (
-        <button type="button" className="flex h-16 w-full cursor-pointer items-center gap-3 rounded-2xl px-3 text-left text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25" style={{ color: danger ? "#f87171" : "#f8fafc" }} disabled={disabled} onClick={disabled ? undefined : onClick}>
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white/10 text-white/70">{icon}</span>
+        <button type="button" className="flex h-12 w-full cursor-pointer items-center gap-2.5 rounded-xl px-2.5 text-left text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-25" style={{ color: danger ? "#f87171" : "#f8fafc" }} disabled={disabled} onClick={disabled ? undefined : onClick}>
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/10 text-white/70">{icon}</span>
             <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-base font-semibold leading-5">{label}</span>
-                {shortcut ? <span className="mt-1 block truncate text-sm font-normal text-white/45">{shortcut}</span> : null}
+                <span className="flex items-center gap-2 text-sm font-semibold leading-5">{label}</span>
+                {shortcut ? <span className="mt-0.5 block truncate text-xs font-normal text-white/45">{shortcut}</span> : null}
             </span>
         </button>
     );

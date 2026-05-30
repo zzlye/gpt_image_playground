@@ -245,7 +245,6 @@ export default function App() {
               </main>
               <InputBar />
               <DetailModal />
-              <Lightbox />
               <SupportPromptModal />
               <MaskEditorModal />
               <ImageContextMenu />
@@ -254,6 +253,7 @@ export default function App() {
             <CanvasWorkshop onBack={() => switchWorkspaceMode('gallery')} onOpenSettings={() => setShowSettings(true)} />
           )}
         </div>
+        <Lightbox />
         <SettingsModal />
         <ConfirmDialog />
         <Toast />

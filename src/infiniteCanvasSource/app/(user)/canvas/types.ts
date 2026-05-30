@@ -119,6 +119,7 @@ export type ContextMenuState =
           type: "node";
           x: number;
           y: number;
+          position: Position;
           nodeId: string;
       }
     | {
