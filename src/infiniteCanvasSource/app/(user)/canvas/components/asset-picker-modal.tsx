@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Dropdown, Empty, Input, Modal, Pagination, Tabs, Tag } from "antd";
 import { Search, Trash2 } from "lucide-react";
 
@@ -202,7 +203,7 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
     );
 }
 
-function PickerList({ keyword, kindFilter, categoryFilter, total, page, empty, onKeywordChange, onKindChange, onCategoryChange, onPageChange, children }: { keyword: string; kindFilter: string; categoryFilter: "all" | AssetCategory; total: number; page: number; empty: string; onKeywordChange: (value: string) => void; onKindChange: (value: string) => void; onCategoryChange: (value: "all" | AssetCategory) => void; onPageChange: (page: number) => void; children: React.ReactNode }) {
+function PickerList({ keyword, kindFilter, categoryFilter, total, page, empty, onKeywordChange, onKindChange, onCategoryChange, onPageChange, children }: { keyword: string; kindFilter: string; categoryFilter: "all" | AssetCategory; total: number; page: number; empty: string; onKeywordChange: (value: string) => void; onKindChange: (value: string) => void; onCategoryChange: (value: "all" | AssetCategory) => void; onPageChange: (page: number) => void; children: ReactNode }) {
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -248,6 +249,7 @@ function StoredPickerCard({ asset, onInsert, onRename, onChangeCategory, onDelet
 function PickerCard({ title, kind, category, cover, text, onInsert, onRename, onChangeCategory, onDelete }: { title: string; kind: string; category: AssetCategory; cover: string; text?: string; onInsert: () => void; onRename: (title: string) => void; onChangeCategory: (category: AssetCategory) => void; onDelete: () => void }) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(title);
+    const [deleteOpen, setDeleteOpen] = useState(false);
 
     useEffect(() => {
         setDraft(title);
@@ -260,83 +262,105 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
         else setDraft(title);
     };
 
-    const confirmDelete = (event: React.MouseEvent) => {
+    const confirmDelete = (event: MouseEvent) => {
         event.stopPropagation();
-        Modal.confirm({
-            title: "删除素材？",
-            content: "删除后不会再显示在这个素材列表里。",
-            okText: "删除",
-            okButtonProps: { danger: true },
-            cancelText: "取消",
-            centered: true,
-            onOk: onDelete,
-        });
+        setDeleteOpen(true);
     };
 
     return (
-        <div className="group relative overflow-hidden rounded-lg border border-stone-200 bg-white text-left transition hover:border-stone-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-500">
-            <button type="button" className="block w-full cursor-pointer text-left" onClick={onInsert}>
-                {kind === "video" && cover ? (
-                    <video src={cover} className="aspect-[4/3] w-full bg-black object-cover" muted playsInline />
-                ) : cover ? (
-                    <img src={cover} alt={title} className="aspect-[4/3] w-full object-cover" />
-                ) : (
-                    <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 p-3 text-center text-xs leading-5 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{text || title}</div>
-                )}
-            </button>
-            <div className="space-y-2 p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                    {editing ? (
-                        <Input
-                            size="small"
-                            value={draft}
-                            autoFocus
-                            onChange={(event) => setDraft(event.target.value)}
-                            onBlur={commitRename}
-                            onPressEnter={commitRename}
-                            onClick={(event) => event.stopPropagation()}
-                        />
+        <>
+            <div className="group relative overflow-hidden rounded-lg border border-stone-200 bg-white text-left transition hover:border-stone-400 hover:shadow-md dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-500">
+                <button type="button" className="block w-full cursor-pointer text-left" onClick={onInsert}>
+                    {kind === "video" && cover ? (
+                        <video src={cover} className="aspect-[4/3] w-full bg-black object-cover" muted playsInline />
+                    ) : cover ? (
+                        <img src={cover} alt={title} className="aspect-[4/3] w-full object-cover" />
                     ) : (
-                        <button type="button" className="min-w-0 flex-1 cursor-text truncate text-left text-xs font-medium text-stone-800 dark:text-stone-200" onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => {
-                            event.stopPropagation();
-                            setEditing(true);
-                        }} title={`${title}，双击重命名`}>
-                            {title}
-                        </button>
+                        <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 p-3 text-center text-xs leading-5 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{text || title}</div>
                     )}
-                    <Tag className="m-0 shrink-0 text-[10px]">{kind === "image" ? "图片" : kind === "video" ? "视频" : "文本"}</Tag>
+                </button>
+                <div className="space-y-2 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                        {editing ? (
+                            <Input
+                                size="small"
+                                value={draft}
+                                autoFocus
+                                onChange={(event) => setDraft(event.target.value)}
+                                onBlur={commitRename}
+                                onPressEnter={commitRename}
+                                onClick={(event) => event.stopPropagation()}
+                            />
+                        ) : (
+                            <button
+                                type="button"
+                                className="min-w-0 flex-1 cursor-text truncate text-left text-xs font-medium text-stone-800 dark:text-stone-200"
+                                onClick={(event) => event.stopPropagation()}
+                                onDoubleClick={(event) => {
+                                    event.stopPropagation();
+                                    setEditing(true);
+                                }}
+                                title={`${title}，双击重命名`}
+                            >
+                                {title}
+                            </button>
+                        )}
+                        <Tag className="m-0 shrink-0 text-[10px]">{kind === "image" ? "图片" : kind === "video" ? "视频" : "文本"}</Tag>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400">
+                        <Dropdown
+                            trigger={["click"]}
+                            menu={{
+                                items: assetCategoryValues.map((item) => ({ key: item, label: item })),
+                                onClick: ({ key }) => onChangeCategory(key as AssetCategory),
+                            }}
+                        >
+                            <button
+                                type="button"
+                                className="rounded-md bg-stone-100 px-1.5 py-0.5 transition hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700"
+                                onClick={(event) => event.stopPropagation()}
+                                title="点击修改子分类"
+                            >
+                                {category}
+                            </button>
+                        </Dropdown>
+                        <span>双击名称重命名</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400">
-                    <Dropdown
-                        trigger={["click"]}
-                        menu={{
-                            items: assetCategoryValues.map((item) => ({ key: item, label: item })),
-                            onClick: ({ key }) => onChangeCategory(key as AssetCategory),
-                        }}
-                    >
+                <div className="pointer-events-none absolute inset-x-0 top-0 flex aspect-[4/3] items-center justify-center bg-stone-950/0 text-sm font-medium text-white opacity-0 transition group-hover:bg-stone-950/45 group-hover:opacity-100">插入</div>
+                <button
+                    type="button"
+                    className="absolute bottom-2 right-2 z-10 grid size-8 translate-y-1 place-items-center rounded-full border border-red-200 bg-white/95 text-red-500 opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100 hover:bg-red-50 dark:border-red-500/40 dark:bg-stone-950/95 dark:hover:bg-red-950/40"
+                    onClick={confirmDelete}
+                    aria-label="删除素材"
+                    title="删除"
+                >
+                    <Trash2 className="size-4" />
+                </button>
+            </div>
+
+            <Modal title={null} open={deleteOpen} centered footer={null} onCancel={() => setDeleteOpen(false)} styles={{ body: { padding: 0 } }}>
+                <div className="rounded-2xl border border-stone-200 bg-white p-5 text-stone-900 shadow-2xl dark:border-white/[0.08] dark:bg-stone-950 dark:text-stone-100">
+                    <h3 className="text-base font-semibold">删除素材？</h3>
+                    <p className="mt-2 text-sm text-stone-500 dark:text-stone-400">删除「{title}」后不会再显示在这个素材列表里。</p>
+                    <div className="mt-5 flex justify-end gap-2">
+                        <button type="button" className="rounded-lg px-4 py-2 text-sm text-stone-600 transition hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-white/[0.08]" onClick={() => setDeleteOpen(false)}>
+                            取消
+                        </button>
                         <button
                             type="button"
-                            className="rounded-md bg-stone-100 px-1.5 py-0.5 transition hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700"
-                            onClick={(event) => event.stopPropagation()}
-                            title="点击修改子分类"
+                            className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-600"
+                            onClick={() => {
+                                setDeleteOpen(false);
+                                onDelete();
+                            }}
                         >
-                            {category}
+                            删除
                         </button>
-                    </Dropdown>
-                    <span>双击名称重命名</span>
+                    </div>
                 </div>
-            </div>
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex aspect-[4/3] items-center justify-center bg-stone-950/0 text-sm font-medium text-white opacity-0 transition group-hover:bg-stone-950/45 group-hover:opacity-100">插入</div>
-            <button
-                type="button"
-                className="absolute bottom-2 right-2 z-10 grid size-8 translate-y-1 place-items-center rounded-full border border-red-200 bg-white/95 text-red-500 opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100 hover:bg-red-50 dark:border-red-500/40 dark:bg-stone-950/95 dark:hover:bg-red-950/40"
-                onClick={confirmDelete}
-                aria-label="删除素材"
-                title="删除"
-            >
-                <Trash2 className="size-4" />
-            </button>
-        </div>
+            </Modal>
+        </>
     );
 }
 

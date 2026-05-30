@@ -2,11 +2,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Image as ImageIcon, Plus, RefreshCw, Star, Upload, Video } from "lucide-react";
+import { ChevronRight, Clock, Image as ImageIcon, Plus, RefreshCw, Star, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
-import { formatBytes } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { formatImageRatio } from "../../../../../lib/size";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "../types";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -344,7 +344,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                     </button>
                 ) : null}
 
-                {showImageInfo && hasImageContent ? <ImageInfoBar node={data} /> : null}
+                {showImageInfo && data.type === CanvasNodeType.Image ? <ImageInfoBar node={data} /> : null}
 
                 {!hasImageContent && !hasVideoContent ? <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12" style={{ background: `linear-gradient(to top, ${theme.canvas.background}66, transparent)` }} /> : null}
 
@@ -599,17 +599,45 @@ function ImageContent({
 }
 
 function ImageInfoBar({ node }: { node: CanvasNodeData }) {
+    const [now, setNow] = useState(Date.now());
+    const isLoading = node.metadata?.status === "loading";
+
+    useEffect(() => {
+        if (!isLoading) return;
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        setNow(Date.now());
+        return () => window.clearInterval(timer);
+    }, [isLoading, node.id]);
+
     const width = Math.round(node.metadata?.naturalWidth || node.width);
     const height = Math.round(node.metadata?.naturalHeight || node.height);
-    const size = formatBytes(node.metadata?.bytes || 0);
+    const hasFinalSize = Boolean(node.metadata?.content && width > 0 && height > 0);
+    const elapsed = isLoading ? Math.max(0, now - (node.metadata?.generationStartedAt || now)) : node.metadata?.generationElapsedMs;
+
+    if (!isLoading && !hasFinalSize) return null;
+
     return (
-        <div className="pointer-events-none absolute bottom-3 right-3 z-40 max-w-[calc(100%-24px)]">
-            <span className="max-w-full truncate rounded-md bg-black/55 px-2 py-1 text-[11px] font-medium leading-none text-white backdrop-blur-sm">
-                {width} x {height}
-                {size ? ` · ${size}` : ""}
-            </span>
+        <div className="pointer-events-none absolute left-3 top-3 z-40 flex max-w-[calc(100%-24px)] items-center gap-1.5">
+            {isLoading || !hasFinalSize ? (
+                <span className="flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 font-mono text-[11px] leading-none text-white backdrop-blur-sm">
+                    <Clock className="size-3" />
+                    {formatDuration(elapsed)}
+                </span>
+            ) : (
+                <>
+                    <span className="rounded bg-black/50 px-1.5 py-0.5 font-mono text-[11px] leading-none text-white backdrop-blur-sm">{formatImageRatio(width, height)}</span>
+                    <span className="rounded bg-black/50 px-1.5 py-0.5 text-[11px] font-medium leading-none text-white/90 backdrop-blur-sm">{width}×{height}</span>
+                </>
+            )}
         </div>
     );
+}
+
+function formatDuration(ms?: number) {
+    const seconds = Math.max(0, Math.floor((ms || 0) / 1000));
+    const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const ss = String(seconds % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
 }
 
 function BatchFrame({ batchCount, batchExpanded, batchOpening, batchRecovering, onToggleBatch, children }: { batchCount: number; batchExpanded: boolean; batchOpening: boolean; batchRecovering: boolean; onToggleBatch?: () => void; children: ReactNode }) {

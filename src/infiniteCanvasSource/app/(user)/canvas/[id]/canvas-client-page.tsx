@@ -23,6 +23,7 @@ import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, norm
 import { copyImageSourceToClipboard, getClipboardFailureMessage } from "../../../../../lib/clipboard";
 import { storeImage } from "../../../../../lib/db";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
+import { replaceImageMentionsForApi, stripImageMentionMarkers } from "../../../../../lib/promptImageMentions";
 import { primeImageCache, useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
 import { cropDataUrl } from "../utils/canvas-image-data";
@@ -1893,10 +1894,11 @@ function InfiniteCanvasPage() {
             setRunningNodeId(nodeId);
             const sourceTextContent = sourceNode?.type === CanvasNodeType.Text ? sourceNode.metadata?.content?.trim() || "" : "";
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
-            const baseGenerationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${prompt}` : prompt),
-            );
             const manualReferenceImages = await hydrateManualReferenceImages(sourceNode?.metadata?.referenceImages);
+            const promptForApi = formatCanvasPromptForApi(prompt, manualReferenceImages.length);
+            const baseGenerationContext = await hydrateNodeGenerationContext(
+                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${promptForApi}` : promptForApi),
+            );
             const generationContext = withMergedReferenceImages(baseGenerationContext, manualReferenceImages);
             const effectivePrompt = generationContext.prompt.trim();
             const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image && !editingTextNode;
@@ -1992,7 +1994,7 @@ function InfiniteCanvasPage() {
                                               title: prompt.slice(0, 32) || "Prompt",
                                               width: parentConfig.width,
                                               height: parentConfig.height,
-                                              metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
+                                              metadata: { ...node.metadata, content: stripImageMentionMarkers(prompt), prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
                                           }
                                 : node,
                         ),
@@ -2131,7 +2133,7 @@ function InfiniteCanvasPage() {
                             : node.id === nodeId && isConfigNode
                               ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, ...timing() } }
                               : node.id === nodeId && !editingTextNode
-                                ? { ...node, type: CanvasNodeType.Text, title: prompt.slice(0, 32) || "Generated Text", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, ...timing() } }
+                                ? { ...node, type: CanvasNodeType.Text, title: stripImageMentionMarkers(prompt).slice(0, 32) || "Generated Text", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, ...timing() } }
                                 : node,
                     ),
                 );
@@ -2177,8 +2179,6 @@ function InfiniteCanvasPage() {
                 message.warning("找不到提示词，无法重试");
                 return;
             }
-            const generationStartedAt = Date.now();
-            const timing = () => buildGenerationTiming(generationStartedAt);
             const generationType = savedImageMetadata?.generationType;
             const useReferenceImages = generationType ? generationType === "edit" : Boolean(context?.referenceImages.length);
             const retryReferenceImages =
@@ -2189,6 +2189,8 @@ function InfiniteCanvasPage() {
                 return;
             }
 
+            const generationStartedAt = Date.now();
+            const timing = () => buildGenerationTiming(generationStartedAt);
             setRunningNodeId(node.id);
             setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : item)));
 
@@ -2584,6 +2586,11 @@ function InfiniteCanvasPage() {
                             onCopyImage={() => {
                                 if (!contextNode) return;
                                 void copyNodeImage(contextNode);
+                                setContextMenu(null);
+                            }}
+                            onDownloadImage={() => {
+                                if (!contextNode) return;
+                                downloadNodeImage(contextNode);
                                 setContextMenu(null);
                             }}
                             onCopyNode={() => {
@@ -3061,6 +3068,25 @@ function buildGenerationTiming(startedAt: number): Pick<CanvasNodeMetadata, "gen
     return { generationStartedAt: startedAt, generationElapsedMs: Math.max(0, Date.now() - startedAt) };
 }
 
+function formatCanvasPromptForApi(prompt: string, imageCount: number) {
+    return stripImageMentionMarkers(replaceImageMentionsForApi(prompt, imageCount, (index) => `[reference image ${index + 1}]`));
+}
+
+function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[]): CanvasNodeMetadata {
+    return {
+        generationType: type,
+        model: config.model,
+        size: config.size,
+        quality: config.quality,
+        count,
+        references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
+    };
+}
+
+function referenceUrl(image: ReferenceImage) {
+    return image.storageKey || image.url || (!image.dataUrl.startsWith("data:") ? image.dataUrl : undefined);
+}
+
 async function hydrateManualReferenceImages(references?: CanvasNodeMetadata["referenceImages"]): Promise<ReferenceImage[]> {
     return Promise.all(
         (references || []).map(async (image) => ({
@@ -3082,28 +3108,15 @@ function withMergedReferenceImages<T extends { referenceImages: ReferenceImage[]
 function mergeReferenceImages(...groups: ReferenceImage[][]) {
     const seen = new Set<string>();
     const result: ReferenceImage[] = [];
-    groups.flat().forEach((image) => {
-        const key = image.storageKey || image.url || image.dataUrl || image.id;
-        if (seen.has(key)) return;
-        seen.add(key);
-        result.push(image);
-    });
+    for (const group of groups) {
+        for (const image of group) {
+            const key = image.storageKey || image.url || image.dataUrl || image.id;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            result.push(image);
+        }
+    }
     return result;
-}
-
-function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[]): CanvasNodeMetadata {
-    return {
-        generationType: type,
-        model: config.model,
-        size: config.size,
-        quality: config.quality,
-        count,
-        references: references.map(referenceUrl).filter((url): url is string => Boolean(url)),
-    };
-}
-
-function referenceUrl(image: ReferenceImage) {
-    return image.storageKey || image.url || (!image.dataUrl.startsWith("data:") ? image.dataUrl : undefined);
 }
 
 async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {

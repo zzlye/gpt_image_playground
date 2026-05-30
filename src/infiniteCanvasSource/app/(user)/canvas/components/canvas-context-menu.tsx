@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { Clipboard, Copy, Eye, ImagePlus, Layers, Plus, Redo2, Save, Trash2, Undo2, Upload, ZoomIn } from "lucide-react";
+import { Clipboard, Copy, Download, Eye, ImagePlus, Layers, Plus, Redo2, Save, Trash2, Undo2, Upload, ZoomIn } from "lucide-react";
 
 import type { ContextMenuState } from "../types";
 
@@ -21,6 +21,7 @@ type CanvasContextMenuProps = {
     onShowInfo?: () => void;
     onViewImage?: () => void;
     onCopyImage?: () => void;
+    onDownloadImage?: () => void;
     onCopyNode?: () => void;
     onUpload?: () => void;
     onAddNode?: () => void;
@@ -45,6 +46,7 @@ export function CanvasNodeContextMenu({
     onShowInfo,
     onViewImage,
     onCopyImage,
+    onDownloadImage,
     onCopyNode,
     onUpload,
     onAddNode,
@@ -96,6 +98,7 @@ export function CanvasNodeContextMenu({
                     {isImageNode ? <CanvasMenuButton icon={<ZoomIn className="size-4" />} label="放大图片" disabled={!hasNodeContent} onClick={onViewImage} /> : null}
                     <CanvasMenuButton icon={<Eye className="size-4" />} label="显示简介" onClick={onShowInfo} />
                     {isImageNode ? <CanvasMenuButton icon={<ImagePlus className="size-4" />} label="复制图片" disabled={!hasNodeContent} onClick={onCopyImage} /> : null}
+                    {isImageNode ? <CanvasMenuButton icon={<Download className="size-4" />} label="下载图片" disabled={!hasNodeContent} onClick={onDownloadImage} /> : null}
                     <MenuDivider />
                     <CanvasMenuButton icon={<Layers className="size-4" />} label="创建副本" onClick={onDuplicate} />
                     <CanvasMenuButton icon={<Copy className="size-4" />} label="复制节点" onClick={onCopyNode} />

@@ -111,6 +111,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     const imageBytes = node?.type === CanvasNodeType.Image && node.metadata?.content ? getDataUrlByteSize(node.metadata.content) : 0;
     const batchCount = node?.type === CanvasNodeType.Image ? node.metadata?.batchChildIds?.length || 0 : 0;
     const generationDuration = formatGenerationDuration(node?.metadata?.generationElapsedMs);
+    const imageSize = node?.type === CanvasNodeType.Image && (node.metadata?.naturalWidth || node.metadata?.naturalHeight) ? `${Math.round(node.metadata?.naturalWidth || node.width)} x ${Math.round(node.metadata?.naturalHeight || node.height)}` : `${Math.round(node?.width || 0)} x ${Math.round(node?.height || 0)}`;
     const json = useMemo(() => {
         if (!node) return "";
         return JSON.stringify(
@@ -153,7 +154,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                         <div className="thin-scrollbar h-full space-y-3 overflow-auto pr-1">
                             <InfoRow label="ID" value={node.id} />
                             <InfoRow label="类型" value={node.type === CanvasNodeType.Text ? "文本" : node.type === CanvasNodeType.Image ? "图片" : node.type === CanvasNodeType.Video ? "视频" : "生成配置"} />
-                            <InfoRow label="尺寸" value={`${Math.round(node.width)} x ${Math.round(node.height)}`} />
+                            <InfoRow label="尺寸" value={imageSize} />
                             <InfoRow label="位置" value={`${Math.round(node.position.x)}, ${Math.round(node.position.y)}`} />
                             <InfoRow label="状态" value={node.metadata?.status || "idle"} />
                             {generationDuration ? <InfoRow label="生成用时" value={generationDuration} /> : null}
@@ -207,10 +208,10 @@ function ToolbarDivider() {
 
 function formatGenerationDuration(ms?: number) {
     if (typeof ms !== "number" || !Number.isFinite(ms)) return "";
-    const seconds = Math.max(0, Math.round(ms / 1000));
-    const minutes = Math.floor(seconds / 60);
-    const rest = seconds % 60;
-    return minutes ? `${minutes}分${rest}秒` : `${seconds}秒`;
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const ss = String(seconds % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
 }
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
