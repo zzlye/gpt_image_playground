@@ -2061,7 +2061,7 @@ function InfiniteCanvasPage() {
                     onCancelTitleEditing={() => setTitleEditing(false)}
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}
-                    onHome={() => router.push("/")}
+                    onHome={() => router.push("/canvas")}
                     onProjects={() => router.push("/canvas")}
                     onCreateProject={createAndOpenProject}
                     onDeleteProject={deleteCurrentProject}
@@ -2069,6 +2069,7 @@ function InfiniteCanvasPage() {
                     onUndo={undoCanvas}
                     onRedo={redoCanvas}
                     assistantCollapsed={assistantCollapsed}
+                    onOpenSettings={() => openConfigDialog(false)}
                     onExpandAssistant={() => {
                         setAssistantMounted(true);
                         setAssistantCollapsed(false);
@@ -2356,6 +2357,7 @@ function CanvasTopBar({
     onUndo,
     onRedo,
     assistantCollapsed,
+    onOpenSettings,
     onExpandAssistant,
 }: {
     title: string;
@@ -2375,6 +2377,7 @@ function CanvasTopBar({
     onUndo: () => void;
     onRedo: () => void;
     assistantCollapsed: boolean;
+    onOpenSettings: () => void;
     onExpandAssistant: () => void;
 }) {
     const router = useRouter();
@@ -2466,6 +2469,15 @@ function CanvasTopBar({
                     {assistantCollapsed ? (
                         <>
                             <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
+                            <Button
+                                type="text"
+                                className="!h-10 !w-10 !min-w-10 !rounded-xl !p-0 !font-medium"
+                                style={{ background: theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
+                                icon={<Settings2 className="size-4" />}
+                                onClick={onOpenSettings}
+                                aria-label="助手设置"
+                                title="助手设置"
+                            />
                             <Button
                                 type="text"
                                 className="!h-10 !rounded-xl !px-3 !font-medium"

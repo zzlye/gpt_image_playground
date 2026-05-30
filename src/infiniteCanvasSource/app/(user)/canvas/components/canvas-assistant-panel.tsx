@@ -230,17 +230,17 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, sessions, activeS
             style={{ overflow: "clip", pointerEvents: closing ? "none" : undefined }}
         >
             <motion.aside
-                className="relative flex shrink-0 flex-col border-l"
+                className="relative flex shrink-0 flex-col border-l backdrop-blur-2xl"
                 initial={{ x: 48 }}
                 animate={{ x: closing ? 28 : 0 }}
                 transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: [0.22, 1, 0.36, 1] }}
-                style={{ width, background: theme.node.panel, borderColor: theme.node.stroke, color: theme.node.text }}
+                style={{ width, background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text, boxShadow: "-24px 0 60px rgba(28,25,23,.14)" }}
             >
                 <button type="button" className="absolute inset-y-0 left-0 z-40 w-4 -translate-x-1/2 cursor-col-resize" onMouseDown={startResize} aria-label="调整右侧面板宽度" />
-                <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: theme.node.stroke }}>
+                <div className="flex items-center justify-between border-b px-4 py-3 backdrop-blur-xl" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke }}>
                     <div className="flex items-center gap-2 text-sm font-medium">
                         <Sparkles className="size-4" />
-                        {view === "history" ? "历史记录" : "画布助手(未开发)"}
+                        {view === "history" ? "历史记录" : "画布助手"}
                     </div>
                     <div className="flex items-center gap-1">
                         {view === "history" ? (
@@ -278,7 +278,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, sessions, activeS
                                 }}
                             />
                         </Tooltip>
-                        <Tooltip title="配置">
+                        <Tooltip title="设置">
                             <Button type="text" shape="circle" className="!h-8 !w-8 !min-w-8" style={iconButtonStyle} icon={<Settings2 className="size-4" />} onClick={() => openConfigDialog(false)} />
                         </Tooltip>
                         <Tooltip title="收起对话">
@@ -305,8 +305,8 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, sessions, activeS
                     ) : (
                         <div className="flex h-full flex-col items-center justify-center px-1 text-center">
                             <div className="relative font-serif text-4xl font-bold italic tracking-normal" style={{ color: theme.node.text }}>
-                                <span>画布工坊</span>
-                                <DiaTextReveal className="absolute inset-0" colors={["#A97CF8", "#F38CB8", "#FDCC92"]} textColor="transparent" duration={1.8} startOnView={false} text="画布工坊" />
+                                <span>画布助手</span>
+                                <DiaTextReveal className="absolute inset-0" colors={["#A97CF8", "#F38CB8", "#FDCC92"]} textColor="transparent" duration={1.8} startOnView={false} text="画布助手" />
                             </div>
                             <div className="mt-3 text-base tracking-wide opacity-60">让创作在画布中连续展开</div>
                         </div>
@@ -404,7 +404,7 @@ function AssistantComposer({
                     ))}
                 </div>
             ) : null}
-            <div className="rounded-[28px] border px-3 pb-3 pt-3 shadow-lg" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke }}>
+            <div className="rounded-[28px] border px-3 pb-3 pt-3 shadow-[0_18px_48px_rgba(28,25,23,.16)] backdrop-blur-xl" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke }}>
                 <textarea
                     value={prompt}
                     onChange={(event) => onPromptChange(event.target.value)}
