@@ -42,7 +42,7 @@ export function CanvasConfigNodePanel({ node, isRunning, inputSummary, inputs, o
     const mode = node.metadata?.generationMode || "image";
     const config = buildNodeConfig(globalConfig, node, mode, activeProfile.id);
     const modelOptions = useCanvasModelOptions(config, mode, activeProfile.id);
-    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(node.metadata?.count || 3)) || 1)));
+    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(node.metadata?.count || 1)) || 1)));
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? count : 1 });
     const imageCostText = mode === "image" ? getFixedImageModelUnitCostText(config.model) || "HUHN --" : null;
     const chipStyle = { background: theme.node.fill, borderColor: theme.node.stroke, color: theme.node.text };
@@ -342,6 +342,6 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         size: node.metadata?.size || globalConfig.size || defaultConfig.size,
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
-        count: String(node.metadata?.count || (mode === "image" ? 3 : globalConfig.count) || defaultConfig.count),
+        count: String(node.metadata?.count || (mode === "image" ? 1 : globalConfig.count) || defaultConfig.count),
     };
 }

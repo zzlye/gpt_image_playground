@@ -28,6 +28,7 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
   const [error, setError] = useState('')
   const [items, setItems] = useState<NewApiPriceTableItem[]>([])
   const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  const profileQueryKey = `${activeProfile.id}\n${activeProfile.baseUrl}\n${activeProfile.apiKey}`
 
   useEffect(() => {
     if (!open) return
@@ -52,7 +53,7 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
     return () => {
       cancelled = true
     }
-  }, [activeProfile.apiKey, activeProfile.baseUrl, activeProfile.id, open])
+  }, [profileQueryKey, open])
 
   const rows = useMemo(() => buildPriceRows(activeProfile.id, items), [activeProfile.id, items])
 

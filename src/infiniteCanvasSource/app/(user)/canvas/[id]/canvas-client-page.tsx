@@ -545,7 +545,7 @@ function InfiniteCanvasPage() {
 
     const createConnectedNode = useCallback(
         (type: CanvasNodeType.Image | CanvasNodeType.Text | CanvasNodeType.Config | CanvasNodeType.Video, pending: PendingConnectionCreate) => {
-            const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: 3 } : undefined;
+            const metadata = type === CanvasNodeType.Config ? { model: effectiveConfig.imageModel || effectiveConfig.model, size: effectiveConfig.size, count: 1 } : undefined;
             const newNode = createCanvasNode(type, pending.position, metadata);
             const connection = normalizeConnection(pending.connection.nodeId, newNode.id, [...nodesRef.current, newNode], pending.connection.handleType);
             if (!connection) {
@@ -664,7 +664,7 @@ function InfiniteCanvasPage() {
                     ? {
                           model: effectiveConfig.imageModel || effectiveConfig.model,
                           size: effectiveConfig.size,
-                          count: 3,
+                          count: 1,
                       }
                     : undefined;
             const newNode = createCanvasNode(type, targetPosition, configMetadata);
@@ -1993,7 +1993,7 @@ function InfiniteCanvasPage() {
                     prompt: "",
                     model: effectiveConfig.imageModel || effectiveConfig.model,
                     size: effectiveConfig.size,
-                    count: 3,
+                    count: 1,
                 },
             );
             const connection = { id: nanoid(), fromNodeId: sourceNode.id, toNodeId: configNode.id };
@@ -2703,7 +2703,7 @@ function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefine
         size: node?.metadata?.size || config.size || defaultConfig.size,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
-        count: String(node?.metadata?.count || (mode === "image" ? 3 : config.count) || defaultConfig.count),
+        count: String(node?.metadata?.count || (mode === "image" ? 1 : config.count) || defaultConfig.count),
     };
 }
 

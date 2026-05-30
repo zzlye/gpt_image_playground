@@ -121,6 +121,12 @@ async function fetchPublicJsonWithCorsFallback(url: string, timeoutMs = PUBLIC_F
   }
 }
 
+async function fetchPublicPriceJson(url: string, apiKey?: string, timeoutMs = 2500): Promise<unknown> {
+  const sameOriginProxyUrl = getWenyunPublicProxyUrl(url)
+  if (sameOriginProxyUrl) return fetchJsonWithTimeout(sameOriginProxyUrl, apiKey, timeoutMs)
+  return fetchPublicJsonWithCorsFallback(url, timeoutMs)
+}
+
 function getWenyunPublicProxyUrl(url: string): string | null {
   try {
     const parsed = new URL(url)
@@ -591,16 +597,16 @@ export async function queryNewApiModelUnitCost(profile: ApiProfile): Promise<New
       }
     }
 
-    const priceAttempts = [
+    const priceAttempts = Array.from(new Set([
       `${origin}/api/ratio_config`,
       `${apiRoot}/api/ratio_config`,
       `${origin}/api/pricing`,
       `${apiRoot}/api/pricing`,
-    ]
+    ]))
 
     const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
       try {
-        return await fetchJsonWithTimeout(url, profile.apiKey, 2500)
+        return await fetchPublicPriceJson(url, profile.apiKey)
       } catch {
         // 单个公开定价接口失败不影响兜底展示。
         return undefined
@@ -638,17 +644,30 @@ export async function queryNewApiPriceTable(profile: ApiProfile): Promise<NewApi
     }
 
     addEntries(collectModelPricesFromPayload(status.raw, false))
+    if (entries.size > 0) {
+      return {
+        items: Array.from(entries.values())
+          .map((item) => ({
+            model: item.model,
+            rawPrice: item.price,
+            text: formatModelUnitCost(item.price, status),
+          }))
+          .sort((a, b) => a.model.localeCompare(b.model)),
+        updatedAt: Date.now(),
+        found: true,
+      }
+    }
 
-    const priceAttempts = [
+    const priceAttempts = Array.from(new Set([
       `${origin}/api/ratio_config`,
       `${apiRoot}/api/ratio_config`,
       `${origin}/api/pricing`,
       `${apiRoot}/api/pricing`,
-    ]
+    ]))
 
     const fetchedPricePayloads = await Promise.all(priceAttempts.map(async (url) => {
       try {
-        return await fetchJsonWithTimeout(url, profile.apiKey, 2500)
+        return await fetchPublicPriceJson(url, profile.apiKey)
       } catch {
         // 单个公开定价接口失败不影响其它价格来源。
         return undefined
