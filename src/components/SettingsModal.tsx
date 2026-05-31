@@ -32,6 +32,8 @@ import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type 
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
+import { useCanvasStore } from '../infiniteCanvasSource/app/(user)/canvas/stores/use-canvas-store'
+import { useAssetStore } from '../infiniteCanvasSource/stores/use-asset-store'
 import Select from './Select'
 import { Checkbox } from './Checkbox'
 import ViewportTooltip from './ViewportTooltip'
@@ -612,6 +614,8 @@ export default function SettingsModal() {
   const setShowSettings = useStore((s) => s.setShowSettings)
   const settings = useStore((s) => s.settings)
   const setSettings = useStore((s) => s.setSettings)
+  const canvasProjects = useCanvasStore((s) => s.projects)
+  const assets = useAssetStore((s) => s.assets)
   const reusedTaskApiProfileId = useStore((s) => s.reusedTaskApiProfileId)
   const setReusedTaskApiProfile = useStore((s) => s.setReusedTaskApiProfile)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
@@ -648,10 +652,18 @@ export default function SettingsModal() {
   const [videoModelOptions, setVideoModelOptions] = useState<string[]>([])
   const [exportConfig, setExportConfig] = useState(true)
   const [exportTasks, setExportTasks] = useState(true)
+  const [exportCanvasProjects, setExportCanvasProjects] = useState(false)
+  const [exportAssets, setExportAssets] = useState(false)
+  const [exportCanvasProjectIds, setExportCanvasProjectIds] = useState<string[]>([])
+  const [exportAssetIds, setExportAssetIds] = useState<string[]>([])
   const [importConfig, setImportConfig] = useState(true)
   const [importTasks, setImportTasks] = useState(true)
+  const [importCanvasProjects, setImportCanvasProjects] = useState(true)
+  const [importAssets, setImportAssets] = useState(true)
   const [clearConfig, setClearConfig] = useState(true)
   const [clearTasks, setClearTasks] = useState(true)
+  const [clearCanvasProjects, setClearCanvasProjects] = useState(false)
+  const [clearAssets, setClearAssets] = useState(false)
   const [isImportingData, setIsImportingData] = useState(false)
   const [isImportingJson, setIsImportingJson] = useState(false)
   const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null)
@@ -754,6 +766,11 @@ export default function SettingsModal() {
   useEffect(() => {
     if (showSettings && settingsTabRequest) setActiveTab(settingsTabRequest)
   }, [settingsTabRequest, showSettings])
+
+  useEffect(() => {
+    setExportCanvasProjectIds((ids) => ids.filter((id) => canvasProjects.some((project) => project.id === id)))
+    setExportAssetIds((ids) => ids.filter((id) => assets.some((asset) => asset.id === id)))
+  }, [assets, canvasProjects])
 
   const updateProfileMenuMaxHeight = useCallback(() => {
     if (!profileMenuTriggerRef.current) return
@@ -985,12 +1002,40 @@ export default function SettingsModal() {
 
   if (!showSettings) return null
 
+  const setCanvasProjectExportEnabled = (checked: boolean) => {
+    setExportCanvasProjects(checked)
+    if (checked && exportCanvasProjectIds.length === 0) {
+      setExportCanvasProjectIds(canvasProjects.map((project) => project.id))
+    }
+  }
+
+  const setAssetExportEnabled = (checked: boolean) => {
+    setExportAssets(checked)
+    if (checked && exportAssetIds.length === 0) {
+      setExportAssetIds(assets.map((asset) => asset.id))
+    }
+  }
+
+  const toggleExportCanvasProject = (id: string, checked: boolean) => {
+    setExportCanvasProjectIds((ids) => checked ? Array.from(new Set([...ids, id])) : ids.filter((item) => item !== id))
+  }
+
+  const toggleExportAsset = (id: string, checked: boolean) => {
+    setExportAssetIds((ids) => checked ? Array.from(new Set([...ids, id])) : ids.filter((item) => item !== id))
+  }
+
+  const selectedExportCanvasIds = exportCanvasProjects ? exportCanvasProjectIds : []
+  const selectedExportAssetIds = exportAssets ? exportAssetIds : []
+  const canExportData = exportConfig || exportTasks || selectedExportCanvasIds.length > 0 || selectedExportAssetIds.length > 0
+  const canImportData = importConfig || importTasks || importCanvasProjects || importAssets
+  const canClearData = clearConfig || clearTasks || clearCanvasProjects || clearAssets
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setIsImportingData(true)
       try {
-        const imported = await importData(file, { importConfig, importTasks })
+        const imported = await importData(file, { importConfig, importTasks, importCanvasProjects, importAssets })
         if (imported) {
           const nextDraft = normalizeSettings(useStore.getState().settings)
           setDraft(nextDraft)
@@ -1005,7 +1050,7 @@ export default function SettingsModal() {
   }
 
   const handleClearAllData = async () => {
-    await clearData({ clearConfig, clearTasks })
+    await clearData({ clearConfig, clearTasks, clearCanvasProjects, clearAssets })
     const nextDraft = normalizeSettings(useStore.getState().settings)
     setDraft(nextDraft)
     setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
@@ -2383,21 +2428,82 @@ export default function SettingsModal() {
                     <ExportIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                     <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">导出数据</h4>
                   </div>
-                  <div className="flex flex-wrap gap-x-6 gap-y-3">
-                    <Checkbox
-                      checked={exportConfig}
-                      onChange={setExportConfig}
-                      label="包含配置"
-                    />
-                    <Checkbox
-                      checked={exportTasks}
-                      onChange={setExportTasks}
-                      label="包含任务和图片"
-                    />
+                  <div className="grid gap-3">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <div className="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">文运工坊</div>
+                      <div className="flex flex-wrap gap-x-6 gap-y-3">
+                        <Checkbox checked={exportConfig} onChange={setExportConfig} label="配置和 API" />
+                        <Checkbox checked={exportTasks} onChange={setExportTasks} label="生成记录、对话和图片" />
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <Checkbox checked={exportCanvasProjects} onChange={setCanvasProjectExportEnabled} label={`画布工坊（${canvasProjects.length} 个）`} />
+                        {canvasProjects.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setExportCanvasProjectIds(exportCanvasProjectIds.length === canvasProjects.length ? [] : canvasProjects.map((project) => project.id))}
+                            className="text-xs font-medium text-blue-500 transition hover:text-blue-600 dark:text-blue-300"
+                          >
+                            {exportCanvasProjectIds.length === canvasProjects.length ? '取消全选' : '全选画布'}
+                          </button>
+                        ) : null}
+                      </div>
+                      {exportCanvasProjects ? (
+                        canvasProjects.length ? (
+                          <div className="max-h-40 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                            {canvasProjects.map((project) => (
+                              <div key={project.id} className="flex items-center justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-sm dark:bg-white/[0.04]">
+                                <span className="min-w-0">
+                                  <span className="block truncate text-gray-700 dark:text-gray-200">{project.title || '未命名画布'}</span>
+                                  <span className="mt-0.5 block text-xs text-gray-400">{project.nodes.length} 个节点</span>
+                                </span>
+                                <Checkbox checked={exportCanvasProjectIds.includes(project.id)} onChange={(checked) => toggleExportCanvasProject(project.id, checked)} label="" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400">暂无可导出的画布</div>
+                        )
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <Checkbox checked={exportAssets} onChange={setAssetExportEnabled} label={`我的素材（${assets.length} 个）`} />
+                        {assets.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setExportAssetIds(exportAssetIds.length === assets.length ? [] : assets.map((asset) => asset.id))}
+                            className="text-xs font-medium text-blue-500 transition hover:text-blue-600 dark:text-blue-300"
+                          >
+                            {exportAssetIds.length === assets.length ? '取消全选' : '全选素材'}
+                          </button>
+                        ) : null}
+                      </div>
+                      {exportAssets ? (
+                        assets.length ? (
+                          <div className="max-h-40 space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                            {assets.map((asset) => (
+                              <div key={asset.id} className="flex items-center justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-sm dark:bg-white/[0.04]">
+                                <span className="min-w-0">
+                                  <span className="block truncate text-gray-700 dark:text-gray-200">{asset.title || '未命名素材'}</span>
+                                  <span className="mt-0.5 block text-xs text-gray-400">{asset.kind === 'text' ? '文本' : asset.kind === 'video' ? '视频' : '图片'}</span>
+                                </span>
+                                <Checkbox checked={exportAssetIds.includes(asset.id)} onChange={(checked) => toggleExportAsset(asset.id, checked)} label="" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400">暂无可导出的素材</div>
+                        )
+                      ) : null}
+                    </div>
                   </div>
                   <button
-                    onClick={() => exportData({ exportConfig, exportTasks })}
-                    disabled={!exportConfig && !exportTasks}
+                    onClick={() => exportData({ exportConfig, exportTasks, exportCanvasProjectIds: selectedExportCanvasIds, exportAssetIds: selectedExportAssetIds })}
+                    disabled={!canExportData}
                     className="w-full rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300 flex items-center justify-center gap-2"
                   >
                     导出所选数据
@@ -2409,21 +2515,19 @@ export default function SettingsModal() {
                     <ImportIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                     <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">导入数据</h4>
                   </div>
-                  <div className="flex flex-wrap gap-x-6 gap-y-3">
-                    <Checkbox
-                      checked={importConfig}
-                      onChange={setImportConfig}
-                      label="包含配置"
-                    />
-                    <Checkbox
-                      checked={importTasks}
-                      onChange={setImportTasks}
-                      label="包含任务和图片"
-                    />
+                  <div className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                    <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">从备份中导入</div>
+                    <div className="flex flex-wrap gap-x-6 gap-y-3">
+                      <Checkbox checked={importConfig} onChange={setImportConfig} label="配置和 API" />
+                      <Checkbox checked={importTasks} onChange={setImportTasks} label="文运生成记录和图片" />
+                      <Checkbox checked={importCanvasProjects} onChange={setImportCanvasProjects} label="画布工坊" />
+                      <Checkbox checked={importAssets} onChange={setImportAssets} label="我的素材" />
+                    </div>
+                    <div className="text-xs leading-relaxed text-gray-400 dark:text-gray-500">导入会合并到当前数据，不会覆盖已有画布和素材；旧版文运备份、单独画布包、单独素材包也可以在这里导入。</div>
                   </div>
                   <button
                     onClick={() => importInputRef.current?.click()}
-                    disabled={(!importConfig && !importTasks) || isImportingData}
+                    disabled={!canImportData || isImportingData}
                     className="w-full rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300 flex items-center justify-center gap-2"
                   >
                     {isImportingData ? (
@@ -2453,18 +2557,10 @@ export default function SettingsModal() {
                     <h4 className="text-sm font-bold text-red-500/90 dark:text-red-400">清除数据</h4>
                   </div>
                   <div className="flex flex-wrap gap-x-6 gap-y-3">
-                    <Checkbox
-                      checked={clearConfig}
-                      onChange={setClearConfig}
-                      label="包含配置"
-                      tone="danger"
-                    />
-                    <Checkbox
-                      checked={clearTasks}
-                      onChange={setClearTasks}
-                      label="包含任务和图片"
-                      tone="danger"
-                    />
+                    <Checkbox checked={clearConfig} onChange={setClearConfig} label="配置和 API" tone="danger" />
+                    <Checkbox checked={clearTasks} onChange={setClearTasks} label="文运生成记录和图片" tone="danger" />
+                    <Checkbox checked={clearCanvasProjects} onChange={setClearCanvasProjects} label="画布工坊" tone="danger" />
+                    <Checkbox checked={clearAssets} onChange={setClearAssets} label="我的素材" tone="danger" />
                   </div>
                   <button
                     onClick={() =>
@@ -2474,7 +2570,7 @@ export default function SettingsModal() {
                         action: () => handleClearAllData(),
                       })
                     }
-                    disabled={!clearConfig && !clearTasks}
+                    disabled={!canClearData}
                     className="w-full rounded-xl border border-red-200/60 bg-red-50/50 px-4 py-2.5 text-sm font-medium text-red-500 transition-all hover:bg-red-50 hover:border-red-200 hover:text-red-600 disabled:opacity-50 disabled:hover:bg-red-50/50 disabled:hover:border-red-200/60 disabled:hover:text-red-500 dark:border-red-500/15 dark:bg-red-500/5 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:border-red-500/30 dark:hover:text-red-300 dark:disabled:hover:bg-red-500/5 dark:disabled:hover:border-red-500/15 dark:disabled:hover:text-red-400"
                   >
                     清空所选数据

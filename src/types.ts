@@ -1,3 +1,6 @@
+import type { CanvasProjectExportItem } from './infiniteCanvasSource/app/(user)/canvas/export-types'
+import type { Asset } from './infiniteCanvasSource/stores/use-asset-store'
+
 // ===== 设置 =====
 
 export type ApiMode = 'images' | 'responses'
@@ -462,6 +465,14 @@ export interface ExportData {
   settings?: AppSettings
   tasks?: TaskRecord[]
   agentConversations?: AgentConversation[]
+  canvasProjects?: CanvasProjectExportItem[]
+  assets?: Asset[]
+  assetFiles?: Array<{
+    storageKey: string
+    path: string
+    mimeType: string
+    bytes: number
+  }>
   /** imageId → 图片信息 */
   imageFiles?: Record<string, {
     path: string

@@ -41,6 +41,11 @@ import {
   storeImage,
 } from './lib/db'
 import { callImageApi } from './lib/api'
+import { getMediaBlob, resolveMediaUrl, setMediaBlob } from '@/services/file-storage'
+import { getImageBlob, resolveImageUrl, setImageBlob } from '@/services/image-storage'
+import { useAssetStore, type Asset } from '@/stores/use-asset-store'
+import type { CanvasExportAsset, CanvasExportFile, CanvasProjectExportItem } from '@/app/(user)/canvas/export-types'
+import { useCanvasStore, type CanvasProject } from '@/app/(user)/canvas/stores/use-canvas-store'
 import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, parseBatchImageCallArguments, type AgentApiResultImage, type BatchImageCallResult } from './lib/agentApi'
 import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCurrentReferenceId, getAgentGeneratedImageReferenceId, replaceAgentPromptImageReferencesForApi } from './lib/agentImageReferences'
 import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
@@ -4181,6 +4186,8 @@ export async function removeTask(task: TaskRecord) {
 export interface ClearOptions {
   clearConfig?: boolean
   clearTasks?: boolean
+  clearCanvasProjects?: boolean
+  clearAssets?: boolean
 }
 
 /** 清空数据 */
@@ -4209,6 +4216,18 @@ export async function clearData(options: ClearOptions = { clearConfig: true, cle
     useStore.setState({ dismissedCodexCliPrompts: [], supportPromptDismissed: false })
     setSettings({ ...DEFAULT_SETTINGS })
     setParams({ ...DEFAULT_PARAMS })
+  }
+
+  if (options.clearCanvasProjects) {
+    useCanvasStore.setState({ projects: [] })
+  }
+
+  if (options.clearAssets) {
+    useAssetStore.setState({ assets: [] })
+  }
+
+  if (options.clearCanvasProjects || options.clearAssets) {
+    useAssetStore.getState().cleanupImages()
   }
 
   showToast('所选数据已清空', 'success')
@@ -4299,6 +4318,122 @@ function formatExportFileTime(date: Date): string {
 export interface ExportOptions {
   exportConfig?: boolean
   exportTasks?: boolean
+  exportCanvasProjectIds?: string[]
+  exportAssetIds?: string[]
+}
+
+type ZipEntries = Record<string, Uint8Array | [Uint8Array, { mtime: Date }]>
+
+type StoredBinaryFile = {
+  storageKey: string
+  path: string
+  mimeType: string
+  bytes: number
+}
+
+function collectStorageKeys(value: unknown, keys = new Set<string>()) {
+  if (!value || typeof value !== 'object') return [...keys]
+  if ('storageKey' in value && typeof value.storageKey === 'string' && value.storageKey.includes(':')) keys.add(value.storageKey)
+  Object.values(value).forEach((item) => {
+    if (Array.isArray(item)) item.forEach((child) => collectStorageKeys(child, keys))
+    else collectStorageKeys(item, keys)
+  })
+  return [...keys]
+}
+
+function safeBackupPathName(value: string) {
+  return value.replace(/[\\/:*?"<>|]/g, '_')
+}
+
+function getStoredFileExtension(mimeType: string, storageKey: string) {
+  if (mimeType.includes('png')) return 'png'
+  if (mimeType.includes('jpeg')) return 'jpg'
+  if (mimeType.includes('webp')) return 'webp'
+  if (mimeType.includes('gif')) return 'gif'
+  if (mimeType.includes('mp4')) return 'mp4'
+  if (mimeType.includes('webm')) return 'webm'
+  return storageKey.startsWith('image:') ? 'png' : 'bin'
+}
+
+async function addBlobToZip(zipFiles: ZipEntries, path: string, blob: Blob, mtime = new Date()) {
+  zipFiles[path] = [new Uint8Array(await blob.arrayBuffer()), { mtime }]
+}
+
+async function getStoredBlob(storageKey: string) {
+  return storageKey.startsWith('image:') ? await getImageBlob(storageKey) : await getMediaBlob(storageKey)
+}
+
+async function buildCanvasProjectExport(projects: CanvasProject[], zipFiles: ZipEntries): Promise<CanvasProjectExportItem[]> {
+  return Promise.all(
+    projects.map(async (project) => {
+      const files: CanvasExportAsset[] = []
+      await Promise.all(
+        collectStorageKeys(project).map(async (storageKey) => {
+          const blob = await getStoredBlob(storageKey)
+          if (!blob) return
+          const mimeType = blob.type || 'application/octet-stream'
+          const path = `canvas/projects/${project.id}/files/${safeBackupPathName(storageKey)}.${getStoredFileExtension(mimeType, storageKey)}`
+          files.push({ storageKey, path, mimeType, bytes: blob.size })
+          await addBlobToZip(zipFiles, path, blob, new Date(project.updatedAt || project.createdAt || Date.now()))
+        }),
+      )
+      return { project, files }
+    }),
+  )
+}
+
+async function buildAssetExport(assets: Asset[], zipFiles: ZipEntries): Promise<StoredBinaryFile[]> {
+  const files: StoredBinaryFile[] = []
+  await Promise.all(
+    assets.map(async (asset) => {
+      if (asset.kind === 'text') return
+      const storageKey = asset.data.storageKey
+      if (!storageKey) return
+      const blob = await getStoredBlob(storageKey)
+      if (!blob) return
+      const mimeType = blob.type || asset.data.mimeType || 'application/octet-stream'
+      const path = `assets/files/${safeBackupPathName(storageKey)}.${getStoredFileExtension(mimeType, storageKey)}`
+      files.push({ storageKey, path, mimeType, bytes: blob.size })
+      await addBlobToZip(zipFiles, path, blob, new Date(asset.updatedAt || asset.createdAt || Date.now()))
+    }),
+  )
+  return files
+}
+
+function zipBlobFromBytes(bytes: Uint8Array, mimeType: string) {
+  return new Blob([bytes.slice().buffer], { type: mimeType || 'application/octet-stream' })
+}
+
+async function restoreStoredFiles(unzipped: Record<string, Uint8Array>, files: StoredBinaryFile[] | CanvasExportAsset[] = []) {
+  await Promise.all(
+    files.map(async (item) => {
+      const bytes = unzipped[item.path]
+      if (!bytes) return
+      const blob = zipBlobFromBytes(bytes, item.mimeType)
+      await (item.storageKey.startsWith('image:') ? setImageBlob(item.storageKey, blob) : setMediaBlob(item.storageKey, blob))
+    }),
+  )
+}
+
+async function addImportedAsset(asset: Asset) {
+  const payload = { ...asset } as Record<string, unknown>
+  delete payload.id
+  delete payload.createdAt
+  delete payload.updatedAt
+
+  if (asset.kind === 'image' && asset.data.storageKey) {
+    const dataUrl = await resolveImageUrl(asset.data.storageKey, asset.data.dataUrl)
+    payload.coverUrl = asset.coverUrl.startsWith('blob:') || asset.coverUrl === asset.data.dataUrl ? dataUrl : asset.coverUrl
+    payload.data = { ...asset.data, dataUrl }
+  }
+
+  if (asset.kind === 'video' && asset.data.storageKey) {
+    const url = await resolveMediaUrl(asset.data.storageKey, asset.data.url)
+    payload.coverUrl = asset.coverUrl.startsWith('blob:') || asset.coverUrl === asset.data.url ? url : asset.coverUrl
+    payload.data = { ...asset.data, url }
+  }
+
+  useAssetStore.getState().addAsset(payload as Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>)
 }
 
 /** 导出数据为 ZIP */
@@ -4307,6 +4442,12 @@ export async function exportData(options: ExportOptions = { exportConfig: true, 
     const tasks = options.exportTasks ? await getAllTasks() : []
     const images = options.exportTasks ? await getAllImages() : []
     const { settings, agentConversations } = useStore.getState()
+    const selectedCanvasProjects = options.exportCanvasProjectIds
+      ? useCanvasStore.getState().projects.filter((project) => options.exportCanvasProjectIds?.includes(project.id))
+      : []
+    const selectedAssets = options.exportAssetIds
+      ? useAssetStore.getState().assets.filter((asset) => options.exportAssetIds?.includes(asset.id))
+      : []
     const exportedAt = Date.now()
     const imageCreatedAtFallback = new Map<string, number>()
 
@@ -4328,7 +4469,7 @@ export async function exportData(options: ExportOptions = { exportConfig: true, 
 
     const imageFiles: ExportData['imageFiles'] = {}
     const thumbnailFiles: NonNullable<ExportData['thumbnailFiles']> = {}
-    const zipFiles: Record<string, Uint8Array | [Uint8Array, { mtime: Date }]> = {}
+    const zipFiles: ZipEntries = {}
 
     if (options.exportTasks) {
       for (const img of images) {
@@ -4367,8 +4508,11 @@ export async function exportData(options: ExportOptions = { exportConfig: true, 
       }
     }
 
+    const canvasProjects = selectedCanvasProjects.length ? await buildCanvasProjectExport(selectedCanvasProjects, zipFiles) : []
+    const assetFiles = selectedAssets.length ? await buildAssetExport(selectedAssets, zipFiles) : []
+
     const manifest: ExportData = {
-      version: 3,
+      version: 4,
       exportedAt: new Date(exportedAt).toISOString(),
     }
 
@@ -4378,6 +4522,11 @@ export async function exportData(options: ExportOptions = { exportConfig: true, 
       manifest.agentConversations = getPersistableAgentConversations(agentConversations)
       manifest.imageFiles = imageFiles
       manifest.thumbnailFiles = thumbnailFiles
+    }
+    if (canvasProjects.length) manifest.canvasProjects = canvasProjects
+    if (selectedAssets.length) {
+      manifest.assets = selectedAssets
+      manifest.assetFiles = assetFiles
     }
 
     zipFiles['manifest.json'] = [strToU8(JSON.stringify(manifest, null, 2)), { mtime: new Date(exportedAt) }]
@@ -4405,6 +4554,22 @@ export async function exportData(options: ExportOptions = { exportConfig: true, 
 export interface ImportOptions {
   importConfig?: boolean
   importTasks?: boolean
+  importCanvasProjects?: boolean
+  importAssets?: boolean
+}
+
+async function importCanvasProjectsFromPackage(unzipped: Record<string, Uint8Array>, data: Pick<CanvasExportFile, 'projects'>) {
+  await Promise.all(data.projects.flatMap((item) => item.files.map((file) => restoreStoredFiles(unzipped, [file]))))
+  data.projects.forEach((item) => useCanvasStore.getState().importProject(item.project))
+  return data.projects.length
+}
+
+async function importAssetsFromPackage(unzipped: Record<string, Uint8Array>, assets: Asset[] = [], files: StoredBinaryFile[] = []) {
+  await restoreStoredFiles(unzipped, files)
+  for (const asset of assets) {
+    await addImportedAsset(asset)
+  }
+  return assets.length
 }
 
 /** 导入 ZIP 数据 */
@@ -4414,10 +4579,29 @@ export async function importData(file: File, options: ImportOptions = { importCo
     const unzipped = unzipSync(new Uint8Array(buffer))
 
     const manifestBytes = unzipped['manifest.json']
-    if (!manifestBytes) throw new Error('ZIP 中缺少 manifest.json')
+    if (!manifestBytes) {
+      const canvasBytes = unzipped['projects.json']
+      const assetBytes = unzipped['assets.json']
+      let importedCanvasCount = 0
+      let importedAssetCount = 0
+      if (options.importCanvasProjects && canvasBytes) {
+        const canvasData = JSON.parse(strFromU8(canvasBytes)) as CanvasExportFile
+        importedCanvasCount = await importCanvasProjectsFromPackage(unzipped, canvasData)
+      }
+      if (options.importAssets && assetBytes) {
+        const assetData = JSON.parse(strFromU8(assetBytes)) as { assets?: Asset[], files?: StoredBinaryFile[] }
+        importedAssetCount = await importAssetsFromPackage(unzipped, assetData.assets || [], assetData.files || [])
+      }
+      if (!importedCanvasCount && !importedAssetCount) throw new Error('ZIP 中没有可导入的数据')
+      useStore.getState().showToast(`已导入 ${importedCanvasCount} 个画布、${importedAssetCount} 个素材`, 'success')
+      return true
+    }
 
     const data: ExportData = JSON.parse(strFromU8(manifestBytes))
 
+    let importedTaskCount = 0
+    let importedCanvasCount = 0
+    let importedAssetCount = 0
     const importedImageIds: string[] = []
     if (options.importTasks && data.tasks && data.imageFiles) {
       // 还原图片
@@ -4459,6 +4643,7 @@ export async function importData(file: File, options: ImportOptions = { importCo
       for (const task of data.tasks) {
         await putTask(task)
       }
+      importedTaskCount = data.tasks.length
 
       const tasks = await getAllTasks()
       useStore.getState().setTasks(tasks)
@@ -4479,17 +4664,26 @@ export async function importData(file: File, options: ImportOptions = { importCo
       scheduleThumbnailBackfill(importedImageIds)
     }
 
+    if (options.importCanvasProjects && data.canvasProjects?.length) {
+      importedCanvasCount = await importCanvasProjectsFromPackage(unzipped, { projects: data.canvasProjects })
+    }
+
+    if (options.importAssets && data.assets?.length) {
+      importedAssetCount = await importAssetsFromPackage(unzipped, data.assets, data.assetFiles || [])
+    }
+
     if (options.importConfig && data.settings) {
       const state = useStore.getState()
       state.setSettings(mergeImportedSettings(state.settings, data.settings))
     }
 
-    let msg = '数据已成功导入'
-    if (options.importTasks && data.tasks) {
-      msg = `已导入 ${data.tasks.length} 条记录`
-    } else if (options.importConfig && data.settings) {
-      msg = '配置已成功导入'
-    }
+    const detail = [
+      importedTaskCount ? `${importedTaskCount} 条记录` : '',
+      importedCanvasCount ? `${importedCanvasCount} 个画布` : '',
+      importedAssetCount ? `${importedAssetCount} 个素材` : '',
+      options.importConfig && data.settings ? '配置' : '',
+    ].filter(Boolean).join('、')
+    const msg = detail ? `已导入 ${detail}` : '没有找到匹配所选范围的数据'
 
     useStore.getState().showToast(msg, 'success')
     return true
