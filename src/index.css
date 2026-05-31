@@ -269,6 +269,10 @@ input[type="number"] {
   white-space: normal;
 }
 
+.markdown-renderer.announcement-markdown {
+  white-space: pre-wrap;
+}
+
 .markdown-renderer :where(p, ul, ol, blockquote, table, pre, [data-streamdown="code-block"]) {
   margin-bottom: 0.65rem;
   margin-top: 0.65rem;

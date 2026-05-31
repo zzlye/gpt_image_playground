@@ -43,6 +43,7 @@ type CanvasNodeProps = {
     onRetry?: (node: CanvasNodeData) => void;
     onGenerateImage?: (node: CanvasNodeData) => void;
     onUpload?: (nodeId: string) => void;
+    onRename?: (nodeId: string, title: string) => void;
     onContextMenu: (event: React.MouseEvent, nodeId: string) => void;
 };
 
@@ -96,11 +97,14 @@ export const CanvasNode = React.memo(function CanvasNode({
     onRetry,
     onGenerateImage,
     onUpload,
+    onRename,
     onContextMenu,
 }: CanvasNodeProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [hovered, setHovered] = useState(false);
     const [isEditingContent, setIsEditingContent] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [titleDraft, setTitleDraft] = useState(data.title);
     const hasImageContent = data.type === CanvasNodeType.Image && Boolean(data.metadata?.content);
     const hasVideoContent = data.type === CanvasNodeType.Video && Boolean(data.metadata?.content);
     const isBatchRoot = data.type === CanvasNodeType.Image && Boolean(data.metadata?.isBatchRoot) && batchCount > 1;
@@ -141,6 +145,10 @@ export const CanvasNode = React.memo(function CanvasNode({
         if (!editRequestNonce || data.type !== CanvasNodeType.Text) return;
         setIsEditingContent(true);
     }, [data.type, editRequestNonce]);
+
+    useEffect(() => {
+        if (!isEditingTitle) setTitleDraft(data.title);
+    }, [data.title, isEditingTitle]);
 
     useEffect(() => {
         if (!isEditingContent) return;
@@ -223,6 +231,13 @@ export const CanvasNode = React.memo(function CanvasNode({
         window.addEventListener("mouseup", handleResizeUp);
     };
 
+    const finishTitleEdit = () => {
+        const nextTitle = titleDraft.trim();
+        if (nextTitle && nextTitle !== data.title) onRename?.(data.id, nextTitle);
+        setIsEditingTitle(false);
+        setTitleDraft(nextTitle || data.title);
+    };
+
     useEffect(() => {
         return () => {
             window.removeEventListener("mousemove", handleResizeMove);
@@ -259,13 +274,52 @@ export const CanvasNode = React.memo(function CanvasNode({
                 onContextMenu(event, data.id);
             }}
         >
-            <div className="pointer-events-none absolute -top-7 left-1 z-50 max-w-[70%]">
-                <span
-                    className="inline-block max-w-full truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md"
-                    style={{ background: `${theme.toolbar.panel}d9`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
-                >
-                    {data.title}
-                </span>
+            <div className="absolute -top-7 left-1 z-50 max-w-[70%]">
+                {isEditingTitle ? (
+                    <input
+                        data-canvas-editor
+                        className="h-6 max-w-full rounded-md border px-2 text-[11px] font-medium shadow-sm outline-none backdrop-blur-md"
+                        style={{ background: `${theme.toolbar.panel}f2`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
+                        value={titleDraft}
+                        autoFocus
+                        onChange={(event) => setTitleDraft(event.target.value)}
+                        onBlur={finishTitleEdit}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onMouseDown={(event) => {
+                            event.stopPropagation();
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                            event.stopPropagation();
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                event.currentTarget.blur();
+                            }
+                            if (event.key === "Escape") {
+                                setTitleDraft(data.title);
+                                setIsEditingTitle(false);
+                            }
+                        }}
+                    />
+                ) : (
+                    <button
+                        type="button"
+                        className="block max-w-full truncate rounded-md border px-2 py-0.5 text-[11px] font-medium shadow-sm backdrop-blur-md"
+                        style={{ background: `${theme.toolbar.panel}d9`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
+                        onMouseDown={(event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                        }}
+                        onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            setIsEditingTitle(true);
+                        }}
+                        title="双击重命名"
+                    >
+                        {data.title}
+                    </button>
+                )}
             </div>
             <div
                 className="relative h-full w-full overflow-visible rounded-3xl border-2"
@@ -322,8 +376,8 @@ export const CanvasNode = React.memo(function CanvasNode({
                 {hasImageContent && !isBatchRoot && !isBatchChild ? (
                     <button
                         type="button"
-                        className="absolute right-3 top-3 z-40 inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium shadow-lg backdrop-blur-md transition hover:scale-[1.03]"
-                        style={{ background: `${theme.toolbar.panel}e6`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
+                        className="absolute right-3 top-3 z-40 inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-medium opacity-85 backdrop-blur-md transition hover:scale-[1.02] hover:opacity-100"
+                        style={{ background: `${theme.toolbar.panel}dd`, borderColor: theme.node.stroke, color: theme.node.text }}
                         title="替换图片"
                         aria-label="替换图片"
                         onClick={(event) => {
@@ -431,14 +485,17 @@ function TextContent({ node, theme, isEditingContent, textareaRef, onContentChan
             {isEditingContent ? (
                 <textarea
                     ref={textareaRef}
+                    data-canvas-editor
                     className="thin-scrollbar block h-full w-full resize-none overflow-y-auto whitespace-pre-wrap break-words border-none bg-transparent pl-4 pr-14 pt-0 pb-4 m-0 font-mono leading-relaxed outline-none select-text appearance-none"
                     style={{ fontSize: `${node.metadata?.fontSize || 14}px`, color: theme.node.text }}
                     value={node.metadata?.content || ""}
                     onChange={(event) => onContentChange(node.id, event.target.value)}
                     onBlur={onStopEditing}
                     onKeyDown={(event) => {
+                        event.stopPropagation();
                         if (event.key === "Escape") onStopEditing();
                     }}
+                    onPaste={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                     onWheel={(event) => event.stopPropagation()}

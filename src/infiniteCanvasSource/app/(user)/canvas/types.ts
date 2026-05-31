@@ -79,6 +79,17 @@ export type CanvasNodeData = {
     metadata?: CanvasNodeMetadata;
 };
 
+export type CanvasGroupLayout = "free" | "grid" | "horizontal" | "vertical";
+
+export type CanvasGroupData = {
+    id: string;
+    title: string;
+    nodeIds: string[];
+    color: string;
+    layout: CanvasGroupLayout;
+    padding: number;
+};
+
 export type CanvasConnection = {
     id: string;
     fromNodeId: string;

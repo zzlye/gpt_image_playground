@@ -93,7 +93,7 @@ export default function AnnouncementModal({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <MarkdownRenderer content={item.content} className="prose-sm max-w-none text-gray-700 dark:text-gray-200" />
+                      <MarkdownRenderer content={item.content} className="announcement-markdown prose-sm max-w-none text-gray-700 dark:text-gray-200" />
                       {(relativeText || dateText) && (
                         <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                           {[relativeText, dateText].filter(Boolean).join(' ')}
@@ -105,7 +105,7 @@ export default function AnnouncementModal({
               })}
             </div>
           ) : content.trim() ? (
-            <MarkdownRenderer content={content} className="prose-sm max-w-none text-gray-700 dark:text-gray-200" />
+            <MarkdownRenderer content={content} className="announcement-markdown prose-sm max-w-none text-gray-700 dark:text-gray-200" />
           ) : (
             <div className="text-sm text-gray-500 dark:text-gray-400">暂无公告</div>
           )}

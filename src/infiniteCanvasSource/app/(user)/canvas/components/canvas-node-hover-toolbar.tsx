@@ -2,18 +2,36 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Modal, Segmented, Tooltip } from "antd";
-import { Camera, Download, FolderPlus, Image as ImageIcon, Info, Lock, LockOpen, Maximize2, MessageSquare, Minus, Pencil, Plus, RefreshCw, Scissors, Settings2, Trash2, Upload, Video } from "lucide-react";
+import { Camera, Download, FolderPlus, Grid2x2, Group, Image as ImageIcon, Info, LayoutGrid, Lock, LockOpen, Maximize2, MessageSquare, Minus, Palette, Pencil, Play, Plus, RefreshCw, Rows3, Scissors, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "../types";
+import { CanvasNodeType, type CanvasGroupData, type CanvasGroupLayout, type CanvasNodeData, type ViewportTransform } from "../types";
+
+type CanvasToolbarBounds = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+};
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
     viewport: ViewportTransform;
+    selectedCount?: number;
+    selectionBounds?: CanvasToolbarBounds | null;
+    group?: CanvasGroupData | null;
+    groupBounds?: CanvasToolbarBounds | null;
     onKeep: (nodeId: string) => void;
     onLeave: () => void;
+    onCreateGroup?: () => void;
+    onDeleteSelection?: () => void;
+    onGroupLayout?: (groupId: string, layout: CanvasGroupLayout) => void;
+    onGroupColor?: (groupId: string, color: string) => void;
+    onGroupExecute?: (groupId: string) => void;
+    onGroupRename?: (groupId: string, title: string) => void;
+    onGroupUngroup?: (groupId: string) => void;
     onInfo: (node: CanvasNodeData) => void;
     onEditText: (node: CanvasNodeData) => void;
     onDecreaseFont: (node: CanvasNodeData) => void;
@@ -34,8 +52,19 @@ type CanvasNodeHoverToolbarProps = {
 export function CanvasNodeHoverToolbar({
     node,
     viewport,
+    selectedCount = 0,
+    selectionBounds,
+    group,
+    groupBounds,
     onKeep,
     onLeave,
+    onCreateGroup,
+    onDeleteSelection,
+    onGroupLayout,
+    onGroupColor,
+    onGroupExecute,
+    onGroupRename,
+    onGroupUngroup,
     onInfo,
     onEditText,
     onDecreaseFont,
@@ -52,10 +81,68 @@ export function CanvasNodeHoverToolbar({
     onToggleFreeResize,
     onDelete,
 }: CanvasNodeHoverToolbarProps) {
+    if (group && groupBounds) {
+        const { left, top } = getBoundsToolbarPosition(groupBounds, viewport);
+        return (
+            <div
+                className="absolute z-[80] flex h-12 max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-full items-center gap-1 overflow-x-auto overflow-y-visible rounded-[18px] border border-black/10 bg-white px-2 text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)] [&>*]:shrink-0"
+                style={{ left, top }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+            >
+                <span className="flex items-center gap-1.5 px-2 text-sm font-semibold whitespace-nowrap text-[#5f6368]">
+                    <Palette className="size-4" />
+                    颜色
+                </span>
+                <div className="flex items-center gap-1 px-0.5">
+                    {groupColors.map((color) => (
+                        <button
+                            key={color}
+                            type="button"
+                            className="size-5 rounded-full border transition hover:scale-110"
+                            style={{ background: color, borderColor: color === group.color ? "#ffffff" : "rgba(0,0,0,.16)", boxShadow: color === group.color ? `0 0 0 2px ${color}` : undefined }}
+                            onClick={() => onGroupColor?.(group.id, color)}
+                            aria-label={`切换组颜色 ${color}`}
+                        />
+                    ))}
+                </div>
+                <ToolbarDivider />
+                <GroupToolbarAction title="宫格布局" label="宫格" icon={<LayoutGrid className="size-4" />} active={group.layout === "grid"} onClick={() => onGroupLayout?.(group.id, "grid")} />
+                <GroupToolbarAction title="水平布局" label="水平" icon={<Rows3 className="size-4 rotate-90" />} active={group.layout === "horizontal"} onClick={() => onGroupLayout?.(group.id, "horizontal")} />
+                <GroupToolbarAction title="垂直布局" label="垂直" icon={<Rows3 className="size-4" />} active={group.layout === "vertical"} onClick={() => onGroupLayout?.(group.id, "vertical")} />
+                <GroupToolbarAction title="自由布局" label="自由" icon={<Grid2x2 className="size-4" />} active={group.layout === "free"} onClick={() => onGroupLayout?.(group.id, "free")} />
+                <ToolbarDivider />
+                <GroupToolbarAction title="整组执行" label="整组执行" icon={<Play className="size-4" />} strong onClick={() => onGroupExecute?.(group.id)} />
+                <GroupToolbarAction title="重命名组" label="命名" icon={<Pencil className="size-4" />} onClick={() => {
+                    const nextTitle = window.prompt("组名称", group.title);
+                    if (nextTitle?.trim()) onGroupRename?.(group.id, nextTitle);
+                }} />
+                <GroupToolbarAction title="解组" label="解组" icon={<Ungroup className="size-4" />} danger onClick={() => onGroupUngroup?.(group.id)} />
+            </div>
+        );
+    }
+
+    if (selectionBounds && selectedCount > 1) {
+        const { left, top } = getBoundsToolbarPosition(selectionBounds, viewport);
+        return (
+            <div
+                className="absolute z-[80] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                style={{ left, top }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+            >
+                <span className="px-4 text-sm font-semibold text-[#5f6368]">已选 {selectedCount} 个</span>
+                <ToolbarDivider />
+                <ToolbarAction title="将选中节点打组" label="打组" icon={<Group className="size-4" />} onClick={onCreateGroup} />
+                <ToolbarAction title="删除选中节点" label="删除" icon={<Trash2 className="size-4" />} onClick={onDeleteSelection} danger />
+            </div>
+        );
+    }
+
     if (!node) return null;
 
     const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-    const top = viewport.y + node.position.y * viewport.k - 14;
+    const top = viewport.y + node.position.y * viewport.k - 42;
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const hasImage = isImage && Boolean(node.metadata?.content);
@@ -204,6 +291,32 @@ function IconAction({ title, icon, onClick }: { title: string; icon: ReactNode; 
 
 function ToolbarDivider() {
     return <span className="mx-1 h-7 w-px scale-x-50 bg-[#dedee2]" />;
+}
+
+const groupColors = ["#2f80ff", "#22c55e", "#f59e0b", "#a855f7", "#ef4444"];
+
+function GroupToolbarAction({ title, label, icon, active, strong, danger, onClick }: { title: string; label: string; icon: ReactNode; active?: boolean; strong?: boolean; danger?: boolean; onClick?: () => void }) {
+    return (
+        <Tooltip title={title} placement="top" mouseEnterDelay={0.2}>
+            <button
+                type="button"
+                className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-semibold transition hover:bg-[#f0f0f1] ${strong ? "text-emerald-600" : ""} ${danger ? "text-red-500" : ""}`}
+                style={active ? { background: "#eeeeef", color: "#2563eb" } : undefined}
+                onClick={onClick}
+                aria-label={title}
+            >
+                {icon}
+                <span>{label}</span>
+            </button>
+        </Tooltip>
+    );
+}
+
+function getBoundsToolbarPosition(bounds: CanvasToolbarBounds, viewport: ViewportTransform) {
+    return {
+        left: viewport.x + (bounds.x + bounds.width / 2) * viewport.k,
+        top: viewport.y + bounds.y * viewport.k - 14,
+    };
 }
 
 function formatGenerationDuration(ms?: number) {

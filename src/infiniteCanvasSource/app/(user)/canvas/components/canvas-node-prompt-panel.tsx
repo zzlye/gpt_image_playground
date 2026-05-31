@@ -75,8 +75,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     const modelOptions = useCanvasModelOptions(config, mode, activeProfile.id);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    const isEditingExistingContent = hasTextContent || hasImageContent;
-    const [prompt, setPrompt] = useState(isEditingExistingContent ? "" : node.metadata?.prompt || "");
+    const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
     const [cursorPos, setCursorPos] = useState(0);
     const [menuLeft, setMenuLeft] = useState(0);
     const [atImageMenuIndex, setAtImageMenuIndex] = useState(0);
@@ -107,16 +106,16 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     }, [prompt]);
 
     useEffect(() => {
-        setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");
+        setPrompt(node.metadata?.prompt || "");
         isUserInputRef.current = false;
-    }, [isEditingExistingContent, node.id]);
+    }, [node.id, node.metadata?.prompt]);
 
     const updatePrompt = useCallback(
         (value: string) => {
             setPrompt(value);
-            if (!isEditingExistingContent) onPromptChange(node.id, value);
+            onPromptChange(node.id, value);
         },
-        [isEditingExistingContent, node.id, onPromptChange],
+        [node.id, onPromptChange],
     );
 
     const syncPromptFromInput = useCallback(() => {
@@ -288,6 +287,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
 
     const handlePromptPaste = useCallback(
         (event: ReactClipboardEvent<HTMLDivElement>) => {
+            event.stopPropagation();
             const imageFiles = Array.from(event.clipboardData.items)
                 .filter((item) => item.type.startsWith("image/"))
                 .map((item) => item.getAsFile())
@@ -308,6 +308,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
 
     const handlePromptCopy = useCallback(
         (event: ReactClipboardEvent<HTMLDivElement>) => {
+            event.stopPropagation();
             const el = inputRef.current;
             if (!el) return;
             const selection = getContentEditableSelection(el);
@@ -530,12 +531,12 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     const submit = useCallback(() => {
         const text = prompt.trim();
         if (!text || isRunning) return;
+        onPromptChange(node.id, text);
         onGenerate(node.id, mode, text);
-        updatePrompt("");
-        if (inputRef.current) inputRef.current.innerHTML = "";
-    }, [isRunning, mode, node.id, onGenerate, prompt, updatePrompt]);
+    }, [isRunning, mode, node.id, onGenerate, onPromptChange, prompt]);
 
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        event.stopPropagation();
         if (showAtImageMenu) {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
@@ -561,6 +562,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
 
     return (
         <div
+            data-canvas-editor
             className="rounded-2xl border p-3 shadow-2xl backdrop-blur"
             style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.node.text }}
             onMouseDown={(event) => event.stopPropagation()}
@@ -672,6 +674,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                     ) : null}
                     <div
                         ref={inputRef}
+                        data-canvas-editor
                         contentEditable
                         suppressContentEditableWarning
                         className="thin-scrollbar col-start-1 row-start-1 min-h-24 max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none"
