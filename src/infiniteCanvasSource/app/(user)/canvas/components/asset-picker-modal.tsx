@@ -7,10 +7,11 @@ import { Search, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
+import { assetTagOptions, assetTagValues, buildAssetTagPatch, getAssetTag, normalizeAssetTag, type AssetTag } from "@/lib/asset-tags";
 import { CanvasNodeType, type CanvasNodeData } from "../types";
 
 export type AssetPickerTab = "canvas" | "my-assets";
-export type AssetCategory = "人物" | "场景" | "物品" | "风格" | "其他";
+export type AssetCategory = AssetTag;
 
 export type InsertAssetPayload = { kind: "text"; content: string; title: string } | { kind: "image"; dataUrl: string; title: string; storageKey?: string } | { kind: "video"; url: string; title: string; storageKey?: string; width?: number; height?: number };
 
@@ -26,16 +27,6 @@ type Props = {
 };
 
 const PAGE_SIZE = 8;
-const assetCategoryOptions: Array<{ label: "全部" | AssetCategory; value: "all" | AssetCategory }> = [
-    { label: "全部", value: "all" },
-    { label: "人物", value: "人物" },
-    { label: "场景", value: "场景" },
-    { label: "物品", value: "物品" },
-    { label: "风格", value: "风格" },
-    { label: "其他", value: "其他" },
-];
-const assetCategoryValues = assetCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
-
 const kindOptions = [
     { label: "全部", value: "all" },
     { label: "文本", value: "text" },
@@ -195,7 +186,7 @@ function MyAssetsTab({ onInsert }: { onInsert: (payload: InsertAssetPayload) => 
                     asset={asset}
                     onInsert={() => handleInsert(asset)}
                     onRename={(title) => updateAsset(asset.id, { title })}
-                    onChangeCategory={(category) => updateAsset(asset.id, { tags: [category], metadata: { ...(asset.metadata || {}), category } })}
+                    onChangeCategory={(category) => updateAsset(asset.id, buildAssetTagPatch(asset, category))}
                     onDelete={() => removeAsset(asset.id)}
                 />
             ))}
@@ -217,7 +208,7 @@ function PickerList({ keyword, kindFilter, categoryFilter, total, page, empty, o
                 </div>
                 <div className="h-5 w-px bg-stone-200 dark:bg-stone-700" />
                 <div className="flex gap-1.5">
-                    {assetCategoryOptions.map((opt) => (
+                    {assetTagOptions.map((opt) => (
                         <Tag.CheckableTag key={opt.value} checked={categoryFilter === opt.value} className={cn("prompt-filter-tag", categoryFilter === opt.value && "is-active")} onChange={() => onCategoryChange(opt.value)}>
                             {opt.label}
                         </Tag.CheckableTag>
@@ -311,7 +302,7 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
                         <Dropdown
                             trigger={["click"]}
                             menu={{
-                                items: assetCategoryValues.map((item) => ({ key: item, label: item })),
+                                items: assetTagValues.map((item) => ({ key: item, label: item })),
                                 onClick: ({ key }) => onChangeCategory(key as AssetCategory),
                             }}
                         >
@@ -319,7 +310,7 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
                                 type="button"
                                 className="rounded-md bg-stone-100 px-1.5 py-0.5 transition hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700"
                                 onClick={(event) => event.stopPropagation()}
-                                title="点击修改子分类"
+                                title="点击修改标签"
                             >
                                 {category}
                             </button>
@@ -366,10 +357,9 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
 
 function getCanvasNodeAssetCategory(node: CanvasNodeData): AssetCategory {
     const value = node.metadata?.assetCategory;
-    return assetCategoryValues.includes(value as AssetCategory) ? (value as AssetCategory) : "其他";
+    return normalizeAssetTag(value);
 }
 
 function getStoredAssetCategory(asset: Asset): AssetCategory {
-    const value = asset.metadata?.category || asset.tags?.[0];
-    return assetCategoryValues.includes(value as AssetCategory) ? (value as AssetCategory) : "其他";
+    return getAssetTag(asset);
 }

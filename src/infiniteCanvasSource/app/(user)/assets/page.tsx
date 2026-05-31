@@ -2,7 +2,7 @@
 
 import { Copy, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Card, Drawer, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
+import { App, Button, Card, Drawer, Dropdown, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
 import { saveAs } from "file-saver";
 
 import { useCopyText } from "@/hooks/use-copy-text";
@@ -10,12 +10,14 @@ import { formatBytes, readFileAsDataUrl } from "@/lib/image-utils";
 import { uploadImage } from "@/services/image-storage";
 import { cn } from "@/lib/utils";
 import { useAssetStore, type Asset, type AssetKind, type ImageAsset } from "@/stores/use-asset-store";
+import { assetTagOptions, assetTagValues, buildAssetTagList, buildAssetTagPatch, getAssetTag, type AssetTag, type AssetTagFilter } from "@/lib/asset-tags";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
 
 type AssetFormValues = {
     kind: AssetKind;
     title: string;
     coverUrl: string;
+    assetTag: AssetTag;
     tags: string[];
     source?: string;
     note?: string;
@@ -44,6 +46,7 @@ export default function AssetsPage() {
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
+    const [tagFilter, setTagFilter] = useState<AssetTagFilter>("all");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -54,7 +57,7 @@ export default function AssetsPage() {
     const [imageDraft, setImageDraft] = useState<ImageDraft>(null);
     const coverUrl = Form.useWatch("coverUrl", form) || "";
     const title = Form.useWatch("title", form) || "";
-    const tags = Form.useWatch("tags", form) || [];
+    const assetTag = Form.useWatch("assetTag", form) || "其他";
     const content = Form.useWatch("content", form) || "";
     const validAssets = useMemo(() => assets.filter((asset) => asset.kind === "text" || asset.kind === "image" || asset.kind === "video"), [assets]);
 
@@ -62,10 +65,11 @@ export default function AssetsPage() {
         const query = keyword.trim().toLowerCase();
         return validAssets.filter((asset) => {
             if (kindFilter !== "all" && asset.kind !== kindFilter) return false;
+            if (tagFilter !== "all" && getAssetTag(asset) !== tagFilter) return false;
             if (!query) return true;
             return assetSearchText(asset).includes(query);
         });
-    }, [validAssets, keyword, kindFilter]);
+    }, [validAssets, keyword, kindFilter, tagFilter]);
 
     const visibleAssets = useMemo(() => {
         const start = (page - 1) * pageSize;
@@ -81,7 +85,7 @@ export default function AssetsPage() {
         setEditingAsset(null);
         setImageDraft(null);
         setFormKind("text");
-        form.setFieldsValue({ kind: "text", title: "", coverUrl: "", tags: [], source: "手动添加", note: "", content: "" });
+        form.setFieldsValue({ kind: "text", title: "", coverUrl: "", assetTag: "其他", tags: ["其他"], source: "手动添加", note: "", content: "" });
         setIsAssetOpen(true);
     };
 
@@ -93,6 +97,7 @@ export default function AssetsPage() {
             kind: asset.kind,
             title: asset.title,
             coverUrl: asset.coverUrl,
+            assetTag: getAssetTag(asset),
             tags: asset.tags || [],
             source: asset.source,
             note: asset.note,
@@ -103,13 +108,14 @@ export default function AssetsPage() {
 
     const saveAsset = async () => {
         const values = await form.validateFields();
+        const primaryTag = values.assetTag || "其他";
         const base = {
             title: values.title.trim(),
             coverUrl: values.coverUrl?.trim() || (values.kind === "image" && imageDraft ? imageDraft.dataUrl : ""),
-            tags: values.tags || [],
+            tags: buildAssetTagList(values.tags, primaryTag),
             source: values.source?.trim(),
             note: values.note?.trim(),
-            metadata: editingAsset?.metadata || { source: "manual" },
+            metadata: { ...(editingAsset?.metadata || { source: "manual" }), category: primaryTag },
         };
 
         if (values.kind === "text") {
@@ -216,26 +222,46 @@ export default function AssetsPage() {
                     </div>
 
                     <div className="mx-auto mt-6 grid max-w-6xl gap-3 text-left">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
-                                <div className="text-xs font-medium text-stone-500 dark:text-stone-400">类型</div>
-                                <div className="flex flex-wrap gap-2">
-                                    {kindOptions.map((option) => (
-                                        <Tag.CheckableTag
-                                            key={option.value}
-                                            checked={kindFilter === option.value}
-                                            className={cn("prompt-filter-tag", kindFilter === option.value && "is-active")}
-                                            onChange={() => {
-                                                setPage(1);
-                                                setKindFilter(option.value as AssetKind | "all");
-                                            }}
-                                        >
-                                            {option.label}
-                                        </Tag.CheckableTag>
-                                    ))}
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="grid min-w-0 flex-1 gap-3">
+                                <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
+                                    <div className="text-xs font-medium text-stone-500 dark:text-stone-400">类型</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {kindOptions.map((option) => (
+                                            <Tag.CheckableTag
+                                                key={option.value}
+                                                checked={kindFilter === option.value}
+                                                className={cn("prompt-filter-tag", kindFilter === option.value && "is-active")}
+                                                onChange={() => {
+                                                    setPage(1);
+                                                    setKindFilter(option.value as AssetKind | "all");
+                                                }}
+                                            >
+                                                {option.label}
+                                            </Tag.CheckableTag>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
+                                    <div className="text-xs font-medium text-stone-500 dark:text-stone-400">标签</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {assetTagOptions.map((option) => (
+                                            <Tag.CheckableTag
+                                                key={option.value}
+                                                checked={tagFilter === option.value}
+                                                className={cn("prompt-filter-tag", tagFilter === option.value && "is-active")}
+                                                onChange={() => {
+                                                    setPage(1);
+                                                    setTagFilter(option.value);
+                                                }}
+                                            >
+                                                {option.label}
+                                            </Tag.CheckableTag>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex flex-wrap gap-4">
+                            <div className="flex shrink-0 flex-wrap gap-4 lg:justify-end">
                                 <button
                                     type="button"
                                     className="cursor-pointer text-sm font-medium text-stone-700 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline dark:text-stone-300"
@@ -265,7 +291,7 @@ export default function AssetsPage() {
                 <div className="mx-auto flex max-w-7xl flex-col gap-5">
                     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {visibleAssets.map((asset) => (
-                            <AssetCard key={asset.id} asset={asset} onOpen={() => setPreviewAsset(asset)} onEdit={() => openEdit(asset)} onCopy={copyAssetText} onDownload={downloadImage} onDelete={() => setDeletingAsset(asset)} />
+                            <AssetCard key={asset.id} asset={asset} onOpen={() => setPreviewAsset(asset)} onEdit={() => openEdit(asset)} onChangeTag={(tag) => updateAsset(asset.id, buildAssetTagPatch(asset, tag))} onCopy={copyAssetText} onDownload={downloadImage} onDelete={() => setDeletingAsset(asset)} />
                         ))}
                     </div>
 
@@ -310,8 +336,11 @@ export default function AssetsPage() {
                                 </Button>
                             </Space.Compact>
                         </Form.Item>
-                        <Form.Item name="tags" label="标签">
-                            <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入标签后回车" />
+                        <Form.Item name="assetTag" label="标签">
+                            <Select options={assetTagValues.map((tag) => ({ label: tag, value: tag }))} />
+                        </Form.Item>
+                        <Form.Item name="tags" hidden>
+                            <Select mode="tags" />
                         </Form.Item>
                         <div className="grid gap-4 sm:grid-cols-2">
                             <Form.Item name="source" label="来源">
@@ -357,15 +386,7 @@ export default function AssetsPage() {
                                     {title || "未命名素材"}
                                 </Typography.Text>
                                 <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {tags.length ? (
-                                        tags.map((tag) => (
-                                            <Tag key={tag} className="m-0">
-                                                {tag}
-                                            </Tag>
-                                        ))
-                                    ) : (
-                                        <Tag className="m-0">未打标签</Tag>
-                                    )}
+                                    <Tag className="m-0">{assetTag}</Tag>
                                 </div>
                             </div>
                         </div>
@@ -415,9 +436,10 @@ export default function AssetsPage() {
     );
 }
 
-function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { asset: Asset; onOpen: () => void; onEdit: () => void; onCopy: (asset: Asset) => void; onDownload: (asset: Asset) => void; onDelete: () => void }) {
+function AssetCard({ asset, onOpen, onEdit, onChangeTag, onCopy, onDownload, onDelete }: { asset: Asset; onOpen: () => void; onEdit: () => void; onChangeTag: (tag: AssetTag) => void; onCopy: (asset: Asset) => void; onDownload: (asset: Asset) => void; onDelete: () => void }) {
     const cover = asset.coverUrl || (asset.kind === "image" ? asset.data.dataUrl : "");
     const summary = assetSummary(asset);
+    const primaryTag = getAssetTag(asset);
     return (
         <Card
             hoverable
@@ -448,12 +470,23 @@ function AssetCard({ asset, onOpen, onEdit, onCopy, onDownload, onDelete }: { as
                         {summary}
                     </Typography.Paragraph>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                        {(asset.tags || []).slice(0, 3).map((tag) => (
-                            <Tag key={tag} className="m-0 text-[11px]">
-                                {tag}
+                        <Dropdown
+                            trigger={["click"]}
+                            menu={{
+                                items: assetTagValues.map((tag) => ({ key: tag, label: tag })),
+                                onClick: ({ key }) => onChangeTag(key as AssetTag),
+                            }}
+                        >
+                            <Tag
+                                className="m-0 cursor-pointer text-[11px]"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                }}
+                            >
+                                {primaryTag}
                             </Tag>
-                        ))}
-                        {!asset.tags?.length ? <Tag className="m-0 text-[11px]">无标签</Tag> : null}
+                        </Dropdown>
                     </div>
                 </div>
             </button>
@@ -501,9 +534,7 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: Asset | nu
                         </Typography.Title>
                         <Space size={[4, 4]} wrap>
                             <Tag>{asset.kind === "image" ? "图片" : asset.kind === "video" ? "视频" : "文本"}</Tag>
-                            {(asset.tags || []).map((tag) => (
-                                <Tag key={tag}>{tag}</Tag>
-                            ))}
+                            <Tag>{getAssetTag(asset)}</Tag>
                         </Space>
                     </div>
                     <div className="rounded-lg border border-stone-200 p-4 dark:border-stone-800">

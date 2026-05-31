@@ -12,6 +12,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { imageToDataUrl, uploadImage } from "@/services/image-storage";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { assetTagOptions, assetTagValues, getAssetTag, normalizeAssetTag, type AssetTag } from "@/lib/asset-tags";
 import type { InputImage } from "../../../../../types";
 import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, isCursorInSelectedImageMention, remapImageMentionsForOrder, stripImageMentionMarkers } from "../../../../../lib/promptImageMentions";
@@ -37,18 +38,10 @@ type CanvasNodePromptPanelProps = {
     onImageSettingsOpenChange?: (open: boolean) => void;
 };
 
-type ReferencePickerCategory = "人物" | "场景" | "物品" | "风格" | "其他";
+type ReferencePickerCategory = AssetTag;
 
 const MAX_REFERENCE_IMAGES = 16;
-const referenceCategoryOptions: Array<{ label: "全部" | ReferencePickerCategory; value: "all" | ReferencePickerCategory }> = [
-    { label: "全部", value: "all" },
-    { label: "人物", value: "人物" },
-    { label: "场景", value: "场景" },
-    { label: "物品", value: "物品" },
-    { label: "风格", value: "风格" },
-    { label: "其他", value: "其他" },
-];
-const referenceCategoryValues = referenceCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
+const referenceCategoryOptions = assetTagOptions;
 
 export function CanvasNodePromptPanel({ node, canvasNodes, inputs = [], isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const inputRef = useRef<HTMLDivElement>(null);
@@ -959,12 +952,11 @@ function getPromptPlaceholder(mode: CanvasNodeGenerationMode, hasImageContent: b
 
 function getCanvasImageCategory(node: CanvasNodeData): ReferencePickerCategory {
     const value = node.metadata?.assetCategory;
-    return referenceCategoryValues.includes(value as ReferencePickerCategory) ? (value as ReferencePickerCategory) : "其他";
+    return normalizeAssetTag(value);
 }
 
 function getAssetCategory(asset: Asset): ReferencePickerCategory {
-    const value = asset.metadata?.category || asset.tags?.[0];
-    return referenceCategoryValues.includes(value as ReferencePickerCategory) ? (value as ReferencePickerCategory) : "其他";
+    return getAssetTag(asset);
 }
 
 async function createCanvasReferenceImage(file: File, nodeId: string): Promise<CanvasReferenceImage> {
