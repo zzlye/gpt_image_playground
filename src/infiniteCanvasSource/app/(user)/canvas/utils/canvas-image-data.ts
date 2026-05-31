@@ -7,6 +7,12 @@ export type ImageCropRect = {
     height: number;
 };
 
+export type ImageGridCropCell = {
+    row: number;
+    col: number;
+    dataUrl: string;
+};
+
 export type ImageAngleTransform = {
     horizontalAngle: number;
     pitchAngle: number;
@@ -23,6 +29,23 @@ export async function cropDataUrl(dataUrl: string, crop?: ImageCropRect) {
     const sx = Math.max(0, Math.floor((image.width - size) / 2));
     const sy = Math.max(0, Math.floor((image.height - size) / 2));
     return drawCrop(image, sx, sy, size, size);
+}
+
+export async function cropGridDataUrl(dataUrl: string, rows: number, cols: number): Promise<ImageGridCropCell[]> {
+    const image = await loadImage(dataUrl);
+    const safeRows = clampInteger(rows, 1, 8);
+    const safeCols = clampInteger(cols, 1, 8);
+    const cells: ImageGridCropCell[] = [];
+    for (let row = 0; row < safeRows; row += 1) {
+        for (let col = 0; col < safeCols; col += 1) {
+            const sx = Math.floor((col * image.width) / safeCols);
+            const sy = Math.floor((row * image.height) / safeRows);
+            const ex = Math.floor(((col + 1) * image.width) / safeCols);
+            const ey = Math.floor(((row + 1) * image.height) / safeRows);
+            cells.push({ row, col, dataUrl: drawCrop(image, sx, sy, Math.max(1, ex - sx), Math.max(1, ey - sy)) });
+        }
+    }
+    return cells;
 }
 
 export async function transformAngleDataUrl(dataUrl: string, params: ImageAngleTransform) {
@@ -81,4 +104,8 @@ function loadImage(dataUrl: string) {
         image.onload = () => resolve(image);
         image.src = dataUrl;
     });
+}
+
+function clampInteger(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, Math.floor(Math.abs(value) || min)));
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Modal, Segmented, Tooltip } from "antd";
-import { Camera, Download, FolderPlus, Grid2x2, Group, Image as ImageIcon, Info, LayoutGrid, Lock, LockOpen, Maximize2, MessageSquare, Minus, Palette, Pencil, Play, Plus, RefreshCw, Rows3, Scissors, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
+import { Modal, Popover, Segmented, Tooltip } from "antd";
+import { Camera, Download, FolderPlus, Grid2x2, Grid3x3, Group, Image as ImageIcon, Info, LayoutGrid, Lock, LockOpen, Maximize2, MessageSquare, Minus, Palette, Pencil, Play, Plus, RefreshCw, Rows3, Scissors, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
@@ -43,6 +43,8 @@ type CanvasNodeHoverToolbarProps = {
     onDownload: (node: CanvasNodeData) => void;
     onSaveAsset: (node: CanvasNodeData) => void;
     onCrop: (node: CanvasNodeData) => void;
+    onGridCrop: (node: CanvasNodeData, rows: number, cols: number) => void;
+    onCustomGridCrop: (node: CanvasNodeData) => void;
     onAngle: (node: CanvasNodeData) => void;
     onViewImage: (node: CanvasNodeData) => void;
     onRetry: (node: CanvasNodeData) => void;
@@ -76,6 +78,8 @@ export function CanvasNodeHoverToolbar({
     onDownload,
     onSaveAsset,
     onCrop,
+    onGridCrop,
+    onCustomGridCrop,
     onAngle,
     onViewImage,
     onRetry,
@@ -187,6 +191,7 @@ export function CanvasNodeHoverToolbar({
                 />
             ) : null}
             {hasImage ? <ToolbarAction title="裁剪并生成新节点" label="裁剪" icon={<Scissors className="size-4" />} onClick={() => onCrop(node)} /> : null}
+            {hasImage ? <GridCropAction node={node} onGridCrop={onGridCrop} onCustomGridCrop={onCustomGridCrop} /> : null}
             {hasImage ? <ToolbarAction title="生成角度" label="多角度" icon={<Camera className="size-4" />} onClick={() => onAngle(node)} /> : null}
             {hasImage ? <ToolbarAction title="查看图片详情" label="查看大图" icon={<Maximize2 className="size-4" />} onClick={() => onViewImage(node)} /> : null}
         </div>
@@ -302,6 +307,73 @@ function IconAction({ title, icon, onClick }: { title: string; icon: ReactNode; 
 
 function ToolbarDivider() {
     return <span className="mx-1 h-7 w-px scale-x-50 bg-[#dedee2]" />;
+}
+
+const gridCropOptions = [
+    { key: "2x2", rows: 2, cols: 2, label: "4宫格裁剪", description: "2x2 网格" },
+    { key: "3x3", rows: 3, cols: 3, label: "9宫格裁剪", description: "3x3 网格" },
+    { key: "4x4", rows: 4, cols: 4, label: "16宫格裁剪", description: "4x4 网格" },
+    { key: "5x5", rows: 5, cols: 5, label: "25宫格裁剪", description: "5x5 网格" },
+];
+
+function GridCropAction({ node, onGridCrop, onCustomGridCrop }: { node: CanvasNodeData; onGridCrop: (node: CanvasNodeData, rows: number, cols: number) => void; onCustomGridCrop: (node: CanvasNodeData) => void }) {
+    const [open, setOpen] = useState(false);
+    const chooseGrid = (rows: number, cols: number) => {
+        setOpen(false);
+        onGridCrop(node, rows, cols);
+    };
+    const chooseCustomGrid = () => {
+        setOpen(false);
+        onCustomGridCrop(node);
+    };
+
+    return (
+        <Popover
+            open={open}
+            onOpenChange={setOpen}
+            trigger={["click"]}
+            placement="bottom"
+            arrow={false}
+            content={
+                <div className="w-64 overflow-hidden rounded-xl border border-black/10 bg-[#1f1f1f]/95 p-1.5 text-white shadow-2xl backdrop-blur-xl" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+                    {gridCropOptions.map((option) => (
+                        <button key={option.key} type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/10" onClick={() => chooseGrid(option.rows, option.cols)}>
+                            <GridIcon rows={option.rows} cols={option.cols} />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-semibold">{option.label}</span>
+                                <span className="block text-xs text-white/55">{option.description}</span>
+                            </span>
+                        </button>
+                    ))}
+                    <button type="button" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/10" onClick={chooseCustomGrid}>
+                        <Grid3x3 className="size-5 text-white/80" />
+                        <span className="min-w-0">
+                            <span className="block text-sm font-semibold">自定义宫格裁剪</span>
+                            <span className="block text-xs text-white/55">自定义行 x 列</span>
+                        </span>
+                    </button>
+                </div>
+            }
+        >
+            <button type="button" className="group relative flex h-12 items-center whitespace-nowrap px-1.5" aria-label="宫格裁剪" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+                <span className="flex h-9 items-center gap-2 rounded-lg px-2.5 transition group-hover:bg-[#f0f0f1]">
+                    <Grid2x2 className="size-4" />
+                    <span>宫格裁剪</span>
+                </span>
+            </button>
+        </Popover>
+    );
+}
+
+function GridIcon({ rows, cols }: { rows: number; cols: number }) {
+    const cells = Array.from({ length: rows * cols }, (_, index) => index);
+    return (
+        <span className="grid size-5 shrink-0 gap-px rounded-[3px] border border-white/65 p-px" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }} aria-hidden="true">
+            {cells.map((index) => (
+                <span key={index} className="rounded-[1px] border border-white/65" />
+            ))}
+        </span>
+    );
 }
 
 const groupColors = ["#2f80ff", "#22c55e", "#f59e0b", "#a855f7", "#ef4444"];

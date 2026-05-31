@@ -26,7 +26,7 @@ import { queryNewApiBalance } from "../../../../../lib/newApi";
 import { replaceImageMentionsForApi, stripImageMentionMarkers } from "../../../../../lib/promptImageMentions";
 import { primeImageCache, useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
-import { cropDataUrl } from "../utils/canvas-image-data";
+import { cropDataUrl, cropGridDataUrl } from "../utils/canvas-image-data";
 import { isCanvasEditableTarget } from "../utils/canvas-dom-events";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
 import { App, Button, Dropdown, Input, Modal } from "antd";
@@ -1916,6 +1916,60 @@ function InfiniteCanvasPage() {
         setCropNodeId(null);
     }, []);
 
+    const cropImageNodeGrid = useCallback(
+        async (node: CanvasNodeData, rows: number, cols: number) => {
+            if (!node.metadata?.content) return;
+            const safeRows = clampGridCropSize(rows);
+            const safeCols = clampGridCropSize(cols);
+            const cells = await cropGridDataUrl(node.metadata.content, safeRows, safeCols);
+            const uploaded = await Promise.all(cells.map(async (cell) => ({ ...cell, image: await uploadImage(cell.dataUrl) })));
+            const firstImage = uploaded[0]?.image;
+            const maxWidth = Math.min(220, Math.max(120, node.width / Math.max(1, safeCols)));
+            const cellSize = firstImage ? fitNodeSize(firstImage.width, firstImage.height, maxWidth, maxWidth) : { width: maxWidth, height: maxWidth };
+            const childNodes = uploaded.map(({ row, col, image }) => {
+                const id = nanoid();
+                return {
+                    id,
+                    type: CanvasNodeType.Image,
+                    title: `${safeRows}x${safeCols} 宫格 ${row + 1}-${col + 1}`,
+                    position: {
+                        x: node.position.x + node.width + 96 + col * (cellSize.width + 24),
+                        y: node.position.y + row * (cellSize.height + 24),
+                    },
+                    width: cellSize.width,
+                    height: cellSize.height,
+                    metadata: {
+                        ...imageMetadata(image),
+                        prompt: node.metadata?.prompt,
+                        generationPrompt: node.metadata?.generationPrompt,
+                    },
+                } satisfies CanvasNodeData;
+            });
+            setNodes((prev) => [...prev, ...childNodes]);
+            setConnections((prev) => [...prev, ...childNodes.map((child) => ({ id: nanoid(), fromNodeId: node.id, toNodeId: child.id }))]);
+            setSelectedNodeIds(new Set(childNodes.map((child) => child.id)));
+            setSelectedGroupId(null);
+            setSelectedConnectionId(null);
+            setDialogNodeId(childNodes[0]?.id || null);
+            message.success(`已裁剪为 ${safeRows * safeCols} 张图片`);
+        },
+        [message],
+    );
+
+    const cropImageNodeCustomGrid = useCallback(
+        (node: CanvasNodeData) => {
+            const value = window.prompt("输入宫格行列，例如 3x4", "3x3");
+            if (!value) return;
+            const match = value.trim().match(/^(\d+)\s*(?:x|\*|,|，|:|：|\s)\s*(\d+)$/i);
+            if (!match) {
+                message.error("请输入类似 3x4 的行列格式");
+                return;
+            }
+            void cropImageNodeGrid(node, Number(match[1]), Number(match[2]));
+        },
+        [cropImageNodeGrid, message],
+    );
+
     const generateAngleNode = useCallback(
         async (node: CanvasNodeData, params: CanvasImageAngleParams) => {
             if (!node.metadata?.content) return;
@@ -2937,6 +2991,8 @@ function InfiniteCanvasPage() {
                     onDownload={downloadNodeImage}
                     onSaveAsset={(node) => void saveNodeAsset(node)}
                     onCrop={(node) => setCropNodeId(node.id)}
+                    onGridCrop={(node, rows, cols) => void cropImageNodeGrid(node, rows, cols)}
+                    onCustomGridCrop={(node) => cropImageNodeCustomGrid(node)}
                     onAngle={(node) => setAngleNodeId(node.id)}
                     onViewImage={(node) => void openNodeLightbox(node)}
                     onRetry={(node) => void handleRetryNode(node)}
@@ -3468,6 +3524,10 @@ async function hydrateAssistantImages(sessions: CanvasAssistantSession[]) {
 
 function getGenerationCount(count: string) {
     return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+}
+
+function clampGridCropSize(value: number) {
+    return Math.max(1, Math.min(8, Math.floor(Math.abs(value) || 1)));
 }
 
 function applyNodeConfigPatch(node: CanvasNodeData, patch: Partial<CanvasNodeData["metadata"]>) {
