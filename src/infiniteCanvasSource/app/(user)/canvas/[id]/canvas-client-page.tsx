@@ -1716,6 +1716,12 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, content } } : node)));
     }, []);
 
+    const renameCanvasNode = useCallback((nodeId: string, title: string) => {
+        const nextTitle = title.trim();
+        if (!nextTitle) return;
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title: nextTitle, metadata: { ...node.metadata, manualTitle: true } } : node)));
+    }, []);
+
     const toggleBatchExpanded = useCallback((nodeId: string) => {
         const isExpanded = Boolean(nodesRef.current.find((node) => node.id === nodeId)?.metadata?.imageBatchExpanded);
         if (isExpanded) {
@@ -2262,13 +2268,13 @@ function InfiniteCanvasPage() {
                                             position: rootNode.position,
                                             width: rootNode.width,
                                             height: rootNode.height,
-                                            title: rootNode.title,
+                                            title: getGeneratedNodeTitle(node, rootNode.title),
                                             metadata: { ...node.metadata, ...rootNode.metadata, errorDetails: undefined },
                                         }
                                       : {
                                             ...node,
                                             type: CanvasNodeType.Text,
-                                            title: prompt.slice(0, 32) || "Prompt",
+                                            title: getGeneratedNodeTitle(node, prompt.slice(0, 32) || "Prompt"),
                                             width: parentConfig.width,
                                             height: parentConfig.height,
                                             metadata: { ...node.metadata, content: stripImageMentionMarkers(prompt), prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
@@ -2354,7 +2360,11 @@ function InfiniteCanvasPage() {
                         metadata: { prompt: sourcePrompt, generationPrompt: effectivePrompt, status: NODE_STATUS_LOADING, generationStartedAt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)) },
                     };
                     pendingChildIds = [videoId];
-                    setNodes((prev) => (isEmptyVideoNode ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode } : node)) : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode]));
+                    setNodes((prev) =>
+                        isEmptyVideoNode
+                            ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode, title: getGeneratedNodeTitle(node, videoNode.title), metadata: { ...node.metadata, ...videoNode.metadata } } : node))
+                            : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
+                    );
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, effectivePrompt, generationContext.referenceImages), "video");
                     const videoSize = fitNodeSize(video.width || spec.width, video.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
@@ -2406,7 +2416,7 @@ function InfiniteCanvasPage() {
                             : node.id === nodeId && isConfigNode
                               ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, ...timing() } }
                               : node.id === nodeId && !editingTextNode
-                                ? { ...node, type: CanvasNodeType.Text, title: stripImageMentionMarkers(prompt).slice(0, 32) || "Generated Text", metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, ...timing() } }
+                                ? { ...node, type: CanvasNodeType.Text, title: getGeneratedNodeTitle(node, stripImageMentionMarkers(prompt).slice(0, 32) || "Generated Text"), metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, ...timing() } }
                                 : node,
                     ),
                 );
@@ -2847,7 +2857,7 @@ function InfiniteCanvasPage() {
                             onRetry={(node) => void handleRetryNode(node)}
                             onGenerateImage={generateImageFromTextNode}
                             onUpload={handleUploadRequest}
-                            onRename={(nodeId, title) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title } : node)))}
+                            onRename={renameCanvasNode}
                             onContextMenu={(event, id) => {
                                 const target = event.target;
                                 if (target instanceof Element && target.closest("[data-connection-handle]")) {
@@ -3083,7 +3093,7 @@ function InfiniteCanvasPage() {
                     open={assetPickerOpen}
                     defaultTab={assetPickerTab}
                     canvasNodes={nodes}
-                    onRenameCanvasNode={(nodeId, title) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, title } : node)))}
+                    onRenameCanvasNode={renameCanvasNode}
                     onChangeCanvasNodeCategory={(nodeId, category) => setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, assetCategory: category } } : node)))}
                     onDeleteCanvasNode={(nodeId) => deleteNodes(new Set([nodeId]))}
                     onInsert={handleAssetInsert}
@@ -3425,6 +3435,11 @@ function getGeneratedMediaSizePatch(node: CanvasNodeData, size: { width: number;
         width: size.width,
         height: size.height,
     };
+}
+
+function getGeneratedNodeTitle(node: CanvasNodeData, generatedTitle: string) {
+    // 用户手动改过节点小标题后，生成流程只更新内容，不再覆盖这个名称。
+    return node.metadata?.manualTitle ? node.title : generatedTitle;
 }
 
 function formatCanvasPromptForApi(prompt: string, imageCount: number) {
