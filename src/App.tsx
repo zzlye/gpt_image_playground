@@ -47,6 +47,7 @@ export default function App() {
   const appearanceBackgroundOpacity = useStore((s) => s.settings.appearanceBackgroundOpacity)
   const appearanceBackgroundBlur = useStore((s) => s.settings.appearanceBackgroundBlur)
   const appearanceNightMode = useStore((s) => s.settings.appearanceNightMode)
+  const hasRunningGeneration = useStore((s) => s.tasks.some((task) => task.status === 'running'))
   const [workspaceMode, setWorkspaceMode] = useState<'gallery' | 'canvas'>('gallery')
   const [promptSelectOpen, setPromptSelectOpen] = useState(false)
 
@@ -109,9 +110,7 @@ export default function App() {
       }
     } catch (error) {
       console.warn('Failed to load announcement:', error)
-      setAnnouncementContent('')
-      setAnnouncementPublishedAt(undefined)
-      setAnnouncementItems([])
+      // 公告刷新失败时保留上一次内容，避免用户打开公告时看到空白弹窗。
     } finally {
       setAnnouncementLoading(false)
     }
@@ -160,8 +159,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (hasRunningGeneration) return
     void loadAnnouncement(true)
-  }, [loadAnnouncement, settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
+  }, [hasRunningGeneration, loadAnnouncement, settings.announcementDismissedDate, settings.announcementDismissedForever, settings.announcementDismissedHash])
 
   useEffect(() => {
     if (workspaceMode !== 'gallery') return
@@ -203,6 +203,11 @@ export default function App() {
       announcementDismissedForever: checked,
       ...(checked ? { announcementDismissedDate: undefined, announcementDismissedHash: undefined } : {}),
     })
+  }
+
+  const openAnnouncement = () => {
+    setAnnouncementOpen(true)
+    if (!hasRunningGeneration) void loadAnnouncement(false)
   }
 
   return (
@@ -259,10 +264,7 @@ export default function App() {
         <Toast />
         <button
           type="button"
-          onClick={() => {
-            setAnnouncementOpen(true)
-            void loadAnnouncement(false)
-          }}
+          onClick={openAnnouncement}
           className="fixed bottom-4 left-4 z-50 rounded-full border border-gray-200/70 bg-white/85 px-3 py-2 text-xs font-medium text-gray-700 shadow-lg backdrop-blur transition hover:bg-white hover:text-gray-900 dark:border-white/[0.08] dark:bg-gray-900/85 dark:text-gray-200 dark:hover:bg-gray-800"
         >
           公告

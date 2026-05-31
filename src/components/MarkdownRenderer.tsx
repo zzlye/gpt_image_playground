@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import type { Components, StreamdownTranslations } from 'streamdown'
 import type { Components as ReactMarkdownComponents } from 'react-markdown'
+import { openExternalLinkFromClick } from '../lib/externalLinks'
 
 type MarkdownRendererProps = {
   content: string
@@ -32,13 +33,24 @@ function safeUrl(url: string) {
   }
 }
 
+function shouldHandleExternalLink(href: string | undefined) {
+  if (!href || href === '#blocked') return false
+  try {
+    return allowedUrlProtocols.has(new URL(href, window.location.origin).protocol)
+  } catch {
+    return false
+  }
+}
+
 const markdownComponents: Components = {
   a({ children, href, node: _node, ...props }) {
-    const shouldOpenBlank = Boolean(href && href !== '#blocked')
+    const shouldOpenBlank = shouldHandleExternalLink(href)
+    const safeHref = href ?? '#blocked'
     return (
       <a
         {...props}
-        href={href}
+        href={safeHref}
+        onClick={shouldOpenBlank ? (event) => openExternalLinkFromClick(event, safeHref) : undefined}
         rel={shouldOpenBlank ? 'noreferrer' : undefined}
         target={shouldOpenBlank ? '_blank' : undefined}
       >
@@ -51,11 +63,12 @@ const markdownComponents: Components = {
 const legacyMarkdownComponents: ReactMarkdownComponents = {
   a({ children, href, ...props }) {
     const safeHref = safeUrl(href ?? '')
-    const shouldOpenBlank = safeHref !== '#blocked'
+    const shouldOpenBlank = shouldHandleExternalLink(safeHref)
     return (
       <a
         {...props}
         href={safeHref}
+        onClick={shouldOpenBlank ? (event) => openExternalLinkFromClick(event, safeHref) : undefined}
         rel={shouldOpenBlank ? 'noreferrer' : undefined}
         target={shouldOpenBlank ? '_blank' : undefined}
       >
