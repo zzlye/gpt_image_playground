@@ -2746,6 +2746,7 @@ function InfiniteCanvasPage() {
                                 <CanvasNodePromptPanel
                                     node={panelNode}
                                     canvasNodes={nodes}
+                                    inputs={buildNodeGenerationInputs(panelNode.id, nodes, connections)}
                                     isRunning={runningNodeId === panelNode.id}
                                     onPromptChange={handleNodePromptChange}
                                     onConfigChange={handleConfigNodeChange}

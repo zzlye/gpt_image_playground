@@ -21,6 +21,7 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasReferenceImage } from "../types";
+import type { NodeGenerationInput } from "./canvas-node-generation";
 import { createInputImageFromFile, primeImageCache, useStore } from "../../../../../store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
@@ -28,6 +29,7 @@ export type CanvasNodeGenerationMode = CanvasGenerationMode;
 type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
     canvasNodes: CanvasNodeData[];
+    inputs: NodeGenerationInput[];
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
@@ -48,7 +50,7 @@ const referenceCategoryOptions: Array<{ label: "全部" | ReferencePickerCategor
 ];
 const referenceCategoryValues = referenceCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
 
-export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, canvasNodes, inputs, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const inputRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceFileInputRef = useRef<HTMLInputElement>(null);
@@ -73,9 +75,11 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode, activeProfile.id);
     const modelOptions = useCanvasModelOptions(config, mode, activeProfile.id);
+    const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
+    const connectedTextInputs = useMemo(() => inputs.filter((input) => input.type === "text" && input.text?.trim()), [inputs]);
+    const hasGenerationText = Boolean(prompt.trim() || connectedTextInputs.length);
     const [cursorPos, setCursorPos] = useState(0);
     const [menuLeft, setMenuLeft] = useState(0);
     const [atImageMenuIndex, setAtImageMenuIndex] = useState(0);
@@ -530,10 +534,10 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
 
     const submit = useCallback(() => {
         const text = prompt.trim();
-        if (!text || isRunning) return;
+        if ((!text && !connectedTextInputs.length) || isRunning) return;
         onPromptChange(node.id, text);
         onGenerate(node.id, mode, text);
-    }, [isRunning, mode, node.id, onGenerate, onPromptChange, prompt]);
+    }, [connectedTextInputs.length, isRunning, mode, node.id, onGenerate, onPromptChange, prompt]);
 
     const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         event.stopPropagation();
@@ -647,6 +651,20 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                     </button>
                 </div>
 
+                {connectedTextInputs.length ? (
+                    <div className="mb-2 space-y-1.5">
+                        {connectedTextInputs.map((input, index) => (
+                            <div key={input.nodeId} className="rounded-lg border px-2.5 py-2 text-xs leading-5" style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.text }}>
+                                <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium opacity-50">
+                                    <span className="truncate">{input.title || `文字节点 ${index + 1}`}</span>
+                                    <span className="shrink-0">连接输入</span>
+                                </div>
+                                <div className="whitespace-pre-wrap break-words opacity-80">{input.text}</div>
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
+
                 <div className="relative grid">
                     {showAtImageMenu ? (
                         <div style={{ left: `${menuLeft}px` }} className="absolute bottom-full z-50 mb-2 w-64 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/95 p-1.5 shadow-xl ring-1 ring-black/5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">
@@ -677,8 +695,8 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                         data-canvas-editor
                         contentEditable
                         suppressContentEditableWarning
-                        className="thin-scrollbar col-start-1 row-start-1 min-h-24 max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none"
-                        style={{ color: theme.node.text }}
+                        className="thin-scrollbar col-start-1 row-start-1 max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none"
+                        style={{ color: theme.node.text, minHeight: 96 }}
                         onInput={(event) => {
                             isUserInputRef.current = true;
                             const range = getContentEditableSelection(event.currentTarget);
@@ -745,7 +763,7 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                         <ModelPicker config={config} value={config.model} options={modelOptions} onChange={(model) => onConfigChange(node.id, { model })} onMissingConfig={() => openConfigDialog(true)} />
                     )}
                 </div>
-                <Button type="primary" className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3" disabled={isRunning || !prompt.trim()} onClick={submit} aria-label="生成">
+                <Button type="primary" className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3" disabled={isRunning || !hasGenerationText} onClick={submit} aria-label="生成">
                     <span className="flex items-center gap-1.5">
                         {mode === "image" && (
                             imageCostText ? (
