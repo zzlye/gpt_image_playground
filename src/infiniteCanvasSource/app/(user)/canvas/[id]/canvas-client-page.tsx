@@ -2981,7 +2981,7 @@ function InfiniteCanvasPage() {
 
                 <input ref={imageInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleImageInputChange} />
 
-                <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
+                <CanvasNodeInfoModal node={infoNode} inputs={infoNode ? buildNodeGenerationInputs(infoNode.id, nodes, connections) : []} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
 
                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop)} /> : null}
 

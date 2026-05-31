@@ -8,6 +8,7 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { formatBytes, getDataUrlByteSize } from "@/lib/image-utils";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasGroupData, type CanvasGroupLayout, type CanvasNodeData, type ViewportTransform } from "../types";
+import { buildConnectedPromptText, type NodeGenerationInput } from "./canvas-node-generation";
 
 type CanvasToolbarBounds = {
     x: number;
@@ -192,13 +193,22 @@ export function CanvasNodeHoverToolbar({
     );
 }
 
-export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeData | null; open: boolean; onClose: () => void }) {
+export function CanvasNodeInfoModal({ node, inputs = [], open, onClose }: { node: CanvasNodeData | null; inputs?: NodeGenerationInput[]; open: boolean; onClose: () => void }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [view, setView] = useState<"info" | "json">("info");
     const imageBytes = node?.type === CanvasNodeType.Image && node.metadata?.content ? getDataUrlByteSize(node.metadata.content) : 0;
     const batchCount = node?.type === CanvasNodeType.Image ? node.metadata?.batchChildIds?.length || 0 : 0;
     const generationDuration = formatGenerationDuration(node?.metadata?.generationElapsedMs);
     const imageSize = node?.type === CanvasNodeType.Image && (node.metadata?.naturalWidth || node.metadata?.naturalHeight) ? `${Math.round(node.metadata?.naturalWidth || node.width)} x ${Math.round(node.metadata?.naturalHeight || node.height)}` : `${Math.round(node?.width || 0)} x ${Math.round(node?.height || 0)}`;
+    const connectedPromptText = useMemo(() => buildConnectedPromptText(inputs), [inputs]);
+    const displayPrompt = useMemo(() => {
+        const savedGenerationPrompt = node?.metadata?.generationPrompt?.trim() || "";
+        if (savedGenerationPrompt) return savedGenerationPrompt;
+        const ownPrompt = node?.metadata?.prompt?.trim() || "";
+        if (ownPrompt && connectedPromptText) return `${ownPrompt}\n\n${connectedPromptText}`;
+        return ownPrompt || connectedPromptText;
+    }, [connectedPromptText, node?.metadata?.generationPrompt, node?.metadata?.prompt]);
+    const textContent = node?.type === CanvasNodeType.Text ? node.metadata?.content?.trim() || "" : "";
     const json = useMemo(() => {
         if (!node) return "";
         return JSON.stringify(
@@ -246,7 +256,8 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
                             <InfoRow label="状态" value={node.metadata?.status || "idle"} />
                             {generationDuration ? <InfoRow label="生成用时" value={generationDuration} /> : null}
                             {batchCount > 1 ? <InfoRow label="图片组" value={`${batchCount} 张`} /> : null}
-                            {node.metadata?.prompt ? <InfoRow label="提示词" value={node.metadata.prompt} /> : null}
+                            {displayPrompt ? <InfoRow label="提示词" value={displayPrompt} /> : null}
+                            {textContent ? <InfoRow label="文本内容" value={textContent} /> : null}
                             {imageBytes ? <InfoRow label="图片大小" value={formatBytes(imageBytes)} /> : null}
                             {node.metadata?.errorDetails ? (
                                 <div className="rounded-lg border p-3 text-red-400" style={{ borderColor: theme.node.stroke }}>
