@@ -27,6 +27,7 @@ import {
 } from '../lib/apiProfiles'
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { queryNewApiBalance } from '../lib/newApi'
+import { parseModelListPayload } from '../lib/modelList'
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CustomProviderDefinition } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
@@ -1440,7 +1441,6 @@ export default function SettingsModal() {
     const isText = target === 'text'
     const baseUrl = isText ? draft.textBaseUrl : draft.videoBaseUrl
     const apiKey = isText ? draft.textApiKey : draft.videoApiKey
-    const apiProxy = isText ? draft.textApiProxy : draft.videoApiProxy
     const setLoading = isText ? setIsFetchingTextModels : setIsFetchingVideoModels
     const setOptions = isText ? setTextModelOptions : setVideoModelOptions
     const currentModel = isText ? draft.textModel : draft.videoModel
@@ -1452,22 +1452,14 @@ export default function SettingsModal() {
 
     setLoading(true)
     try {
-      const response = await fetch(buildApiUrl(baseUrl, 'models', apiProxyConfig, shouldUseApiProxy(apiProxy, apiProxyConfig)), {
+      const response = await fetch(buildApiUrl(baseUrl, 'models'), {
         headers: apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : undefined,
         cache: 'no-store',
       })
       const payload = await response.json().catch(() => null) as { data?: unknown, error?: { message?: string }, msg?: string } | null
       if (!response.ok) throw new Error(payload?.error?.message || payload?.msg || `读取模型失败：${response.status}`)
 
-      const rawModels = Array.isArray(payload?.data) ? payload.data : []
-      const models = rawModels
-        .map((item) => {
-          if (typeof item === 'string') return item
-          if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') return (item as { id: string }).id
-          return ''
-        })
-        .filter((item): item is string => Boolean(item.trim()))
-        .sort((a, b) => a.localeCompare(b))
+      const models = parseModelListPayload(payload)
 
       if (models.length === 0) throw new Error('接口没有返回模型列表')
       setOptions(models)

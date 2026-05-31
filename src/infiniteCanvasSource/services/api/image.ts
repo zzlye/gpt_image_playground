@@ -7,7 +7,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { ReferenceImage } from "@/types/image";
 import { callImageApi } from "../../../lib/api";
 import { normalizeSettings } from "../../../lib/apiProfiles";
-import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig } from "../../../lib/devProxy";
 import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 import { useStore } from "../../../store";
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from "../../../types";
@@ -176,8 +176,7 @@ function aiApiUrl(config: AiConfig, path: string, target: "image" | "textVideo" 
     if (config.channelMode === "remote") return `/api/v1${path}`;
 
     const proxyConfig = readClientDevProxyConfig();
-    const useApiProxy = target === "textVideo" ? shouldUseApiProxy(config.textApiProxy || config.textVideoApiProxy, proxyConfig) : false;
-    return buildDevApiUrl(baseUrl, path, proxyConfig, useApiProxy);
+    return buildDevApiUrl(baseUrl, path, proxyConfig, false);
 }
 
 function aiHeaders(config: AiConfig, contentType?: string, target: "image" | "textVideo" = "image") {

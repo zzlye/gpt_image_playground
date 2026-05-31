@@ -21,14 +21,19 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
 
   return (
     <>
-      <button
-        type="button"
-        className={buttonClassName || 'shrink-0 rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-gray-600 transition hover:bg-white hover:text-gray-900 dark:bg-white/[0.08] dark:text-gray-200 dark:hover:bg-white/[0.12]'}
-        style={buttonStyle}
-        onClick={() => setOpen(true)}
-      >
-        模型列表
-      </button>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          className={buttonClassName || 'shrink-0 rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-gray-600 transition hover:bg-white hover:text-gray-900 dark:bg-white/[0.08] dark:text-gray-200 dark:hover:bg-white/[0.12]'}
+          style={buttonStyle}
+          onClick={() => setOpen(true)}
+        >
+          模型列表
+        </button>
+        <span className="shrink truncate text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          获取联系微信：zzlye674
+        </span>
+      </div>
 
       {open ? createPortal(
         <div

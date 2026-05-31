@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getImageModelOptionsForProfile } from "../../../../../lib/apiProfiles";
 import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
 import type { CanvasGenerationMode } from "../types";
+import { parseModelListPayload } from "../../../../../lib/modelList";
 
 type ModelOption = string | { value: string; label: string };
 type ExternalModelTarget = "text" | "video";
@@ -76,16 +77,9 @@ async function fetchExternalModelOptions(baseUrl: string, apiKey: string) {
             headers: apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : undefined,
             cache: "no-store",
         });
-        const payload = (await response.json().catch(() => null)) as { data?: unknown } | null;
+        const payload = await response.json().catch(() => null);
         if (!response.ok) return [];
-        const rawModels = Array.isArray(payload?.data) ? payload.data : [];
-        return uniqueModels(
-            rawModels.map((item) => {
-                if (typeof item === "string") return item;
-                if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") return (item as { id: string }).id;
-                return "";
-            }),
-        ).sort((a, b) => a.localeCompare(b));
+        return parseModelListPayload(payload);
     } catch {
         return [];
     }
