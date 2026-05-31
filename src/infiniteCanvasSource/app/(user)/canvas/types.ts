@@ -53,6 +53,7 @@ export type CanvasNodeMetadata = {
     referenceImages?: CanvasReferenceImage[];
     generationStartedAt?: number;
     generationElapsedMs?: number;
+    generationPrompt?: string;
     naturalWidth?: number;
     naturalHeight?: number;
     freeResize?: boolean;

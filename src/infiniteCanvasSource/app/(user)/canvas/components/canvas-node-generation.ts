@@ -19,10 +19,7 @@ export type NodeGenerationInput = {
 
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
-    const upstreamText = inputs
-        .map((input) => input.text)
-        .filter(Boolean)
-        .join("\n\n");
+    const upstreamText = buildConnectedPromptText(inputs);
     const referenceImages = inputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
 
     return {
@@ -31,6 +28,25 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
         textCount: inputs.filter((input) => input.type === "text").length,
         imageCount: referenceImages.length,
     };
+}
+
+export function buildConnectedPromptText(inputs: NodeGenerationInput[]) {
+    return inputs
+        .filter((input) => input.type === "text")
+        .map((input) => input.text?.trim())
+        .filter(Boolean)
+        .join("\n\n");
+}
+
+export function stripConnectedPromptSuffix(prompt: string, connectedText: string) {
+    const suffix = connectedText.trim();
+    if (!suffix) return prompt;
+    const normalizedPrompt = prompt.trimEnd();
+    if (normalizedPrompt === suffix) return "";
+    const connectedSuffix = `\n\n${suffix}`;
+    if (!normalizedPrompt.endsWith(connectedSuffix)) return prompt;
+    // 兼容旧数据：旧逻辑会把上游连线文字按空行拼到节点自己的 prompt 末尾。
+    return normalizedPrompt.slice(0, -connectedSuffix.length).trimEnd();
 }
 
 export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {

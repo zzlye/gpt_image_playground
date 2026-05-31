@@ -36,7 +36,7 @@ import { CanvasConfigNodePanel } from "../components/canvas-config-node-panel";
 import { CanvasNodeContextMenu } from "../components/canvas-context-menu";
 import { CanvasNodeAngleDialog, type CanvasImageAngleParams } from "../components/canvas-node-angle-dialog";
 import { CanvasNodeCropDialog, type CanvasImageCropRect } from "../components/canvas-node-crop-dialog";
-import { buildNodeChatMessages, buildNodeGenerationContext, buildNodeGenerationInputs, hydrateNodeGenerationContext, type NodeGenerationInput } from "../components/canvas-node-generation";
+import { buildConnectedPromptText, buildNodeChatMessages, buildNodeGenerationContext, buildNodeGenerationInputs, hydrateNodeGenerationContext, stripConnectedPromptSuffix, type NodeGenerationInput } from "../components/canvas-node-generation";
 import { CanvasNodeHoverToolbar, CanvasNodeInfoModal } from "../components/canvas-node-hover-toolbar";
 import { InfiniteCanvas } from "../components/infinite-canvas";
 import { Minimap } from "../components/canvas-mini-map";
@@ -1930,7 +1930,7 @@ function InfiniteCanvasPage() {
             const prompt = buildAnglePrompt(params);
             const generationMetadata = buildImageGenerationMetadata("edit", generationConfig, 1, [
                 { id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey },
-            ]);
+            ], prompt);
             setAngleNodeId(null);
             setRunningNodeId(childId);
             setNodes((prev) => [
@@ -2116,6 +2116,7 @@ function InfiniteCanvasPage() {
                 buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${promptForApi}` : promptForApi),
             );
             const generationContext = withMergedReferenceImages(baseGenerationContext, manualReferenceImages);
+            const sourcePrompt = prompt.trim();
             const effectivePrompt = generationContext.prompt.trim();
             const markSourceStatus = sourceNode?.type !== CanvasNodeType.Image && !editingTextNode;
             if (!effectivePrompt && mode === "text") {
@@ -2132,7 +2133,7 @@ function InfiniteCanvasPage() {
                     const isImageNode = sourceNode?.type === CanvasNodeType.Image;
                     const referenceImages = mergeReferenceImages(generationContext.referenceImages);
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
-                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages);
+                    const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages, effectivePrompt);
                     const parentConfig = NODE_DEFAULT_SIZE[isConfigNode ? CanvasNodeType.Config : isImageNode ? CanvasNodeType.Image : CanvasNodeType.Text];
                     const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                     const parentPosition = sourceNode?.position || { x: 0, y: 0 };
@@ -2145,7 +2146,7 @@ function InfiniteCanvasPage() {
                     const rootNode: CanvasNodeData = {
                         id: rootId,
                         type: CanvasNodeType.Image,
-                        title: effectivePrompt.slice(0, 32) || "Generated Image",
+                        title: sourcePrompt.slice(0, 32) || "Generated Image",
                         position: {
                             x: isImageNode ? parentPosition.x : parentPosition.x + parentConfig.width + gap,
                             y: parentPosition.y + parentConfig.height / 2 - imageConfig.height / 2,
@@ -2159,7 +2160,7 @@ function InfiniteCanvasPage() {
                             naturalHeight: undefined,
                             bytes: undefined,
                             mimeType: undefined,
-                            prompt: effectivePrompt,
+                            prompt: sourcePrompt,
                             status: NODE_STATUS_LOADING,
                             errorDetails: undefined,
                             generationStartedAt,
@@ -2175,14 +2176,14 @@ function InfiniteCanvasPage() {
                     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
                         id,
                         type: CanvasNodeType.Image,
-                        title: effectivePrompt.slice(0, 32) || "Generated Image",
+                        title: sourcePrompt.slice(0, 32) || "Generated Image",
                         position: {
                             x: rootNode.position.x + rootNode.width + 120 + (index % 2) * (imageConfig.width + 36),
                             y: rootNode.position.y + Math.floor(index / 2) * (imageConfig.height + rowGap),
                         },
                         width: imageConfig.width,
                         height: imageConfig.height,
-                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, generationStartedAt, batchRootId: count > 1 ? rootId : undefined, ...generationMetadata },
+                        metadata: { prompt: sourcePrompt, status: NODE_STATUS_LOADING, generationStartedAt, batchRootId: count > 1 ? rootId : undefined, ...generationMetadata },
                     }));
                     const batchConnections = [...(isImageNode ? [] : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]), ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId }))];
 
@@ -2294,14 +2295,14 @@ function InfiniteCanvasPage() {
                         position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
                         width: isEmptyVideoNode ? sourceNode.width : spec.width,
                         height: isEmptyVideoNode ? sourceNode.height : spec.height,
-                        metadata: { prompt: effectivePrompt, status: NODE_STATUS_LOADING, generationStartedAt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)) },
+                        metadata: { prompt: sourcePrompt, generationPrompt: effectivePrompt, status: NODE_STATUS_LOADING, generationStartedAt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)) },
                     };
                     pendingChildIds = [videoId];
                     setNodes((prev) => (isEmptyVideoNode ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode } : node)) : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode]));
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, effectivePrompt, generationContext.referenceImages), "video");
                     const videoSize = fitNodeSize(video.width || spec.width, video.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, width: videoSize.width, height: videoSize.height, position: { x: node.position.x + node.width / 2 - videoSize.width / 2, y: node.position.y + node.height / 2 - videoSize.height / 2 }, metadata: { ...node.metadata, ...videoMetadata(video), prompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
+                    setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, width: videoSize.width, height: videoSize.height, position: { x: node.position.x + node.width / 2 - videoSize.width / 2, y: node.position.y + node.height / 2 - videoSize.height / 2 }, metadata: { ...node.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
                     return;
                 }
 
@@ -2389,9 +2390,11 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourceNode.metadata?.prompt || node.metadata?.prompt || ""));
-            const prompt = (savedImageMetadata?.prompt || context?.prompt || "").trim();
-            if (!prompt) {
+            const sourcePrompt = getNodeOwnPrompt(sourceNode, node, nodesRef.current, connectionsRef.current);
+            const shouldRebuildRetryContext = !hasSavedImageMetadata || !savedImageMetadata?.generationPrompt;
+            const context = shouldRebuildRetryContext ? await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourcePrompt)) : null;
+            const requestPrompt = (savedImageMetadata?.generationPrompt || context?.prompt || sourcePrompt).trim();
+            if (!requestPrompt) {
                 message.warning("找不到提示词，无法重试");
                 return;
             }
@@ -2414,27 +2417,27 @@ function InfiniteCanvasPage() {
                 if (node.type === CanvasNodeType.Text) {
                     if (!context) return;
                     let streamed = "";
-                    const answer = await requestImageQuestion(generationConfig, buildNodeChatMessages({ ...context, prompt }), (text) => {
+                    const answer = await requestImageQuestion(generationConfig, buildNodeChatMessages({ ...context, prompt: requestPrompt }), (text) => {
                         streamed = text;
                         setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: text, status: NODE_STATUS_LOADING } } : item)));
                     });
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt, status: NODE_STATUS_SUCCESS, ...timing() } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt: sourcePrompt, generationPrompt: requestPrompt, status: NODE_STATUS_SUCCESS, ...timing() } } : item)));
                     return;
                 }
                 if (node.type === CanvasNodeType.Video) {
-                    const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, prompt, retryReferenceImages || []), "video");
+                    const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, requestPrompt, retryReferenceImages || []), "video");
                     const videoSize = fitNodeSize(video.width || node.width, video.height || node.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, width: videoSize.width, height: videoSize.height, position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 }, metadata: { ...item.metadata, ...videoMetadata(video), prompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, width: videoSize.width, height: videoSize.height, position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 }, metadata: { ...item.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: requestPrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
                     return;
                 }
 
-                const image = useReferenceImages ? await requestEdit(generationConfig, prompt, retryReferenceImages).then((items) => items[0]) : await requestGeneration(generationConfig, prompt).then((items) => items[0]);
+                const image = useReferenceImages ? await requestEdit(generationConfig, requestPrompt, retryReferenceImages).then((items) => items[0]) : await requestGeneration(generationConfig, requestPrompt).then((items) => items[0]);
                 const uploadedImage = await uploadImage(image.dataUrl);
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const imageSize = fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
                 const generationMetadata = savedImageMetadata?.generationType
                     ? { generationType: savedImageMetadata.generationType, model: generationConfig.model, size: generationConfig.size, quality: generationConfig.quality, count: savedImageMetadata.count || 1, references: savedImageMetadata.references }
-                    : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryReferenceImages || []);
+                    : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryReferenceImages || [], requestPrompt);
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id
@@ -2443,7 +2446,7 @@ function InfiniteCanvasPage() {
                                   type: CanvasNodeType.Image,
                                   width: imageSize.width,
                                   height: imageSize.height,
-                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt, ...generationMetadata, ...timing() },
+                                  metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt: sourcePrompt, generationPrompt: requestPrompt, ...generationMetadata, ...timing() },
                               }
                             : item,
                     ),
@@ -2746,6 +2749,7 @@ function InfiniteCanvasPage() {
                                 <CanvasNodePromptPanel
                                     node={panelNode}
                                     canvasNodes={nodes}
+                                    inputs={buildNodeGenerationInputs(panelNode.id, nodes, connections)}
                                     isRunning={runningNodeId === panelNode.id}
                                     onPromptChange={handleNodePromptChange}
                                     onConfigChange={handleConfigNodeChange}
@@ -3358,9 +3362,10 @@ function formatCanvasPromptForApi(prompt: string, imageCount: number) {
     return stripImageMentionMarkers(replaceImageMentionsForApi(prompt, imageCount, (index) => `[reference image ${index + 1}]`));
 }
 
-function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[]): CanvasNodeMetadata {
+function buildImageGenerationMetadata(type: CanvasImageGenerationType, config: AiConfig, count: number, references: ReferenceImage[], generationPrompt?: string): CanvasNodeMetadata {
     return {
         generationType: type,
+        generationPrompt,
         model: config.model,
         size: config.size,
         quality: config.quality,
@@ -3405,6 +3410,12 @@ function mergeReferenceImages(...groups: ReferenceImage[][]) {
         }
     }
     return result;
+}
+
+function getNodeOwnPrompt(sourceNode: CanvasNodeData, node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
+    const rawPrompt = sourceNode.metadata?.prompt || node.metadata?.prompt || "";
+    const connectedPrompt = buildConnectedPromptText(buildNodeGenerationInputs(sourceNode.id, nodes, connections));
+    return stripConnectedPromptSuffix(rawPrompt, connectedPrompt).trim();
 }
 
 async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {

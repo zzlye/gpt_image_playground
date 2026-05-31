@@ -21,6 +21,7 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasReferenceImage } from "../types";
+import { buildConnectedPromptText, stripConnectedPromptSuffix, type NodeGenerationInput } from "./canvas-node-generation";
 import { createInputImageFromFile, primeImageCache, useStore } from "../../../../../store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
@@ -28,6 +29,7 @@ export type CanvasNodeGenerationMode = CanvasGenerationMode;
 type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
     canvasNodes: CanvasNodeData[];
+    inputs?: NodeGenerationInput[];
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
@@ -48,7 +50,7 @@ const referenceCategoryOptions: Array<{ label: "全部" | ReferencePickerCategor
 ];
 const referenceCategoryValues = referenceCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
 
-export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, canvasNodes, inputs = [], isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const inputRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceFileInputRef = useRef<HTMLInputElement>(null);
@@ -73,7 +75,8 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     const mode = defaultMode(node.type);
     const config = buildNodeConfig(globalConfig, node, mode, activeProfile.id);
     const modelOptions = useCanvasModelOptions(config, mode, activeProfile.id);
-    const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
+    const connectedPromptText = useMemo(() => buildConnectedPromptText(inputs), [inputs]);
+    const [prompt, setPrompt] = useState(() => stripConnectedPromptSuffix(node.metadata?.prompt || "", connectedPromptText));
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const [cursorPos, setCursorPos] = useState(0);
@@ -106,9 +109,12 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     }, [prompt]);
 
     useEffect(() => {
-        setPrompt(node.metadata?.prompt || "");
+        const rawPrompt = node.metadata?.prompt || "";
+        const displayPrompt = stripConnectedPromptSuffix(rawPrompt, connectedPromptText);
+        setPrompt(displayPrompt);
+        if (displayPrompt !== rawPrompt) onPromptChange(node.id, displayPrompt);
         isUserInputRef.current = false;
-    }, [node.id, node.metadata?.prompt]);
+    }, [connectedPromptText, node.id, node.metadata?.prompt, onPromptChange]);
 
     const updatePrompt = useCallback(
         (value: string) => {
