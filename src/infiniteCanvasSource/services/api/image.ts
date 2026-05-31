@@ -226,11 +226,13 @@ export async function requestGeneration(config: AiConfig, prompt: string) {
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[]) {
     try {
         const inputImageDataUrls = (await Promise.all(references.map((image) => imageToDataUrl(image)))).filter((dataUrl): dataUrl is string => Boolean(dataUrl));
+        const maskDataUrl = references.find((image) => image.isMaskTarget && image.maskDataUrl)?.maskDataUrl;
         const result = await callImageApi({
             settings: buildCanvasImageSettings(config),
             prompt: withSystemPrompt(config, prompt),
             params: buildTaskParams(config),
             inputImageDataUrls,
+            maskDataUrl,
         });
         refreshRemoteUser(config);
         return toCanvasImages(result.images);

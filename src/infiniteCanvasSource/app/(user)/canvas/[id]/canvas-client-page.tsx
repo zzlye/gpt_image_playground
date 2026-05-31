@@ -3096,6 +3096,8 @@ async function hydrateManualReferenceImages(references?: CanvasNodeMetadata["ref
             dataUrl: await imageToDataUrl(image),
             url: image.url,
             storageKey: image.storageKey,
+            maskDataUrl: image.maskDataUrl,
+            isMaskTarget: image.isMaskTarget,
         })),
     );
 }

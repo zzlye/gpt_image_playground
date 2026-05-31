@@ -1,26 +1,27 @@
 "use client";
 
 import { Children, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
-import { ArrowUp, LoaderCircle, Plus, Search, Upload, X } from "lucide-react";
+import type { ChangeEvent, ClipboardEvent as ReactClipboardEvent, KeyboardEvent, ReactNode } from "react";
+import { ArrowUp, LoaderCircle, Paintbrush, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { Button, Empty, Input, Modal, Tabs, Tag } from "antd";
 
 import { ModelPicker } from "@/components/model-picker";
 import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from "@/stores/use-config-store";
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
-import { uploadImage } from "@/services/image-storage";
+import { imageToDataUrl, uploadImage } from "@/services/image-storage";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { InputImage } from "../../../../../types";
 import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, isCursorInSelectedImageMention, remapImageMentionsForOrder, stripImageMentionMarkers } from "../../../../../lib/promptImageMentions";
+import { storeImage } from "../../../../../lib/db";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasReferenceImage } from "../types";
-import { useStore } from "../../../../../store";
+import { createInputImageFromFile, primeImageCache, useStore } from "../../../../../store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
 
@@ -50,11 +51,23 @@ const referenceCategoryValues = referenceCategoryOptions.filter((item) => item.v
 export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const inputRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const replaceFileInputRef = useRef<HTMLInputElement>(null);
+    const replaceReferenceTargetRef = useRef<{ index: number; id: string } | null>(null);
+    const pendingMaskEditRef = useRef<{ index: number; id: string; startedAt: number } | null>(null);
     const isUserInputRef = useRef(false);
     const globalConfig = useEffectiveConfig();
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const settings = useStore((state) => state.settings);
+    const setSettings = useStore((state) => state.setSettings);
+    const setConfirmDialog = useStore((state) => state.setConfirmDialog);
+    const setLightboxImageId = useStore((state) => state.setLightboxImageId);
+    const setMaskEditorImageId = useStore((state) => state.setMaskEditorImageId);
+    const maskEditorImageId = useStore((state) => state.maskEditorImageId);
+    const setInputImages = useStore((state) => state.setInputImages);
+    const sharedInputImages = useStore((state) => state.inputImages);
+    const maskDraft = useStore((state) => state.maskDraft);
+    const showToast = useStore((state) => state.showToast);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const mode = defaultMode(node.type);
@@ -71,6 +84,8 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
     const [referencePickerOpen, setReferencePickerOpen] = useState(false);
     const referenceImages = node.metadata?.referenceImages || [];
     const referenceInputImages = useMemo<InputImage[]>(() => referenceImages.map((image) => ({ id: image.id, dataUrl: image.dataUrl || image.url || "" })), [referenceImages]);
+    const referenceImagesRef = useRef(referenceImages);
+    const promptRef = useRef(prompt);
     const credits = requestCreditCost({ channelMode: config.channelMode, modelCosts, model: config.model, count: mode === "image" ? config.count : 1 });
     const imageCostText = mode === "image" ? getImageModelSubmitCostText(config.model) : null;
     const atReferenceLimit = referenceImages.length >= MAX_REFERENCE_IMAGES;
@@ -82,6 +97,14 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
               .filter((option) => imageMentionMatches(atImageQuery.query, option.imageIndex))
         : [];
     const showAtImageMenu = !atImageMenuDismissed && atImageOptions.length > 0;
+
+    useEffect(() => {
+        referenceImagesRef.current = referenceImages;
+    }, [referenceImages]);
+
+    useEffect(() => {
+        promptRef.current = prompt;
+    }, [prompt]);
 
     useEffect(() => {
         setPrompt(isEditingExistingContent ? "" : node.metadata?.prompt || "");
@@ -176,6 +199,27 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
         [commitReferenceImages, referenceImages],
     );
 
+    const replaceReference = useCallback(
+        (index: number, image: CanvasReferenceImage) => {
+            const previous = referenceImages[index];
+            if (!previous) return;
+            if (referenceImages.some((item, itemIndex) => itemIndex !== index && referenceIdentity(item) === referenceIdentity(image))) {
+                showToast("这张图片已在参考图中", "info");
+                return;
+            }
+            const nextReferences = referenceImages.map((item, itemIndex) => (itemIndex === index ? image : item));
+            const nextPrompt = remapImageMentionsForOrder(
+                prompt,
+                referenceInputImages,
+                nextReferences.map((item) => ({ id: item.id, dataUrl: item.dataUrl || item.url || "" })),
+                { [previous.id]: image.id },
+            );
+            commitReferenceImages(nextReferences, nextPrompt);
+            showToast("参考图已替换", "success");
+        },
+        [commitReferenceImages, prompt, referenceImages, referenceInputImages, showToast],
+    );
+
     const removeReference = useCallback(
         (index: number) => {
             const nextReferences = referenceImages.filter((_, itemIndex) => itemIndex !== index);
@@ -185,27 +229,133 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
         [commitReferenceImages, prompt, referenceImages, referenceInputImages],
     );
 
+    const clearReferenceImages = useCallback(() => {
+        if (!referenceImages.length) return;
+        setConfirmDialog({
+            title: "清空参考图",
+            message: `确定要清空全部 ${referenceImages.length} 张参考图吗？`,
+            action: () => commitReferenceImages([], remapImageMentionsForOrder(prompt, referenceInputImages, [])),
+        });
+    }, [commitReferenceImages, prompt, referenceImages.length, referenceInputImages, setConfirmDialog]);
+
     const addReferenceFiles = useCallback(
-        async (files?: FileList | null) => {
-            const images = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
-            if (!images.length) return;
-            const slots = Math.max(0, MAX_REFERENCE_IMAGES - referenceImages.length);
-            const uploaded = await Promise.all(images.slice(0, slots).map((file) => uploadImage(file)));
-            addReferenceImages(
-                uploaded.map((image, index) => ({
-                    id: `upload-ref-${node.id}-${Date.now()}-${index}`,
-                    name: images[index]?.name || `reference-${index + 1}.png`,
-                    type: image.mimeType,
-                    dataUrl: image.url,
-                    storageKey: image.storageKey,
-                    width: image.width,
-                    height: image.height,
-                    bytes: image.bytes,
-                    mimeType: image.mimeType,
-                })),
-            );
+        async (files?: FileList | File[] | null) => {
+            try {
+                const images = Array.from(files || []).filter((file) => file.type.startsWith("image/"));
+                if (!images.length) return;
+                const slots = Math.max(0, MAX_REFERENCE_IMAGES - referenceImages.length);
+                if (slots <= 0) {
+                    showToast(`参考图数量已达上限（${MAX_REFERENCE_IMAGES} 张），无法继续添加`, "error");
+                    return;
+                }
+                const uploaded = await Promise.all(images.slice(0, slots).map((file) => createCanvasReferenceImage(file, node.id)));
+                addReferenceImages(uploaded);
+                if (images.length > uploaded.length) showToast(`已达上限 ${MAX_REFERENCE_IMAGES} 张，${images.length - uploaded.length} 张图片被丢弃`, "error");
+            } catch (error) {
+                showToast(`图片添加失败：${error instanceof Error ? error.message : String(error)}`, "error");
+            }
         },
-        [addReferenceImages, node.id, referenceImages.length],
+        [addReferenceImages, node.id, referenceImages.length, showToast],
+    );
+
+    const insertPromptTextAtSelection = useCallback(
+        (text: string) => {
+            const normalizedText = text.replace(/\r\n?/g, "\n");
+            const el = inputRef.current;
+            if (el) {
+                el.focus();
+                if (document.execCommand("insertText", false, normalizedText)) {
+                    syncPromptFromInput();
+                    return;
+                }
+            }
+
+            const selection = el ? getContentEditableSelection(el) : { start: cursorPos, end: cursorPos };
+            const promptStart = getPromptIndexFromVisibleIndex(prompt, selection.start);
+            const promptEnd = getPromptIndexFromVisibleIndex(prompt, selection.end);
+            const nextPrompt = `${prompt.slice(0, promptStart)}${normalizedText}${prompt.slice(promptEnd)}`;
+            const nextCursor = selection.start + normalizedText.length;
+            isUserInputRef.current = false;
+            updatePrompt(nextPrompt);
+            window.setTimeout(() => {
+                if (!inputRef.current) return;
+                inputRef.current.focus();
+                setContentEditableCursor(inputRef.current, nextCursor);
+            }, 0);
+        },
+        [cursorPos, prompt, syncPromptFromInput, updatePrompt],
+    );
+
+    const handlePromptPaste = useCallback(
+        (event: ReactClipboardEvent<HTMLDivElement>) => {
+            const imageFiles = Array.from(event.clipboardData.items)
+                .filter((item) => item.type.startsWith("image/"))
+                .map((item) => item.getAsFile())
+                .filter((file): file is File => Boolean(file));
+            if (imageFiles.length) {
+                event.preventDefault();
+                void addReferenceFiles(imageFiles);
+                return;
+            }
+
+            const text = event.clipboardData.getData("text/plain");
+            if (!text) return;
+            event.preventDefault();
+            insertPromptTextAtSelection(text);
+        },
+        [addReferenceFiles, insertPromptTextAtSelection],
+    );
+
+    const handlePromptCopy = useCallback(
+        (event: ReactClipboardEvent<HTMLDivElement>) => {
+            const el = inputRef.current;
+            if (!el) return;
+            const selection = getContentEditableSelection(el);
+            if (selection.start === selection.end) return;
+            const promptStart = getPromptIndexFromVisibleIndex(prompt, selection.start);
+            const promptEnd = getPromptIndexFromVisibleIndex(prompt, selection.end);
+            const text = stripImageMentionMarkers(prompt.slice(promptStart, promptEnd));
+            event.preventDefault();
+            event.clipboardData.setData("text/plain", /^\s*@图\d+\s*$/.test(text) ? text.trim() : text);
+        },
+        [prompt],
+    );
+
+    useEffect(() => {
+        const handleDocumentPaste = (event: ClipboardEvent) => {
+            if (event.defaultPrevented) return;
+            const target = event.target as HTMLElement | null;
+            if (target?.closest("input, textarea, [contenteditable='true']")) return;
+            const imageFiles = Array.from(event.clipboardData?.items || [])
+                .filter((item) => item.type.startsWith("image/"))
+                .map((item) => item.getAsFile())
+                .filter((file): file is File => Boolean(file));
+            if (!imageFiles.length) return;
+            event.preventDefault();
+            void addReferenceFiles(imageFiles);
+        };
+        document.addEventListener("paste", handleDocumentPaste);
+        return () => document.removeEventListener("paste", handleDocumentPaste);
+    }, [addReferenceFiles]);
+
+    const handleReplaceFileUpload = useCallback(
+        async (event: ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            const target = replaceReferenceTargetRef.current;
+            replaceReferenceTargetRef.current = null;
+            if (!file || !target) return;
+            if (!file.type.startsWith("image/")) {
+                showToast("请选择有效图片", "error");
+                return;
+            }
+            try {
+                replaceReference(target.index, await createCanvasReferenceImage(file, node.id));
+            } catch (error) {
+                showToast(`参考图替换失败：${error instanceof Error ? error.message : String(error)}`, "error");
+            }
+        },
+        [node.id, replaceReference, showToast],
     );
 
     const selectAtImageOption = useCallback(
@@ -239,6 +389,143 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
         },
         [prompt, referenceInputImages.length, syncPromptFromInput, updatePrompt],
     );
+
+    const insertImageMentionAtCursor = useCallback(
+        (imageIndex: number) => {
+            const el = inputRef.current;
+            const cursor = el ? getContentEditableCursor(el) : cursorPos;
+            const nextCursor = cursor + getImageMentionLabel(imageIndex).length;
+            if (el) {
+                el.focus();
+                setContentEditableCursor(el, cursor);
+                if (document.execCommand("insertHTML", false, getMentionTagHtml(getImageMentionLabel(imageIndex)))) {
+                    setContentEditableCursor(el, nextCursor);
+                    syncPromptFromInput();
+                    return;
+                }
+            }
+            const next = insertImageMentionAtVisibleRange(prompt, cursor, cursor, imageIndex);
+            isUserInputRef.current = false;
+            updatePrompt(next.prompt);
+            window.setTimeout(() => {
+                if (!inputRef.current) return;
+                inputRef.current.focus();
+                setContentEditableCursor(inputRef.current, next.cursor);
+            }, 0);
+        },
+        [cursorPos, prompt, syncPromptFromInput, updatePrompt],
+    );
+
+    const openReferenceLightbox = useCallback(
+        async (index: number) => {
+            const images = referenceImagesRef.current;
+            const target = images[index];
+            if (!target) return;
+            const cachedImages = await Promise.all(images.map(cacheReferenceForSharedTools));
+            const cached = cachedImages[index];
+            if (!cached) return;
+            setLightboxImageId(cached.id, cachedImages.filter((image): image is InputImage => Boolean(image)).map((image) => image.id));
+        },
+        [setLightboxImageId],
+    );
+
+    const openReplaceReferenceFilePicker = useCallback((index: number, imageId: string) => {
+        replaceReferenceTargetRef.current = { index, id: imageId };
+        replaceFileInputRef.current?.click();
+    }, []);
+
+    const openMaskEditorForReference = useCallback(
+        async (index: number, imageId: string) => {
+            const cachedReferences = await Promise.all(referenceImagesRef.current.map(cacheReferenceForSharedTools));
+            const targetImage = cachedReferences[index];
+            if (!targetImage) {
+                showToast("参考图已丢失，无法编辑遮罩", "error");
+                return;
+            }
+            const cachedImages = cachedReferences.filter((image): image is InputImage => Boolean(image));
+            setInputImages(cachedImages);
+            pendingMaskEditRef.current = { index, id: imageId, startedAt: Date.now() };
+            setMaskEditorImageId(targetImage.id);
+        },
+        [setInputImages, setMaskEditorImageId, showToast],
+    );
+
+    const commitReferenceEditChoice = useCallback(
+        (choice: "replace-reference" | "add-mask", remember?: boolean) => {
+            if (remember) setSettings({ referenceImageEditAction: choice });
+        },
+        [setSettings],
+    );
+
+    const editReferenceImage = useCallback(
+        (index: number) => {
+            const image = referenceImages[index];
+            if (!image) return;
+            if (settings.referenceImageEditAction === "replace-reference") {
+                openReplaceReferenceFilePicker(index, image.id);
+                return;
+            }
+            if (settings.referenceImageEditAction === "add-mask") {
+                void openMaskEditorForReference(index, image.id);
+                return;
+            }
+            setConfirmDialog({
+                title: "编辑参考图",
+                message: "请选择这次要执行的操作。若不勾选下方的选项，则每次都询问；勾选后可在设置里修改选择。",
+                checkbox: { label: "以后默认执行此选择" },
+                buttons: [
+                    {
+                        label: "替换参考图",
+                        tone: "secondary",
+                        action: (remember) => {
+                            commitReferenceEditChoice("replace-reference", remember);
+                            openReplaceReferenceFilePicker(index, image.id);
+                        },
+                    },
+                    {
+                        label: "添加遮罩",
+                        tone: "primary",
+                        action: (remember) => {
+                            commitReferenceEditChoice("add-mask", remember);
+                            void openMaskEditorForReference(index, image.id);
+                        },
+                    },
+                ],
+            });
+        },
+        [commitReferenceEditChoice, openMaskEditorForReference, openReplaceReferenceFilePicker, referenceImages, setConfirmDialog, settings.referenceImageEditAction],
+    );
+
+    useEffect(() => {
+        const pending = pendingMaskEditRef.current;
+        if (!pending || maskEditorImageId) return;
+        if (!maskDraft || maskDraft.updatedAt < pending.startedAt) return;
+        const sharedImage = sharedInputImages.find((image) => image.id === maskDraft.targetImageId);
+        const previousReferences = referenceImagesRef.current;
+        const currentIndex = previousReferences.findIndex((image) => image.id === pending.id);
+        const targetIndex = currentIndex >= 0 ? currentIndex : pending.index;
+        const previous = previousReferences[targetIndex];
+        if (!previous || !sharedImage) return;
+
+        const nextReference: CanvasReferenceImage = {
+            ...previous,
+            id: sharedImage.id,
+            dataUrl: sharedImage.dataUrl,
+            type: previous.type || "image/png",
+            mimeType: previous.mimeType || "image/png",
+            maskDataUrl: maskDraft.maskDataUrl,
+            isMaskTarget: true,
+        };
+        const nextReferences = [nextReference, ...previousReferences.filter((_, index) => index !== targetIndex).map((image) => ({ ...image, isMaskTarget: false, maskDataUrl: undefined }))];
+        const nextPrompt = remapImageMentionsForOrder(
+            promptRef.current,
+            previousReferences.map((image) => ({ id: image.id, dataUrl: image.dataUrl || image.url || "" })),
+            nextReferences.map((image) => ({ id: image.id, dataUrl: image.dataUrl || image.url || "" })),
+            { [previous.id]: nextReference.id },
+        );
+        pendingMaskEditRef.current = null;
+        commitReferenceImages(nextReferences, nextPrompt);
+    }, [commitReferenceImages, maskDraft, maskEditorImageId, sharedInputImages]);
 
     const submit = useCallback(() => {
         const text = prompt.trim();
@@ -281,15 +568,49 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
             onWheel={(event) => event.stopPropagation()}
         >
             <div className="rounded-xl border p-2 shadow-sm" style={{ background: theme.node.fill, borderColor: theme.node.stroke }}>
-                <div className="mb-2 grid grid-cols-[repeat(auto-fill,52px)] gap-2">
+                <div className="mb-2 grid grid-cols-[repeat(auto-fill,52px)] gap-x-2 gap-y-3">
                     {referenceImages.map((image, index) => (
-                        <div key={image.id} className="group/ref relative h-[52px] w-[52px] shrink-0 overflow-hidden rounded-xl border shadow-sm" style={{ borderColor: theme.node.stroke }}>
-                            <img src={image.dataUrl || image.url} alt={image.name} className="h-full w-full object-cover" />
-                            <span className="absolute bottom-1 left-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] leading-none text-white">{index + 1}</span>
+                        <div
+                            key={image.id}
+                            className="group/ref relative h-[52px] w-[52px] shrink-0 overflow-visible"
+                            onContextMenu={(event) => {
+                                event.preventDefault();
+                                insertImageMentionAtCursor(index);
+                            }}
+                        >
                             <button
                                 type="button"
-                                className="absolute right-0 top-0 grid size-5 translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-red-500 text-white opacity-0 shadow-md transition hover:bg-red-600 group-hover/ref:opacity-100"
-                                onClick={() => removeReference(index)}
+                                className="relative block h-[52px] w-[52px] overflow-hidden rounded-xl border shadow-sm"
+                                style={{ borderColor: image.isMaskTarget ? "#3b82f6" : theme.node.stroke }}
+                                onClick={() => void openReferenceLightbox(index)}
+                                title="预览参考图，右键插入 @图"
+                            >
+                                <img src={image.dataUrl || image.url} alt={image.name} className="h-full w-full object-cover transition-opacity group-hover/ref:opacity-90" />
+                                {image.isMaskTarget ? <span className="pointer-events-none absolute left-1 top-1 rounded bg-blue-500/90 px-1.5 py-0.5 text-[8px] font-bold leading-none text-white">MASK</span> : null}
+                                <span className="pointer-events-none absolute bottom-1 left-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-black/55 px-1 text-[9px] font-semibold leading-none text-white backdrop-blur-sm">{index + 1}</span>
+                                <span className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover/ref:opacity-100">
+                                    <Paintbrush className="size-5 text-white" />
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                className="absolute inset-0 z-20 grid place-items-center opacity-0 transition-opacity group-hover/ref:opacity-100"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    editReferenceImage(index);
+                                }}
+                                aria-label="编辑参考图"
+                                title="编辑参考图"
+                            >
+                                <span className="sr-only">编辑参考图</span>
+                            </button>
+                            <button
+                                type="button"
+                                className="absolute right-0 top-0 z-30 grid size-5 translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-red-500 text-white opacity-0 shadow-md transition hover:bg-red-600 group-hover/ref:opacity-100"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    removeReference(index);
+                                }}
                                 aria-label="移除参考图"
                                 title="移除参考图"
                             >
@@ -297,6 +618,18 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                             </button>
                         </div>
                     ))}
+                    {referenceImages.length > 0 ? (
+                        <button
+                            type="button"
+                            className="flex h-[52px] w-[52px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed text-[10px] transition hover:border-red-300 hover:bg-red-50/50 hover:text-red-500 dark:hover:bg-red-950/30"
+                            style={{ background: theme.toolbar.panel, borderColor: theme.node.stroke, color: theme.node.placeholder }}
+                            onClick={clearReferenceImages}
+                            title="清空全部参考图"
+                        >
+                            <Trash2 className="size-4" />
+                            清空
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-xl border border-dashed text-[10px] transition hover:border-blue-300 hover:bg-blue-50/60 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/10"
@@ -360,11 +693,8 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                             setAtImageMenuDismissed(false);
                         }}
                         onKeyDown={handleKeyDown}
-                        onPaste={(event) => {
-                            event.preventDefault();
-                            document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
-                            syncPromptFromInput();
-                        }}
+                        onPaste={handlePromptPaste}
+                        onCopy={handlePromptCopy}
                         onClick={(event) => {
                             const el = inputRef.current;
                             if (!el) return;
@@ -449,6 +779,13 @@ export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptCh
                     event.target.value = "";
                 }}
             />
+            <input
+                ref={replaceFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleReplaceFileUpload}
+            />
         </div>
     );
 }
@@ -485,36 +822,30 @@ function CanvasReferencePickerModal({ open, nodeId, canvasNodes, selectedReferen
 
     const selectCanvasNode = (canvasNode: CanvasNodeData) => {
         if (!canvasNode.metadata?.content) return;
-        onSelect([
-            {
-                id: `canvas-ref-${canvasNode.id}`,
-                name: `${canvasNode.title || canvasNode.id}.png`,
-                type: canvasNode.metadata.mimeType || "image/png",
-                dataUrl: canvasNode.metadata.content,
-                storageKey: canvasNode.metadata.storageKey,
-                width: canvasNode.metadata.naturalWidth,
-                height: canvasNode.metadata.naturalHeight,
-                bytes: canvasNode.metadata.bytes,
-                mimeType: canvasNode.metadata.mimeType,
-            },
-        ]);
+        void createReferenceFromSource({
+            name: `${canvasNode.title || canvasNode.id}.png`,
+            type: canvasNode.metadata.mimeType || "image/png",
+            dataUrl: canvasNode.metadata.content,
+            storageKey: canvasNode.metadata.storageKey,
+            width: canvasNode.metadata.naturalWidth,
+            height: canvasNode.metadata.naturalHeight,
+            bytes: canvasNode.metadata.bytes,
+            mimeType: canvasNode.metadata.mimeType,
+        }).then((reference) => onSelect([reference]));
     };
 
     const selectAsset = (asset: Asset) => {
         if (asset.kind !== "image") return;
-        onSelect([
-            {
-                id: `asset-ref-${asset.id}`,
-                name: `${asset.title || asset.id}.png`,
-                type: asset.data.mimeType || "image/png",
-                dataUrl: asset.data.dataUrl,
-                storageKey: asset.data.storageKey,
-                width: asset.data.width,
-                height: asset.data.height,
-                bytes: asset.data.bytes,
-                mimeType: asset.data.mimeType,
-            },
-        ]);
+        void createReferenceFromSource({
+            name: `${asset.title || asset.id}.png`,
+            type: asset.data.mimeType || "image/png",
+            dataUrl: asset.data.dataUrl,
+            storageKey: asset.data.storageKey,
+            width: asset.data.width,
+            height: asset.data.height,
+            bytes: asset.data.bytes,
+            mimeType: asset.data.mimeType,
+        }).then((reference) => onSelect([reference]));
     };
 
     return (
@@ -625,6 +956,70 @@ function getCanvasImageCategory(node: CanvasNodeData): ReferencePickerCategory {
 function getAssetCategory(asset: Asset): ReferencePickerCategory {
     const value = asset.metadata?.category || asset.tags?.[0];
     return referenceCategoryValues.includes(value as ReferencePickerCategory) ? (value as ReferencePickerCategory) : "其他";
+}
+
+async function createCanvasReferenceImage(file: File, nodeId: string): Promise<CanvasReferenceImage> {
+    const uploaded = await uploadImage(file);
+    const inputImage = await createInputImageFromFile(file);
+    const id = inputImage?.id || `upload-ref-${nodeId}-${Date.now()}`;
+    if (inputImage) primeImageCache(id, inputImage.dataUrl);
+    return {
+        id,
+        name: file.name || `reference-${Date.now()}.png`,
+        type: uploaded.mimeType || file.type || "image/png",
+        dataUrl: inputImage?.dataUrl || uploaded.url,
+        url: uploaded.url,
+        storageKey: uploaded.storageKey,
+        width: uploaded.width,
+        height: uploaded.height,
+        bytes: uploaded.bytes,
+        mimeType: uploaded.mimeType || file.type || "image/png",
+    };
+}
+
+async function createReferenceFromSource(source: { name: string; type: string; dataUrl: string; storageKey?: string; width?: number; height?: number; bytes?: number; mimeType?: string }): Promise<CanvasReferenceImage> {
+    const displayUrl = await imageToDataUrl({ dataUrl: source.dataUrl, storageKey: source.storageKey });
+    const dataUrl = displayUrl.startsWith("data:image/") ? displayUrl : await blobUrlToDataUrl(displayUrl);
+    const id = await storeImage(dataUrl, "upload");
+    primeImageCache(id, dataUrl);
+    return {
+        id,
+        name: source.name,
+        type: source.mimeType || source.type || "image/png",
+        dataUrl,
+        url: displayUrl,
+        storageKey: source.storageKey,
+        width: source.width,
+        height: source.height,
+        bytes: source.bytes,
+        mimeType: source.mimeType || source.type || "image/png",
+    };
+}
+
+async function cacheReferenceForSharedTools(image: CanvasReferenceImage): Promise<InputImage | null> {
+    try {
+        const displayUrl = await imageToDataUrl(image);
+        const dataUrl = displayUrl.startsWith("data:image/") ? displayUrl : await blobUrlToDataUrl(displayUrl);
+        const id = await storeImage(dataUrl, "upload");
+        primeImageCache(id, dataUrl);
+        return { id, dataUrl };
+    } catch {
+        return null;
+    }
+}
+
+function blobUrlToDataUrl(url: string): Promise<string> {
+    return fetch(url)
+        .then((response) => response.blob())
+        .then(
+            (blob) =>
+                new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result || ""));
+                    reader.onerror = () => reject(new Error("读取图片失败"));
+                    reader.readAsDataURL(blob);
+                }),
+        );
 }
 
 function referenceIdentity(image: Pick<CanvasReferenceImage, "id" | "dataUrl" | "storageKey" | "url">) {

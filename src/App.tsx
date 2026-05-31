@@ -246,7 +246,6 @@ export default function App() {
               <InputBar />
               <DetailModal />
               <SupportPromptModal />
-              <MaskEditorModal />
               <ImageContextMenu />
             </>
           ) : (
@@ -254,6 +253,7 @@ export default function App() {
           )}
         </div>
         <Lightbox />
+        <MaskEditorModal />
         <SettingsModal />
         <ConfirmDialog />
         <Toast />
