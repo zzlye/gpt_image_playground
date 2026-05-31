@@ -107,6 +107,18 @@ export interface CloudSyncSettings {
   autoSync: boolean
   /** 自动同步间隔，最小 5 分钟 */
   autoSyncIntervalMinutes: number
+  /** 上传/自动同步是否包含文运生成记录和图片 */
+  uploadTasks: boolean
+  /** 上传/自动同步是否包含画布工坊 */
+  uploadCanvasProjects: boolean
+  /** 上传/自动同步是否包含我的素材 */
+  uploadAssets: boolean
+  /** 手动拉取是否导入文运生成记录和图片 */
+  pullTasks: boolean
+  /** 手动拉取是否导入画布工坊 */
+  pullCanvasProjects: boolean
+  /** 手动拉取是否导入我的素材 */
+  pullAssets: boolean
   /** 网盘或同步协议 */
   provider: CloudSyncProvider
   /** WebDAV 根地址或自定义同步接口地址 */

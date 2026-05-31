@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { isCloudSyncReady, uploadDataBackupToCloud } from '../lib/cloudSync'
+import { hasCloudSyncUploadScope, isCloudSyncReady, uploadDataBackupToCloud } from '../lib/cloudSync'
 import { useStore } from '../store'
 
 export default function DataSyncManager() {
@@ -12,7 +12,7 @@ export default function DataSyncManager() {
     const intervalMs = Math.max(5, cloudSync.autoSyncIntervalMinutes) * 60 * 1000
     const runAutoSync = async () => {
       const latest = useStore.getState().settings.cloudSync
-      if (runningRef.current || !latest.enabled || !latest.autoSync || !isCloudSyncReady(latest)) return
+      if (runningRef.current || !latest.enabled || !latest.autoSync || !isCloudSyncReady(latest) || !hasCloudSyncUploadScope(latest)) return
 
       const lastUploadAt = latest.lastUploadAt ?? 0
       if (Date.now() - lastUploadAt < intervalMs) return
@@ -46,6 +46,9 @@ export default function DataSyncManager() {
     cloudSync.folderId,
     cloudSync.password,
     cloudSync.provider,
+    cloudSync.uploadAssets,
+    cloudSync.uploadCanvasProjects,
+    cloudSync.uploadTasks,
     cloudSync.remotePath,
     cloudSync.token,
     cloudSync.username,

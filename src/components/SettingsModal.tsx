@@ -29,7 +29,7 @@ import {
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { queryNewApiBalance } from '../lib/newApi'
 import { parseModelListPayload } from '../lib/modelList'
-import { CLOUD_SYNC_PROVIDER_OPTIONS, getCloudSyncProviderInfo, isCloudSyncReady, pullDataBackupFromCloud, uploadDataBackupToCloud } from '../lib/cloudSync'
+import { CLOUD_SYNC_PROVIDER_OPTIONS, getCloudSyncProviderInfo, hasCloudSyncPullScope, hasCloudSyncUploadScope, isCloudSyncReady, pullDataBackupFromCloud, uploadDataBackupToCloud } from '../lib/cloudSync'
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CloudSyncProvider, type CustomProviderDefinition } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
@@ -1034,6 +1034,8 @@ export default function SettingsModal() {
   const cloudSync = draft.cloudSync
   const cloudSyncInfo = getCloudSyncProviderInfo(cloudSync.provider)
   const cloudSyncReady = isCloudSyncReady(cloudSync)
+  const cloudSyncUploadReady = cloudSyncReady && hasCloudSyncUploadScope(cloudSync)
+  const cloudSyncPullReady = cloudSyncReady && hasCloudSyncPullScope(cloudSync)
   const formatCloudSyncTime = (value?: number) => value ? new Date(value).toLocaleString('zh-CN') : '从未'
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2595,6 +2597,28 @@ export default function SettingsModal() {
                       </div>
                     )}
 
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-gray-100 bg-white/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.04]">
+                        <div className="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">上传范围</div>
+                        <div className="space-y-2">
+                          <Checkbox checked={cloudSync.uploadTasks} onChange={(checked) => updateCloudSync({ uploadTasks: checked })} label="文运生成记录和图片" />
+                          <Checkbox checked={cloudSync.uploadCanvasProjects} onChange={(checked) => updateCloudSync({ uploadCanvasProjects: checked })} label={`画布工坊（${canvasProjects.length} 个）`} />
+                          <Checkbox checked={cloudSync.uploadAssets} onChange={(checked) => updateCloudSync({ uploadAssets: checked })} label={`我的素材（${assets.length} 个）`} />
+                        </div>
+                        <div className="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">手动上传和自动同步使用这个范围。</div>
+                      </div>
+
+                      <div className="rounded-xl border border-gray-100 bg-white/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.04]">
+                        <div className="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">拉取范围</div>
+                        <div className="space-y-2">
+                          <Checkbox checked={cloudSync.pullTasks} onChange={(checked) => updateCloudSync({ pullTasks: checked })} label="文运生成记录和图片" />
+                          <Checkbox checked={cloudSync.pullCanvasProjects} onChange={(checked) => updateCloudSync({ pullCanvasProjects: checked })} label="画布工坊" />
+                          <Checkbox checked={cloudSync.pullAssets} onChange={(checked) => updateCloudSync({ pullAssets: checked })} label="我的素材" />
+                        </div>
+                        <div className="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">手动拉取只导入勾选的数据，不导入配置和 API。</div>
+                      </div>
+                    </div>
+
                     {cloudSync.lastError ? (
                       <div className="rounded-xl border border-red-100 bg-red-50/60 px-3 py-2 text-xs text-red-600 dark:border-red-500/10 dark:bg-red-500/10 dark:text-red-300">
                         最近错误：{cloudSync.lastError}
@@ -2606,7 +2630,7 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={handleCloudSyncUpload}
-                      disabled={!cloudSyncReady || isCloudSyncBusy}
+                      disabled={!cloudSyncUploadReady || isCloudSyncBusy}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300"
                     >
                       {isCloudSyncBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
@@ -2615,7 +2639,7 @@ export default function SettingsModal() {
                     <button
                       type="button"
                       onClick={handleCloudSyncPull}
-                      disabled={!cloudSyncReady || isCloudSyncBusy}
+                      disabled={!cloudSyncPullReady || isCloudSyncBusy}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300"
                     >
                       {isCloudSyncBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}

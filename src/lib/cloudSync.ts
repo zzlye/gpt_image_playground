@@ -1,5 +1,5 @@
 import type { CloudSyncProvider, CloudSyncSettings } from '../types'
-import { createDataExportFile, getFullDataExportOptions, importData, useStore } from '../store'
+import { createDataExportFile, getFullDataExportOptions, importData, useStore, type ExportOptions } from '../store'
 
 export type CloudSyncProviderInfo = {
   value: CloudSyncProvider
@@ -43,6 +43,23 @@ export function isCloudSyncReady(settings: CloudSyncSettings) {
   if (settings.provider === 'google-drive' || settings.provider === 'onedrive' || settings.provider === 'dropbox') return Boolean(settings.token.trim())
   if (settings.provider === 'custom-api') return Boolean(settings.endpoint.trim())
   return false
+}
+
+export function hasCloudSyncUploadScope(settings: CloudSyncSettings) {
+  return settings.uploadTasks || settings.uploadCanvasProjects || settings.uploadAssets
+}
+
+export function hasCloudSyncPullScope(settings: CloudSyncSettings) {
+  return settings.pullTasks || settings.pullCanvasProjects || settings.pullAssets
+}
+
+function getCloudSyncExportOptions(settings: CloudSyncSettings): ExportOptions {
+  const fullOptions = getFullDataExportOptions()
+  return {
+    exportTasks: settings.uploadTasks,
+    exportCanvasProjectIds: settings.uploadCanvasProjects ? fullOptions.exportCanvasProjectIds : [],
+    exportAssetIds: settings.uploadAssets ? fullOptions.exportAssetIds : [],
+  }
 }
 
 function getAuthHeaders(settings: CloudSyncSettings): Record<string, string> {
@@ -287,7 +304,8 @@ async function downloadBlob(settings: CloudSyncSettings) {
 
 export async function uploadDataBackupToCloud(settings: CloudSyncSettings, options: { silent?: boolean, auto?: boolean } = {}) {
   if (!isCloudSyncReady(settings)) throw new Error('请先完整填写可用的同步配置')
-  const exportFile = await createDataExportFile(getFullDataExportOptions())
+  if (!hasCloudSyncUploadScope(settings)) throw new Error('请至少勾选一个上传同步范围')
+  const exportFile = await createDataExportFile(getCloudSyncExportOptions(settings))
   await uploadBlob(settings, exportFile.blob)
   const cloudSync = {
     ...settings,
@@ -301,13 +319,14 @@ export async function uploadDataBackupToCloud(settings: CloudSyncSettings, optio
 
 export async function pullDataBackupFromCloud(settings: CloudSyncSettings) {
   if (!isCloudSyncReady(settings)) throw new Error('请先完整填写可用的同步配置')
+  if (!hasCloudSyncPullScope(settings)) throw new Error('请至少勾选一个拉取导入范围')
   const blob = await downloadBlob(settings)
   const file = new File([blob], ensureZipName(settings.fileName), { type: 'application/zip' })
   const imported = await importData(file, {
     importConfig: false,
-    importTasks: true,
-    importCanvasProjects: true,
-    importAssets: true,
+    importTasks: settings.pullTasks,
+    importCanvasProjects: settings.pullCanvasProjects,
+    importAssets: settings.pullAssets,
   })
   if (!imported) return
   useStore.getState().setSettings({
