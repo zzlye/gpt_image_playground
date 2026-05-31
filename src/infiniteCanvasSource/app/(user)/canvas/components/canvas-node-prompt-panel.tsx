@@ -21,7 +21,6 @@ import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
 import { CanvasNodeType, type CanvasGenerationMode, type CanvasNodeData, type CanvasReferenceImage } from "../types";
-import type { NodeGenerationInput } from "./canvas-node-generation";
 import { createInputImageFromFile, primeImageCache, useStore } from "../../../../../store";
 
 export type CanvasNodeGenerationMode = CanvasGenerationMode;
@@ -29,7 +28,6 @@ export type CanvasNodeGenerationMode = CanvasGenerationMode;
 type CanvasNodePromptPanelProps = {
     node: CanvasNodeData;
     canvasNodes: CanvasNodeData[];
-    inputs: NodeGenerationInput[];
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeData["metadata"]>) => void;
@@ -50,7 +48,7 @@ const referenceCategoryOptions: Array<{ label: "全部" | ReferencePickerCategor
 ];
 const referenceCategoryValues = referenceCategoryOptions.filter((item) => item.value !== "all").map((item) => item.value);
 
-export function CanvasNodePromptPanel({ node, canvasNodes, inputs, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
+export function CanvasNodePromptPanel({ node, canvasNodes, isRunning, onPromptChange, onConfigChange, onGenerate, onImageSettingsOpenChange }: CanvasNodePromptPanelProps) {
     const inputRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const replaceFileInputRef = useRef<HTMLInputElement>(null);
@@ -77,7 +75,6 @@ export function CanvasNodePromptPanel({ node, canvasNodes, inputs, isRunning, on
     const modelOptions = useCanvasModelOptions(config, mode, activeProfile.id);
     const hasTextContent = node.type === CanvasNodeType.Text && Boolean(node.metadata?.content?.trim());
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
-    const connectedPromptText = useMemo(() => buildConnectedPromptText(inputs), [inputs]);
     const [prompt, setPrompt] = useState(node.metadata?.prompt || "");
     const [cursorPos, setCursorPos] = useState(0);
     const [menuLeft, setMenuLeft] = useState(0);
@@ -109,11 +106,9 @@ export function CanvasNodePromptPanel({ node, canvasNodes, inputs, isRunning, on
     }, [prompt]);
 
     useEffect(() => {
-        const nextPrompt = mergePromptWithConnectedText(node.metadata?.prompt || "", connectedPromptText);
-        setPrompt(nextPrompt);
-        if (nextPrompt !== (node.metadata?.prompt || "")) onPromptChange(node.id, nextPrompt);
+        setPrompt(node.metadata?.prompt || "");
         isUserInputRef.current = false;
-    }, [connectedPromptText, node.id, node.metadata?.prompt, onPromptChange]);
+    }, [node.id, node.metadata?.prompt]);
 
     const updatePrompt = useCallback(
         (value: string) => {
@@ -682,8 +677,8 @@ export function CanvasNodePromptPanel({ node, canvasNodes, inputs, isRunning, on
                         data-canvas-editor
                         contentEditable
                         suppressContentEditableWarning
-                        className="thin-scrollbar col-start-1 row-start-1 max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none"
-                        style={{ color: theme.node.text, minHeight: 96 }}
+                        className="thin-scrollbar col-start-1 row-start-1 min-h-24 max-h-44 w-full overflow-y-auto whitespace-pre-wrap break-words rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm leading-5 outline-none"
+                        style={{ color: theme.node.text }}
                         onInput={(event) => {
                             isUserInputRef.current = true;
                             const range = getContentEditableSelection(event.currentTarget);
@@ -1054,24 +1049,6 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 1 : globalConfig.count) || defaultConfig.count),
     };
-}
-
-function buildConnectedPromptText(inputs: NodeGenerationInput[]) {
-    return inputs
-        .filter((input) => input.type === "text")
-        .map((input) => input.text?.trim())
-        .filter(Boolean)
-        .join("\n\n");
-}
-
-function mergePromptWithConnectedText(prompt: string, connectedText: string) {
-    const base = prompt.trim();
-    const extra = connectedText.trim();
-    if (!extra) return prompt;
-    if (!base) return extra;
-    if (base.includes(extra)) return prompt;
-    // 连接文字节点时，编辑栏必须直接显示最终会发送的完整提示词。
-    return `${base}\n\n${extra}`;
 }
 
 function getMentionTagTextLength(el: Element) {

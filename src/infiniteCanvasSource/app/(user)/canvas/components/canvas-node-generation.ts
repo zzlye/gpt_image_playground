@@ -17,20 +17,12 @@ export type NodeGenerationInput = {
     image?: ReferenceImage;
 };
 
-type BuildNodeGenerationContextOptions = {
-    // 编辑栏已经把连接文字合进提示词时，发送阶段只保留图片输入，避免文字被重复拼接。
-    includeTextInputs?: boolean;
-};
-
-export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string, options: BuildNodeGenerationContextOptions = {}): NodeGenerationContext {
+export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
-    const upstreamText =
-        options.includeTextInputs === false
-            ? ""
-            : inputs
-                  .map((input) => input.text)
-                  .filter(Boolean)
-                  .join("\n\n");
+    const upstreamText = inputs
+        .map((input) => input.text)
+        .filter(Boolean)
+        .join("\n\n");
     const referenceImages = inputs.map((input) => input.image).filter((image): image is ReferenceImage => Boolean(image));
 
     return {

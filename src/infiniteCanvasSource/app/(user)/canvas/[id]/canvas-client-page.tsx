@@ -2112,9 +2112,8 @@ function InfiniteCanvasPage() {
             const editingTextNode = mode === "text" && Boolean(sourceTextContent);
             const manualReferenceImages = await hydrateManualReferenceImages(sourceNode?.metadata?.referenceImages);
             const promptForApi = formatCanvasPromptForApi(prompt, manualReferenceImages.length);
-            const includeTextInputs = shouldAppendConnectedTextInputs(nodeId, nodesRef.current, connectionsRef.current, prompt);
             const baseGenerationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${promptForApi}` : promptForApi, { includeTextInputs }),
+                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, editingTextNode ? `请根据要求修改以下文本。\n\n原文：\n${sourceTextContent}\n\n修改要求：\n${promptForApi}` : promptForApi),
             );
             const generationContext = withMergedReferenceImages(baseGenerationContext, manualReferenceImages);
             const effectivePrompt = generationContext.prompt.trim();
@@ -2390,10 +2389,7 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            const retryPromptSeed = sourceNode.metadata?.prompt || node.metadata?.prompt || "";
-            const context = hasSavedImageMetadata
-                ? null
-                : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryPromptSeed, { includeTextInputs: shouldAppendConnectedTextInputs(sourceNode.id, nodesRef.current, connectionsRef.current, retryPromptSeed) }));
+            const context = hasSavedImageMetadata ? null : await hydrateNodeGenerationContext(buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, sourceNode.metadata?.prompt || node.metadata?.prompt || ""));
             const prompt = (savedImageMetadata?.prompt || context?.prompt || "").trim();
             if (!prompt) {
                 message.warning("找不到提示词，无法重试");
@@ -2750,7 +2746,6 @@ function InfiniteCanvasPage() {
                                 <CanvasNodePromptPanel
                                     node={panelNode}
                                     canvasNodes={nodes}
-                                    inputs={buildNodeGenerationInputs(panelNode.id, nodes, connections)}
                                     isRunning={runningNodeId === panelNode.id}
                                     onPromptChange={handleNodePromptChange}
                                     onConfigChange={handleConfigNodeChange}
@@ -3410,17 +3405,6 @@ function mergeReferenceImages(...groups: ReferenceImage[][]) {
         }
     }
     return result;
-}
-
-function shouldAppendConnectedTextInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string) {
-    const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
-    const connectedText = inputs
-        .filter((input) => input.type === "text")
-        .map((input) => input.text?.trim())
-        .filter(Boolean)
-        .join("\n\n");
-    // 编辑栏已经把连接文字写入提示词时，发送阶段不再追加；配置节点这类空提示词入口仍保留自动读取。
-    return !connectedText || !prompt.includes(connectedText);
 }
 
 async function resolveMetadataReferences(metadata: CanvasNodeMetadata) {
