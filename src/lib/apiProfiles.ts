@@ -4,6 +4,8 @@ import type {
   ApiProfile,
   ApiProvider,
   AppSettings,
+  CloudSyncProvider,
+  CloudSyncSettings,
   CustomProviderContentType,
   CustomProviderDefinition,
   CustomProviderFileMapping,
@@ -82,6 +84,38 @@ const LOCKED_OPENAI_PROFILE_DEFINITIONS = [
 export const LOCKED_OPENAI_API_PROFILES = LOCKED_OPENAI_PROFILE_DEFINITIONS
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
+const CLOUD_SYNC_PROVIDERS = new Set<CloudSyncProvider>([
+  'webdav',
+  'google-drive',
+  'onedrive',
+  'dropbox',
+  'custom-api',
+  'baidu-netdisk',
+  'quark-drive',
+  'aliyundrive',
+  'alist',
+  'nextcloud',
+  'jianguoyun',
+  'synology',
+  'cloudreve',
+  'koofr',
+  'yandex-disk',
+  'box',
+  'pcloud',
+])
+export const DEFAULT_CLOUD_SYNC_SETTINGS: CloudSyncSettings = {
+  enabled: false,
+  autoSync: false,
+  autoSyncIntervalMinutes: 5,
+  provider: 'webdav',
+  endpoint: '',
+  username: '',
+  password: '',
+  token: '',
+  folderId: '',
+  remotePath: '/gpt-image-playground',
+  fileName: 'gpt-image-playground-backup.zip',
+}
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
   generationPath: 'images/generations',
   editPath: 'images/edits',
@@ -304,6 +338,38 @@ function normalizeStringArray(value: unknown, fallback: string[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeCloudSyncProvider(value: unknown): CloudSyncProvider {
+  return typeof value === 'string' && CLOUD_SYNC_PROVIDERS.has(value as CloudSyncProvider)
+    ? value as CloudSyncProvider
+    : DEFAULT_CLOUD_SYNC_SETTINGS.provider
+}
+
+function normalizeCloudSyncSettings(value: unknown): CloudSyncSettings {
+  const record = isRecord(value) ? value : {}
+  const interval = Number(record.autoSyncIntervalMinutes)
+  const fileName = typeof record.fileName === 'string' && record.fileName.trim()
+    ? record.fileName.trim()
+    : DEFAULT_CLOUD_SYNC_SETTINGS.fileName
+
+  return {
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : DEFAULT_CLOUD_SYNC_SETTINGS.enabled,
+    autoSync: typeof record.autoSync === 'boolean' ? record.autoSync : DEFAULT_CLOUD_SYNC_SETTINGS.autoSync,
+    autoSyncIntervalMinutes: Number.isFinite(interval) ? Math.max(5, Math.trunc(interval)) : DEFAULT_CLOUD_SYNC_SETTINGS.autoSyncIntervalMinutes,
+    provider: normalizeCloudSyncProvider(record.provider),
+    endpoint: typeof record.endpoint === 'string' ? record.endpoint.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.endpoint,
+    username: typeof record.username === 'string' ? record.username : DEFAULT_CLOUD_SYNC_SETTINGS.username,
+    password: typeof record.password === 'string' ? record.password : DEFAULT_CLOUD_SYNC_SETTINGS.password,
+    token: typeof record.token === 'string' ? record.token.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.token,
+    folderId: typeof record.folderId === 'string' ? record.folderId.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.folderId,
+    remotePath: typeof record.remotePath === 'string' && record.remotePath.trim() ? record.remotePath.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.remotePath,
+    fileName: fileName.endsWith('.zip') ? fileName : `${fileName}.zip`,
+    lastUploadAt: normalizeApiBalanceUpdatedAt(record.lastUploadAt),
+    lastPullAt: normalizeApiBalanceUpdatedAt(record.lastPullAt),
+    lastAutoSyncAt: normalizeApiBalanceUpdatedAt(record.lastAutoSyncAt),
+    lastError: typeof record.lastError === 'string' ? record.lastError : undefined,
+  }
 }
 
 function normalizeRequestMethod(value: unknown, fallback: CustomProviderRequestMethod = 'POST'): CustomProviderRequestMethod {
@@ -722,6 +788,7 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     agentScrollToBottomAfterSubmit: typeof record.agentScrollToBottomAfterSubmit === 'boolean' ? record.agentScrollToBottomAfterSubmit : true,
     agentMaxToolRounds: normalizeAgentMaxToolRounds(record.agentMaxToolRounds),
     agentWebSearch: typeof record.agentWebSearch === 'boolean' ? record.agentWebSearch : false,
+    cloudSync: normalizeCloudSyncSettings(record.cloudSync),
     profiles,
     activeProfileId,
   }
@@ -1028,4 +1095,5 @@ export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
   agentScrollToBottomAfterSubmit: true,
   agentMaxToolRounds: DEFAULT_AGENT_MAX_TOOL_ROUNDS,
   agentWebSearch: false,
+  cloudSync: DEFAULT_CLOUD_SYNC_SETTINGS,
 })

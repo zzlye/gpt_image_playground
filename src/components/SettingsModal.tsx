@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { Cloud, CloudDownload, CloudUpload, RefreshCw } from 'lucide-react'
 import { normalizeBaseUrl } from '../lib/api'
 import { buildApiUrl, isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig, shouldUseApiProxy } from '../lib/devProxy'
 import { useStore, exportData, importData, clearData, type SettingsTab } from '../store'
@@ -28,7 +29,8 @@ import {
 import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { queryNewApiBalance } from '../lib/newApi'
 import { parseModelListPayload } from '../lib/modelList'
-import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CustomProviderDefinition } from '../types'
+import { CLOUD_SYNC_PROVIDER_OPTIONS, getCloudSyncProviderInfo, isCloudSyncReady, pullDataBackupFromCloud, uploadDataBackupToCloud } from '../lib/cloudSync'
+import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CloudSyncProvider, type CustomProviderDefinition } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
@@ -650,7 +652,6 @@ export default function SettingsModal() {
   const [isFetchingVideoModels, setIsFetchingVideoModels] = useState(false)
   const [textModelOptions, setTextModelOptions] = useState<string[]>([])
   const [videoModelOptions, setVideoModelOptions] = useState<string[]>([])
-  const [exportConfig, setExportConfig] = useState(true)
   const [exportTasks, setExportTasks] = useState(true)
   const [exportCanvasProjects, setExportCanvasProjects] = useState(false)
   const [exportAssets, setExportAssets] = useState(false)
@@ -665,6 +666,7 @@ export default function SettingsModal() {
   const [clearCanvasProjects, setClearCanvasProjects] = useState(false)
   const [clearAssets, setClearAssets] = useState(false)
   const [isImportingData, setIsImportingData] = useState(false)
+  const [isCloudSyncBusy, setIsCloudSyncBusy] = useState(false)
   const [isImportingJson, setIsImportingJson] = useState(false)
   const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null)
   const [dragOverProfileId, setDragOverProfileId] = useState<string | null>(null)
@@ -1026,9 +1028,13 @@ export default function SettingsModal() {
 
   const selectedExportCanvasIds = exportCanvasProjects ? exportCanvasProjectIds : []
   const selectedExportAssetIds = exportAssets ? exportAssetIds : []
-  const canExportData = exportConfig || exportTasks || selectedExportCanvasIds.length > 0 || selectedExportAssetIds.length > 0
+  const canExportData = exportTasks || selectedExportCanvasIds.length > 0 || selectedExportAssetIds.length > 0
   const canImportData = importConfig || importTasks || importCanvasProjects || importAssets
   const canClearData = clearConfig || clearTasks || clearCanvasProjects || clearAssets
+  const cloudSync = draft.cloudSync
+  const cloudSyncInfo = getCloudSyncProviderInfo(cloudSync.provider)
+  const cloudSyncReady = isCloudSyncReady(cloudSync)
+  const formatCloudSyncTime = (value?: number) => value ? new Date(value).toLocaleString('zh-CN') : '从未'
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -1055,6 +1061,42 @@ export default function SettingsModal() {
     setDraft(nextDraft)
     setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
     setShowProfileMenu(false)
+  }
+
+  const updateCloudSync = (patch: Partial<AppSettings['cloudSync']>) => {
+    const nextCloudSync = { ...draft.cloudSync, ...patch }
+    setDraft((current) => normalizeSettings({ ...current, cloudSync: nextCloudSync }))
+    setSettings({ cloudSync: nextCloudSync })
+  }
+
+  const handleCloudSyncUpload = async () => {
+    setIsCloudSyncBusy(true)
+    try {
+      await uploadDataBackupToCloud(normalizeSettings(useStore.getState().settings).cloudSync)
+      setDraft(normalizeSettings(useStore.getState().settings))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setSettings({ cloudSync: { ...normalizeSettings(useStore.getState().settings).cloudSync, lastError: message } })
+      showToast(message, 'error')
+    } finally {
+      setIsCloudSyncBusy(false)
+    }
+  }
+
+  const handleCloudSyncPull = async () => {
+    setIsCloudSyncBusy(true)
+    try {
+      await pullDataBackupFromCloud(normalizeSettings(useStore.getState().settings).cloudSync)
+      const nextDraft = normalizeSettings(useStore.getState().settings)
+      setDraft(nextDraft)
+      setTimeoutInput(String(getActiveApiProfile(nextDraft).timeout))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setSettings({ cloudSync: { ...normalizeSettings(useStore.getState().settings).cloudSync, lastError: message } })
+      showToast(message, 'error')
+    } finally {
+      setIsCloudSyncBusy(false)
+    }
   }
 
   const createNewProfile = () => {
@@ -1599,6 +1641,13 @@ export default function SettingsModal() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
                 </svg>
                 习惯配置
+              </button>
+              <button
+                onClick={() => setActiveTab('sync')}
+                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'sync' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+              >
+                <Cloud className="h-4 w-4" />
+                同步
               </button>
               <button
                 onClick={() => setActiveTab('data')}
@@ -2412,6 +2461,171 @@ export default function SettingsModal() {
               </div>
             )}
 
+            {activeTab === 'sync' && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Cloud className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+                      <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">同步</h4>
+                    </div>
+                    <Checkbox checked={cloudSync.enabled} onChange={(checked) => updateCloudSync({ enabled: checked })} label="启用同步" />
+                  </div>
+
+                  <div className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">网盘类型</span>
+                        <Select
+                          value={cloudSync.provider}
+                          onChange={(value) => updateCloudSync({ provider: value as CloudSyncProvider })}
+                          options={CLOUD_SYNC_PROVIDER_OPTIONS.map((provider) => ({ label: provider.label, value: provider.value }))}
+                          className="rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">远端文件名</span>
+                        <input
+                          value={cloudSync.fileName}
+                          onChange={(e) => updateCloudSync({ fileName: e.target.value })}
+                          className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                          placeholder="gpt-image-playground-backup.zip"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="rounded-xl border border-blue-100/70 bg-blue-50/50 px-3 py-2 text-xs leading-relaxed text-blue-700 dark:border-blue-400/10 dark:bg-blue-400/10 dark:text-blue-200">
+                      {cloudSyncInfo.help}
+                      {cloudSyncInfo.docsUrl ? (
+                        <a href={cloudSyncInfo.docsUrl} target="_blank" rel="noreferrer" className="ml-2 font-semibold underline underline-offset-2">
+                          文档
+                        </a>
+                      ) : null}
+                    </div>
+
+                    {cloudSyncInfo.direct ? (
+                      <>
+                        {(cloudSyncInfo.protocol === 'webdav' || cloudSyncInfo.protocol === 'custom-api') && (
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              {cloudSyncInfo.protocol === 'webdav' ? 'WebDAV 地址' : '自定义同步接口 URL'}
+                            </span>
+                            <input
+                              value={cloudSync.endpoint}
+                              onChange={(e) => updateCloudSync({ endpoint: e.target.value })}
+                              className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                              placeholder={cloudSyncInfo.protocol === 'webdav' ? 'https://example.com/dav' : 'https://example.com/api/backup'}
+                            />
+                          </label>
+                        )}
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {cloudSyncInfo.protocol === 'webdav' ? (
+                            <>
+                              <label className="block">
+                                <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">账号</span>
+                                <input
+                                  value={cloudSync.username}
+                                  onChange={(e) => updateCloudSync({ username: e.target.value })}
+                                  className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                                  placeholder="WebDAV 用户名"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">应用密码</span>
+                                <input
+                                  value={cloudSync.password}
+                                  onChange={(e) => updateCloudSync({ password: e.target.value })}
+                                  type="password"
+                                  className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                                  placeholder="WebDAV 密码或应用密码"
+                                />
+                              </label>
+                            </>
+                          ) : (
+                            <label className="block md:col-span-2">
+                              <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">Access Token</span>
+                              <input
+                                value={cloudSync.token}
+                                onChange={(e) => updateCloudSync({ token: e.target.value })}
+                                type="password"
+                                className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                                placeholder="OAuth access token 或自定义 Bearer Token"
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">
+                              {cloudSync.provider === 'google-drive' ? 'Google 文件夹 ID（可选）' : '远端目录'}
+                            </span>
+                            <input
+                              value={cloudSync.provider === 'google-drive' ? cloudSync.folderId : cloudSync.remotePath}
+                              onChange={(e) => updateCloudSync(cloudSync.provider === 'google-drive' ? { folderId: e.target.value } : { remotePath: e.target.value })}
+                              className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                              placeholder={cloudSync.provider === 'google-drive' ? '留空则上传到我的云端硬盘根目录' : '/gpt-image-playground'}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">自动同步间隔</span>
+                            <input
+                              value={cloudSync.autoSyncIntervalMinutes}
+                              onChange={(e) => updateCloudSync({ autoSyncIntervalMinutes: Number(e.target.value) || 5 })}
+                              type="number"
+                              min={5}
+                              step={1}
+                              className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <Checkbox checked={cloudSync.autoSync} onChange={(checked) => updateCloudSync({ autoSync: checked })} label={`每 ${Math.max(5, Number(cloudSync.autoSyncIntervalMinutes) || 5)} 分钟自动上传`} />
+                          <div className="text-xs text-gray-400 dark:text-gray-500">
+                            上次上传：{formatCloudSyncTime(cloudSync.lastUploadAt)}；上次拉取：{formatCloudSyncTime(cloudSync.lastPullAt)}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:border-amber-400/10 dark:bg-amber-400/10 dark:text-amber-200">
+                        这个网盘不建议在浏览器里直连。可以先用 AList/OpenList 转 WebDAV，或把上传/下载逻辑放到自定义同步接口里。
+                      </div>
+                    )}
+
+                    {cloudSync.lastError ? (
+                      <div className="rounded-xl border border-red-100 bg-red-50/60 px-3 py-2 text-xs text-red-600 dark:border-red-500/10 dark:bg-red-500/10 dark:text-red-300">
+                        最近错误：{cloudSync.lastError}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={handleCloudSyncUpload}
+                      disabled={!cloudSyncReady || isCloudSyncBusy}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300"
+                    >
+                      {isCloudSyncBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+                      手动上传
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloudSyncPull}
+                      disabled={!cloudSyncReady || isCloudSyncBusy}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300"
+                    >
+                      {isCloudSyncBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+                      手动拉取
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'data' && (
               <div className="space-y-4">
                 <div className="rounded-2xl bg-gray-50/80 p-4 border border-gray-200/60 dark:bg-white/[0.02] dark:border-white/[0.05] flex items-start gap-3">
@@ -2432,7 +2646,6 @@ export default function SettingsModal() {
                     <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.03]">
                       <div className="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">文运工坊</div>
                       <div className="flex flex-wrap gap-x-6 gap-y-3">
-                        <Checkbox checked={exportConfig} onChange={setExportConfig} label="配置和 API" />
                         <Checkbox checked={exportTasks} onChange={setExportTasks} label="生成记录、对话和图片" />
                       </div>
                     </div>
@@ -2502,7 +2715,7 @@ export default function SettingsModal() {
                     </div>
                   </div>
                   <button
-                    onClick={() => exportData({ exportConfig, exportTasks, exportCanvasProjectIds: selectedExportCanvasIds, exportAssetIds: selectedExportAssetIds })}
+                    onClick={() => exportData({ exportTasks, exportCanvasProjectIds: selectedExportCanvasIds, exportAssetIds: selectedExportAssetIds })}
                     disabled={!canExportData}
                     className="w-full rounded-xl bg-gray-100/80 px-4 py-2.5 text-sm font-medium text-gray-700 transition-all hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50 disabled:hover:bg-gray-100/80 disabled:hover:text-gray-700 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1] dark:hover:text-white dark:disabled:hover:bg-white/[0.06] dark:disabled:hover:text-gray-300 flex items-center justify-center gap-2"
                   >

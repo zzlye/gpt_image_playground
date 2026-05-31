@@ -115,7 +115,7 @@ function isErrorToastTitle(title: string): boolean {
   return /(?:失败|错误|异常|报错|无法|不能|超时|中断|断开|请先|请输入|已达上限|不存在|已丢失)$/.test(title)
 }
 
-export type SettingsTab = 'general' | 'api' | 'textApi' | 'videoApi' | 'appearance' | 'data'
+export type SettingsTab = 'general' | 'api' | 'textApi' | 'videoApi' | 'appearance' | 'sync' | 'data'
 
 const TIMEOUT_STREAMING_HINT = '也可尝试打开「流式传输」，并提高「请求中间步骤图像数」来维持连接。'
 const TIMEOUT_PARTIAL_IMAGES_ZERO_HINT = '官方流式接口不发送心跳，当前「请求中间步骤图像数」为 0，连接可能因无数据传输而断开。建议提高到 2 或 3。'
@@ -4316,10 +4316,15 @@ function formatExportFileTime(date: Date): string {
 
 /** 导出选项 */
 export interface ExportOptions {
-  exportConfig?: boolean
   exportTasks?: boolean
   exportCanvasProjectIds?: string[]
   exportAssetIds?: string[]
+}
+
+export interface DataExportFile {
+  blob: Blob
+  fileName: string
+  exportedAt: number
 }
 
 type ZipEntries = Record<string, Uint8Array | [Uint8Array, { mtime: Date }]>
@@ -4436,107 +4441,122 @@ async function addImportedAsset(asset: Asset) {
   useAssetStore.getState().addAsset(payload as Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>)
 }
 
+export function getFullDataExportOptions(): ExportOptions {
+  return {
+    exportTasks: true,
+    exportCanvasProjectIds: useCanvasStore.getState().projects.map((project) => project.id),
+    exportAssetIds: useAssetStore.getState().assets.map((asset) => asset.id),
+  }
+}
+
+export async function createDataExportFile(options: ExportOptions = getFullDataExportOptions()): Promise<DataExportFile> {
+  const tasks = options.exportTasks ? await getAllTasks() : []
+  const images = options.exportTasks ? await getAllImages() : []
+  const { agentConversations } = useStore.getState()
+  const selectedCanvasProjects = options.exportCanvasProjectIds
+    ? useCanvasStore.getState().projects.filter((project) => options.exportCanvasProjectIds?.includes(project.id))
+    : []
+  const selectedAssets = options.exportAssetIds
+    ? useAssetStore.getState().assets.filter((asset) => options.exportAssetIds?.includes(asset.id))
+    : []
+  const exportedAt = Date.now()
+  const imageCreatedAtFallback = new Map<string, number>()
+
+  if (options.exportTasks) {
+    for (const task of tasks) {
+      for (const id of [
+        ...(task.inputImageIds || []),
+        ...(task.maskImageId ? [task.maskImageId] : []),
+        ...(task.outputImages || []),
+        ...(task.streamPartialImageIds || []),
+      ]) {
+        const prev = imageCreatedAtFallback.get(id)
+        if (prev == null || task.createdAt < prev) {
+          imageCreatedAtFallback.set(id, task.createdAt)
+        }
+      }
+    }
+  }
+
+  const imageFiles: ExportData['imageFiles'] = {}
+  const thumbnailFiles: NonNullable<ExportData['thumbnailFiles']> = {}
+  const zipFiles: ZipEntries = {}
+
+  if (options.exportTasks) {
+    for (const img of images) {
+      const { ext, bytes } = dataUrlToBytes(img.dataUrl)
+      const path = `images/${img.id}.${ext}`
+      const createdAt = img.createdAt ?? imageCreatedAtFallback.get(img.id) ?? exportedAt
+      imageFiles[img.id] = {
+        path,
+        createdAt,
+        source: img.source,
+        width: img.width,
+        height: img.height,
+      }
+      zipFiles[path] = [bytes, { mtime: new Date(createdAt) }]
+
+      const thumbnail = await getImageThumbnail(img.id)
+      if (thumbnail?.thumbnailDataUrl) {
+        const { ext: thumbnailExt, bytes: thumbnailBytes } = dataUrlToBytes(thumbnail.thumbnailDataUrl)
+        const thumbnailPath = `thumbnails/${img.id}.${thumbnailExt}`
+        imageFiles[img.id].width = imageFiles[img.id].width ?? thumbnail.width
+        imageFiles[img.id].height = imageFiles[img.id].height ?? thumbnail.height
+        thumbnailFiles[img.id] = {
+          path: thumbnailPath,
+          width: thumbnail.width,
+          height: thumbnail.height,
+          thumbnailVersion: thumbnail.thumbnailVersion,
+        }
+        zipFiles[thumbnailPath] = [thumbnailBytes, { mtime: new Date(createdAt) }]
+        cacheThumbnail(img.id, {
+          dataUrl: thumbnail.thumbnailDataUrl,
+          width: thumbnail.width,
+          height: thumbnail.height,
+          thumbnailVersion: thumbnail.thumbnailVersion,
+        })
+      }
+    }
+  }
+
+  const canvasProjects = selectedCanvasProjects.length ? await buildCanvasProjectExport(selectedCanvasProjects, zipFiles) : []
+  const assetFiles = selectedAssets.length ? await buildAssetExport(selectedAssets, zipFiles) : []
+
+  const manifest: ExportData = {
+    version: 4,
+    exportedAt: new Date(exportedAt).toISOString(),
+  }
+
+  if (options.exportTasks) {
+    manifest.tasks = tasks
+    manifest.agentConversations = getPersistableAgentConversations(agentConversations)
+    manifest.imageFiles = imageFiles
+    manifest.thumbnailFiles = thumbnailFiles
+  }
+  if (canvasProjects.length) manifest.canvasProjects = canvasProjects
+  if (selectedAssets.length) {
+    manifest.assets = selectedAssets
+    manifest.assetFiles = assetFiles
+  }
+
+  zipFiles['manifest.json'] = [strToU8(JSON.stringify(manifest, null, 2)), { mtime: new Date(exportedAt) }]
+
+  const zipped = zipSync(zipFiles, { level: 6 })
+  return {
+    blob: new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }),
+    fileName: `gpt-image-playground-backup_${formatExportFileTime(new Date(exportedAt))}.zip`,
+    exportedAt,
+  }
+}
+
 /** 导出数据为 ZIP */
-export async function exportData(options: ExportOptions = { exportConfig: true, exportTasks: true }) {
+export async function exportData(options: ExportOptions = getFullDataExportOptions()) {
   try {
-    const tasks = options.exportTasks ? await getAllTasks() : []
-    const images = options.exportTasks ? await getAllImages() : []
-    const { settings, agentConversations } = useStore.getState()
-    const selectedCanvasProjects = options.exportCanvasProjectIds
-      ? useCanvasStore.getState().projects.filter((project) => options.exportCanvasProjectIds?.includes(project.id))
-      : []
-    const selectedAssets = options.exportAssetIds
-      ? useAssetStore.getState().assets.filter((asset) => options.exportAssetIds?.includes(asset.id))
-      : []
-    const exportedAt = Date.now()
-    const imageCreatedAtFallback = new Map<string, number>()
-
-    if (options.exportTasks) {
-      for (const task of tasks) {
-        for (const id of [
-          ...(task.inputImageIds || []),
-          ...(task.maskImageId ? [task.maskImageId] : []),
-          ...(task.outputImages || []),
-          ...(task.streamPartialImageIds || []),
-        ]) {
-          const prev = imageCreatedAtFallback.get(id)
-          if (prev == null || task.createdAt < prev) {
-            imageCreatedAtFallback.set(id, task.createdAt)
-          }
-        }
-      }
-    }
-
-    const imageFiles: ExportData['imageFiles'] = {}
-    const thumbnailFiles: NonNullable<ExportData['thumbnailFiles']> = {}
-    const zipFiles: ZipEntries = {}
-
-    if (options.exportTasks) {
-      for (const img of images) {
-        const { ext, bytes } = dataUrlToBytes(img.dataUrl)
-        const path = `images/${img.id}.${ext}`
-        const createdAt = img.createdAt ?? imageCreatedAtFallback.get(img.id) ?? exportedAt
-        imageFiles[img.id] = {
-          path,
-          createdAt,
-          source: img.source,
-          width: img.width,
-          height: img.height,
-        }
-        zipFiles[path] = [bytes, { mtime: new Date(createdAt) }]
-
-        const thumbnail = await getImageThumbnail(img.id)
-        if (thumbnail?.thumbnailDataUrl) {
-          const { ext: thumbnailExt, bytes: thumbnailBytes } = dataUrlToBytes(thumbnail.thumbnailDataUrl)
-          const thumbnailPath = `thumbnails/${img.id}.${thumbnailExt}`
-          imageFiles[img.id].width = imageFiles[img.id].width ?? thumbnail.width
-          imageFiles[img.id].height = imageFiles[img.id].height ?? thumbnail.height
-          thumbnailFiles[img.id] = {
-            path: thumbnailPath,
-            width: thumbnail.width,
-            height: thumbnail.height,
-            thumbnailVersion: thumbnail.thumbnailVersion,
-          }
-          zipFiles[thumbnailPath] = [thumbnailBytes, { mtime: new Date(createdAt) }]
-          cacheThumbnail(img.id, {
-            dataUrl: thumbnail.thumbnailDataUrl,
-            width: thumbnail.width,
-            height: thumbnail.height,
-            thumbnailVersion: thumbnail.thumbnailVersion,
-          })
-        }
-      }
-    }
-
-    const canvasProjects = selectedCanvasProjects.length ? await buildCanvasProjectExport(selectedCanvasProjects, zipFiles) : []
-    const assetFiles = selectedAssets.length ? await buildAssetExport(selectedAssets, zipFiles) : []
-
-    const manifest: ExportData = {
-      version: 4,
-      exportedAt: new Date(exportedAt).toISOString(),
-    }
-
-    if (options.exportConfig) manifest.settings = settings
-    if (options.exportTasks) {
-      manifest.tasks = tasks
-      manifest.agentConversations = getPersistableAgentConversations(agentConversations)
-      manifest.imageFiles = imageFiles
-      manifest.thumbnailFiles = thumbnailFiles
-    }
-    if (canvasProjects.length) manifest.canvasProjects = canvasProjects
-    if (selectedAssets.length) {
-      manifest.assets = selectedAssets
-      manifest.assetFiles = assetFiles
-    }
-
-    zipFiles['manifest.json'] = [strToU8(JSON.stringify(manifest, null, 2)), { mtime: new Date(exportedAt) }]
-
-    const zipped = zipSync(zipFiles, { level: 6 })
-    const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' })
+    const { blob, fileName } = await createDataExportFile(options)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `gpt-image-playground-backup_${formatExportFileTime(new Date(exportedAt))}.zip`
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
     useStore.getState().showToast('数据已导出', 'success')

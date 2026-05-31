@@ -27,6 +27,7 @@ import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import AnnouncementModal from './components/AnnouncementModal'
 import CanvasWorkshop from './components/CanvasWorkshop'
+import DataSyncManager from './components/DataSyncManager'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 
 let customProviderConfigUrlImportStarted = false
@@ -260,6 +261,7 @@ export default function App() {
         <Lightbox />
         <MaskEditorModal />
         <SettingsModal />
+        <DataSyncManager />
         <ConfirmDialog />
         <Toast />
         <button

@@ -9,6 +9,24 @@ export type ReferenceImageEditAction = 'ask' | 'replace-reference' | 'add-mask'
 export type BuiltInApiProvider = 'openai' | 'fal'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
+export type CloudSyncProvider =
+  | 'webdav'
+  | 'google-drive'
+  | 'onedrive'
+  | 'dropbox'
+  | 'custom-api'
+  | 'baidu-netdisk'
+  | 'quark-drive'
+  | 'aliyundrive'
+  | 'alist'
+  | 'nextcloud'
+  | 'jianguoyun'
+  | 'synology'
+  | 'cloudreve'
+  | 'koofr'
+  | 'yandex-disk'
+  | 'box'
+  | 'pcloud'
 export const DEFAULT_STREAM_PARTIAL_IMAGES = 1
 export const DEFAULT_AGENT_MAX_TOOL_ROUNDS = 15
 
@@ -80,6 +98,39 @@ export interface ApiBalanceSnapshot {
   text: string
   currency?: string
   updatedAt?: number
+}
+
+export interface CloudSyncSettings {
+  /** 是否启用数据同步 */
+  enabled: boolean
+  /** 自动同步只做上传，避免导入时重复合并数据 */
+  autoSync: boolean
+  /** 自动同步间隔，最小 5 分钟 */
+  autoSyncIntervalMinutes: number
+  /** 网盘或同步协议 */
+  provider: CloudSyncProvider
+  /** WebDAV 根地址或自定义同步接口地址 */
+  endpoint: string
+  /** WebDAV 用户名 */
+  username: string
+  /** WebDAV 密码或应用密码 */
+  password: string
+  /** OAuth access token 或自定义接口 Bearer Token */
+  token: string
+  /** Google Drive 文件夹 ID，可选 */
+  folderId: string
+  /** 远端目录，WebDAV/OneDrive/Dropbox/自定义接口会使用 */
+  remotePath: string
+  /** 远端固定备份文件名 */
+  fileName: string
+  /** 最近一次上传成功时间 */
+  lastUploadAt?: number
+  /** 最近一次拉取成功时间 */
+  lastPullAt?: number
+  /** 最近一次自动同步检查时间 */
+  lastAutoSyncAt?: number
+  /** 最近一次同步错误 */
+  lastError?: string
 }
 
 export interface AppSettings {
@@ -160,6 +211,7 @@ export interface AppSettings {
   agentScrollToBottomAfterSubmit: boolean
   agentMaxToolRounds: number
   agentWebSearch: boolean
+  cloudSync: CloudSyncSettings
   profiles: ApiProfile[]
   activeProfileId: string
 }
