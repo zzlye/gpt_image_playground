@@ -1563,12 +1563,12 @@ function InfiniteCanvasPage() {
     }, []);
 
     const createTextNodeFromClipboard = useCallback(
-        (text: string) => {
+        (text: string, position?: Position) => {
             const trimmed = text.trim();
             if (!trimmed) return false;
 
             const node = {
-                ...createCanvasNode(CanvasNodeType.Text, getCanvasCenter(), { content: trimmed, status: NODE_STATUS_SUCCESS }),
+                ...createCanvasNode(CanvasNodeType.Text, position || getCanvasCenter(), { content: trimmed, status: NODE_STATUS_SUCCESS }),
                 title: trimmed.slice(0, 32) || "剪切板文本",
             };
 
@@ -1582,25 +1582,6 @@ function InfiniteCanvasPage() {
         },
         [getCanvasCenter],
     );
-
-    const pasteSystemClipboard = useCallback(async () => {
-        if (!navigator.clipboard) return;
-
-        const items = await navigator.clipboard.read();
-        const imageItem = items.find((item) => item.types.some((type) => type.startsWith("image/")));
-        if (imageItem) {
-            const imageType = imageItem.types.find((type) => type.startsWith("image/"));
-            if (!imageType) return;
-            const blob = await imageItem.getType(imageType);
-            const file = new File([blob], "clipboard-image.png", { type: imageType });
-            void createImageFileNode(file, getCanvasCenter());
-            message.success("已从剪切板添加图片");
-            return;
-        }
-
-        const text = await navigator.clipboard.readText();
-        if (createTextNodeFromClipboard(text)) message.success("已从剪切板添加文本");
-    }, [createImageFileNode, createTextNodeFromClipboard, getCanvasCenter, message]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1638,12 +1619,6 @@ function InfiniteCanvasPage() {
                 return;
             }
 
-            if (isModifierShortcut && !event.altKey && key === "v") {
-                event.preventDefault();
-                if (!pasteCopiedNodes()) void pasteSystemClipboard();
-                return;
-            }
-
             if (event.key === "Delete" || event.key === "Backspace") {
                 if (selectedGroupIdRef.current && !selectedNodeIdsRef.current.size) {
                     ungroupNodes(selectedGroupIdRef.current);
@@ -1673,7 +1648,39 @@ function InfiniteCanvasPage() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [copySelectedNodes, deleteNodes, deleteSelectedConnection, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
+    }, [copySelectedNodes, deleteNodes, deleteSelectedConnection, redoCanvas, selectedConnectionId, setConnecting, undoCanvas]);
+
+    useEffect(() => {
+        const handlePaste = (event: ClipboardEvent) => {
+            if (isCanvasEditableTarget(event.target)) return;
+            // 画布粘贴优先使用系统剪切板的图片和文字，没有内容时再走画布内部复制的节点。
+            const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
+            if (imageItem) {
+                event.preventDefault();
+                const file = imageItem.getAsFile();
+                if (file) {
+                    void createImageFileNode(file, mouseWorld);
+                    message.success("已从剪切板添加图片");
+                }
+                return;
+            }
+
+            const text = event.clipboardData?.getData("text/plain") || "";
+            if (text.trim()) {
+                event.preventDefault();
+                if (createTextNodeFromClipboard(text, mouseWorld)) message.success("已从剪切板添加文本");
+                return;
+            }
+
+            if (clipboardRef.current?.nodes.length) {
+                event.preventDefault();
+                pasteCopiedNodes(mouseWorld);
+            }
+        };
+
+        window.addEventListener("paste", handlePaste);
+        return () => window.removeEventListener("paste", handlePaste);
+    }, [createImageFileNode, createTextNodeFromClipboard, message, mouseWorld, pasteCopiedNodes]);
 
     const handleConnectStart = useCallback(
         (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
@@ -1689,7 +1696,7 @@ function InfiniteCanvasPage() {
     );
 
     const handleNodeResize = useCallback((nodeId: string, width: number, height: number, position?: Position) => {
-        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, width, height, position: position || node.position } : node)));
+        setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, width, height, position: position || node.position, metadata: { ...node.metadata, manualSize: true } } : node)));
     }, []);
 
     const toggleNodeFreeResize = useCallback((nodeId: string) => {
@@ -2009,7 +2016,7 @@ function InfiniteCanvasPage() {
                 );
                 const uploaded = await uploadImage(image.dataUrl);
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, ...getGeneratedMediaSizePatch(item, size), metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                 setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
@@ -2291,21 +2298,16 @@ function InfiniteCanvasPage() {
                                     const root = prev.find((node) => node.id === rootId);
                                     return prev.map((node) => {
                                         if (node.id !== targetId && node.id !== rootId) return node;
-                                        const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
                                         if (node.id === rootId && (targetId === rootId || !root?.metadata?.primaryImageId))
                                             return {
                                                 ...node,
-                                                position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
-                                                width: imageSize.width,
-                                                height: imageSize.height,
+                                                ...getGeneratedMediaSizePatch(node, imageSize),
                                                 metadata: { ...node.metadata, ...imageMetadata(uploaded), primaryImageId: targetId, ...timing() },
                                             };
                                         if (node.id === targetId)
                                             return {
                                                 ...node,
-                                                position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
-                                                width: imageSize.width,
-                                                height: imageSize.height,
+                                                ...getGeneratedMediaSizePatch(node, imageSize),
                                                 metadata: { ...node.metadata, ...imageMetadata(uploaded), ...timing() },
                                             };
                                         return node;
@@ -2356,7 +2358,7 @@ function InfiniteCanvasPage() {
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, effectivePrompt, generationContext.referenceImages), "video");
                     const videoSize = fitNodeSize(video.width || spec.width, video.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, width: videoSize.width, height: videoSize.height, position: { x: node.position.x + node.width / 2 - videoSize.width / 2, y: node.position.y + node.height / 2 - videoSize.height / 2 }, metadata: { ...node.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
+                    setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, ...getGeneratedMediaSizePatch(node, videoSize), metadata: { ...node.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
                     return;
                 }
 
@@ -2481,7 +2483,7 @@ function InfiniteCanvasPage() {
                 if (node.type === CanvasNodeType.Video) {
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, requestPrompt, retryReferenceImages || []), "video");
                     const videoSize = fitNodeSize(video.width || node.width, video.height || node.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, width: videoSize.width, height: videoSize.height, position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 }, metadata: { ...item.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: requestPrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
+                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, ...getGeneratedMediaSizePatch(item, videoSize), metadata: { ...item.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: requestPrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
                     return;
                 }
 
@@ -2498,8 +2500,7 @@ function InfiniteCanvasPage() {
                             ? {
                                   ...item,
                                   type: CanvasNodeType.Image,
-                                  width: imageSize.width,
-                                  height: imageSize.height,
+                                  ...getGeneratedMediaSizePatch(item, imageSize),
                                   metadata: { ...item.metadata, ...imageMetadata(uploadedImage), prompt: sourcePrompt, generationPrompt: requestPrompt, ...generationMetadata, ...timing() },
                               }
                             : item,
@@ -3412,6 +3413,18 @@ function videoMetadata(video: UploadedFile): CanvasNodeMetadata {
 
 function buildGenerationTiming(startedAt: number): Pick<CanvasNodeMetadata, "generationStartedAt" | "generationElapsedMs"> {
     return { generationStartedAt: startedAt, generationElapsedMs: Math.max(0, Date.now() - startedAt) };
+}
+
+function getGeneratedMediaSizePatch(node: CanvasNodeData, size: { width: number; height: number }): Partial<CanvasNodeData> {
+    if (node.metadata?.manualSize) return {};
+    return {
+        position: {
+            x: node.position.x + node.width / 2 - size.width / 2,
+            y: node.position.y + node.height / 2 - size.height / 2,
+        },
+        width: size.width,
+        height: size.height,
+    };
 }
 
 function formatCanvasPromptForApi(prompt: string, imageCount: number) {
