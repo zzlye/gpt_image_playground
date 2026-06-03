@@ -71,6 +71,42 @@ describe("canvas node generation prompt handling", () => {
         expect(context.referenceImages[0]).toMatchObject({ id: sourceImage.id, dataUrl: sourceImage.metadata?.content, storageKey: "image:source" });
     });
 
+    it("生成节点会递归继承上游图片链路里的参考图", () => {
+        const roleImage = baseNode({
+            id: "role-image",
+            type: CanvasNodeType.Image,
+            title: "角色",
+            metadata: { content: "data:image/png;base64,role", storageKey: "image:role", mimeType: "image/png" },
+        });
+        const outfitImage = baseNode({
+            id: "outfit-image",
+            type: CanvasNodeType.Image,
+            title: "服装",
+            metadata: { content: "data:image/png;base64,outfit", storageKey: "image:outfit", mimeType: "image/png" },
+        });
+        const sceneImage = baseNode({
+            id: "scene-image",
+            type: CanvasNodeType.Image,
+            title: "场景",
+            metadata: { content: "data:image/png;base64,scene", storageKey: "image:scene", mimeType: "image/png" },
+        });
+        const targetImage = baseNode({
+            id: "target-image",
+            type: CanvasNodeType.Image,
+            metadata: { prompt: "把角色放进场景里" },
+        });
+        const connections: CanvasConnection[] = [
+            { id: "conn-role-scene", fromNodeId: roleImage.id, toNodeId: sceneImage.id },
+            { id: "conn-outfit-scene", fromNodeId: outfitImage.id, toNodeId: sceneImage.id },
+            { id: "conn-scene-target", fromNodeId: sceneImage.id, toNodeId: targetImage.id },
+        ];
+
+        const context = buildNodeGenerationContext(targetImage.id, [roleImage, outfitImage, sceneImage, targetImage], connections, "把角色放进场景里");
+
+        expect(context.referenceImages.map((image) => image.id)).toEqual(["role-image", "outfit-image", "scene-image"]);
+        expect(context.imageCount).toBe(3);
+    });
+
     it("合并参考图时保留手动参考图在连接图之前并按图片去重", () => {
         const manual = { id: "manual-1", name: "手动图", type: "image/png", dataUrl: "data:image/png;base64,manual" };
         const connected = { id: "connected-1", name: "连接图", type: "image/png", dataUrl: "data:image/png;base64,connected" };

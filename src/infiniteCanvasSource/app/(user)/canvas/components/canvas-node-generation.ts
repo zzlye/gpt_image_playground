@@ -60,13 +60,8 @@ export function stripConnectedPromptSuffix(prompt: string, connectedText: string
 }
 
 export function buildNodeGenerationInputs(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]): NodeGenerationInput[] {
-    return getOrderedUpstreamNodes(nodeId, nodes, connections).flatMap((node): NodeGenerationInput[] => {
-        const image = readReferenceImage(node);
-        if (image) return [{ nodeId: node.id, type: "image" as const, title: node.title, image }];
-        const text = readNodeTextInput(node);
-        if (text) return [{ nodeId: node.id, type: "text" as const, title: node.title, text }];
-        return [];
-    });
+    const visited = new Set<string>([nodeId]);
+    return getOrderedUpstreamNodes(nodeId, nodes, connections).flatMap((node) => buildNodeGenerationInputsFromNode(node, nodes, connections, visited));
 }
 
 export function getNodeGenerationInputReferenceImages(inputs: NodeGenerationInput[]) {
@@ -112,6 +107,19 @@ export async function hydrateNodeGenerationContext(context: NodeGenerationContex
 function readNodeTextInput(node: CanvasNodeData) {
     if (node.type === CanvasNodeType.Text) return node.metadata?.content || node.metadata?.prompt || "";
     return node.metadata?.prompt || "";
+}
+
+function buildNodeGenerationInputsFromNode(node: CanvasNodeData, nodes: CanvasNodeData[], connections: CanvasConnection[], visited: Set<string>): NodeGenerationInput[] {
+    if (visited.has(node.id)) return [];
+    visited.add(node.id);
+
+    const upstreamInputs = getOrderedUpstreamNodes(node.id, nodes, connections).flatMap((upstreamNode) => buildNodeGenerationInputsFromNode(upstreamNode, nodes, connections, visited));
+    const image = readReferenceImage(node);
+    if (image) return [...upstreamInputs, { nodeId: node.id, type: "image" as const, title: node.title, image }];
+
+    const text = readNodeTextInput(node);
+    if (text) return [...upstreamInputs, { nodeId: node.id, type: "text" as const, title: node.title, text }];
+    return upstreamInputs;
 }
 
 function readReferenceImage(node: CanvasNodeData): ReferenceImage | null {
