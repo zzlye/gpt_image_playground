@@ -450,7 +450,7 @@ function AssetCard({ asset, onOpen, onEdit, onChangeTag, onCopy, onDownload, onD
                     {cover ? (
                         <img src={cover} alt={asset.title} className="aspect-[4/3] w-full object-cover" />
                     ) : (
-                        <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 p-5 text-center text-sm leading-6 text-stone-600 dark:bg-stone-900 dark:text-stone-300">{asset.kind === "text" ? asset.data.content : "暂无封面"}</div>
+                        <AssetTextPreview text={asset.kind === "text" ? asset.data.content : "暂无封面"} />
                     )}
                 </button>
             }
@@ -572,6 +572,14 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: Asset | nu
                 </div>
             ) : null}
         </Drawer>
+    );
+}
+
+function AssetTextPreview({ text }: { text: string }) {
+    return (
+        <div className="flex aspect-[4/3] w-full overflow-hidden bg-stone-100 p-5 text-sm leading-6 text-stone-600 dark:bg-stone-900 dark:text-stone-300">
+            <p className="line-clamp-5 min-w-0 break-words text-left">{text}</p>
+        </div>
     );
 }
 

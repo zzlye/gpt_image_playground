@@ -267,7 +267,7 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
                     ) : cover ? (
                         <img src={cover} alt={title} className="aspect-[4/3] w-full object-cover" />
                     ) : (
-                        <div className="flex aspect-[4/3] items-center justify-center bg-stone-100 p-3 text-center text-xs leading-5 text-stone-500 dark:bg-stone-800 dark:text-stone-400">{text || title}</div>
+                        <TextPreview text={text || title} />
                     )}
                 </button>
                 <div className="space-y-2 p-2.5">
@@ -352,6 +352,14 @@ function PickerCard({ title, kind, category, cover, text, onInsert, onRename, on
                 </div>
             </Modal>
         </>
+    );
+}
+
+function TextPreview({ text }: { text: string }) {
+    return (
+        <div className="flex aspect-[4/3] w-full overflow-hidden bg-stone-100 p-3 text-xs leading-5 text-stone-500 dark:bg-stone-800 dark:text-stone-400">
+            <p className="line-clamp-6 min-w-0 break-words text-left">{text}</p>
+        </div>
     );
 }
 
