@@ -21,7 +21,7 @@ RUN npm run build
 FROM nginx:alpine
 
 ARG APP_VERSION=0.4.13
-LABEL org.opencontainers.image.title="gpt-image-playground"
+LABEL org.opencontainers.image.title="wenyun-workshop"
 LABEL org.opencontainers.image.version=$APP_VERSION
 
 ENV HOST=0.0.0.0
