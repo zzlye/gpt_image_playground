@@ -38,6 +38,15 @@ function requestTimeout(config: AiConfig) {
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = []) {
     const model = config.videoModel || config.model;
+    // Grok Video 3 在部分兼容站里挂在聊天接口下，直接走视频任务接口会返回 405。
+    if (isGrokChatVideoModel(model)) {
+        try {
+            return await requestChatCompletionsVideoGeneration(config, prompt, references, model);
+        } catch (error) {
+            if (!shouldFallbackToTaskVideoApi(error)) throw new Error(readAxiosError(error, "视频生成失败"));
+        }
+    }
+
     try {
         return await requestNewApiVideoGeneration(config, prompt, references, model);
     } catch (error) {
@@ -68,8 +77,34 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
         refreshRemoteUser(config);
         return content.data;
     } catch (error) {
+        if (!isGrokChatVideoModel(model) && shouldFallbackToTaskVideoApi(error)) {
+            try {
+                return await requestChatCompletionsVideoGeneration(config, prompt, references, model);
+            } catch (chatError) {
+                throw new Error(readAxiosError(chatError, "视频生成失败"));
+            }
+        }
         throw new Error(readAxiosError(error, "视频生成失败"));
     }
+}
+
+async function requestChatCompletionsVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string) {
+    const content = await buildChatVideoContent(config, prompt, references);
+    const response = await axios.post(
+        aiApiUrl(config, "/chat/completions"),
+        {
+            model,
+            messages: [{ role: "user", content }],
+            stream: false,
+        },
+        { headers: { ...aiHeaders(config), "Content-Type": "application/json" }, timeout: requestTimeout(config) },
+    );
+    const videoUrl = findVideoUrl(response.data);
+    if (!videoUrl) throw new Error("视频接口没有返回视频地址");
+    const dataUrl = await fetchImageUrlAsDataUrl(videoUrl, "video/mp4");
+    const videoResponse = await fetch(dataUrl);
+    refreshRemoteUser(config);
+    return videoResponse.blob();
 }
 
 async function requestNewApiVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string) {
@@ -100,6 +135,24 @@ async function requestNewApiVideoGeneration(config: AiConfig, prompt: string, re
     const response = await fetch(dataUrl);
     refreshRemoteUser(config);
     return response.blob();
+}
+
+async function buildChatVideoContent(config: AiConfig, prompt: string, references: ReferenceImage[]) {
+    const settingsText = `视频参数：${normalizeVideoSeconds(config.videoSeconds)}秒，${normalizeVideoResolution(config.vquality)}，${videoAspectLabel(config.size)}。`;
+    const text = `${settingsText}\n\n${prompt}`;
+    const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
+    if (!images.length) return text;
+    return [{ type: "text", text }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))];
+}
+
+function videoAspectLabel(value: string) {
+    if (value === "auto" || !value) return "自动比例";
+    if (/^\d+x\d+$/.test(value)) {
+        const [w, h] = value.split("x").map(Number);
+        if (w && h) return w >= h ? "横屏" : "竖屏";
+    }
+    if (["9:16", "2:3", "3:4"].includes(value)) return "竖屏";
+    return "横屏";
 }
 
 function normalizeVideoSeconds(value: string) {
@@ -200,6 +253,46 @@ function stringValue(value: unknown) {
     return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function findVideoUrl(input: unknown): string {
+    if (!input) return "";
+    if (typeof input === "string") {
+        const parsed = parseJsonString(input);
+        if (parsed) return findVideoUrl(parsed);
+        return findVideoUrlInText(input);
+    }
+    if (Array.isArray(input)) {
+        for (const item of input) {
+            const url = findVideoUrl(item);
+            if (url) return url;
+        }
+        return "";
+    }
+    if (typeof input !== "object") return "";
+    const record = input as Record<string, unknown>;
+    const direct = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url);
+    if (direct) return direct;
+    for (const value of Object.values(record)) {
+        const url = findVideoUrl(value);
+        if (url) return url;
+    }
+    return "";
+}
+
+function parseJsonString(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return null;
+    try {
+        return JSON.parse(trimmed) as unknown;
+    } catch {
+        return null;
+    }
+}
+
+function findVideoUrlInText(value: string) {
+    const match = value.match(/https?:\/\/[^\s)"'<>]+?\.(?:mp4|webm|mov)(?:\?[^\s)"'<>]+)?/i);
+    return match?.[0] || "";
+}
+
 function isVideoTaskCompleted(task: NewApiVideoTask) {
     const status = (task.status || "").toLowerCase();
     return Boolean(task.url || task.videoUrl) || ["completed", "succeeded", "success", "done"].includes(status);
@@ -211,6 +304,14 @@ function isVideoTaskFailed(task: NewApiVideoTask) {
 
 function shouldFallbackToLegacyVideoApi(error: unknown) {
     return axios.isAxiosError(error) && [404, 405].includes(error.response?.status || 0);
+}
+
+function shouldFallbackToTaskVideoApi(error: unknown) {
+    return axios.isAxiosError(error) && [400, 404, 405].includes(error.response?.status || 0);
+}
+
+function isGrokChatVideoModel(model: string) {
+    return /^grok-video-3(?:-|$)/i.test(model.trim());
 }
 
 function readAxiosError(error: unknown, fallback: string) {
