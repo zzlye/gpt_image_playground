@@ -1,0 +1,90 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { getImageModelOptionsForProfile } from "../../../../../lib/apiProfiles";
+import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
+import type { CanvasGenerationMode } from "../types";
+import { parseModelListPayload } from "../../../../../lib/modelList";
+
+type ModelOption = string | { value: string; label: string };
+type ExternalModelTarget = "text" | "video";
+
+// 缓存同一套 API 地址和 Key 的模型列表，避免每个节点重复请求 /models。
+const modelOptionsCache = new Map<string, string[]>();
+
+export function useCanvasModelOptions(config: AiConfig, mode: CanvasGenerationMode, activeProfileId: string): ModelOption[] | undefined {
+    const currentModel = config.model || (mode === "image" ? config.imageModel : mode === "video" ? config.videoModel : config.textModel);
+    const source = mode === "text" || mode === "video" ? getExternalModelSource(config, mode) : null;
+    const [externalOptions, setExternalOptions] = useState<string[]>(() => uniqueModels([currentModel]));
+
+    useEffect(() => {
+        if (!source) return;
+        const fallback = uniqueModels([source.model]);
+        if (!source.baseUrl.trim()) {
+            setExternalOptions(fallback);
+            return;
+        }
+
+        const cacheKey = `${source.target}:${source.baseUrl}:${source.apiKey}`;
+        const cached = modelOptionsCache.get(cacheKey);
+        if (cached?.length) {
+            setExternalOptions(uniqueModels([source.model, ...cached]));
+            return;
+        }
+
+        // 读取失败时保留当前模型，保证已填写的模型不会从下拉里消失。
+        let cancelled = false;
+        setExternalOptions(fallback);
+        void fetchExternalModelOptions(source.baseUrl, source.apiKey).then((models) => {
+            if (cancelled) return;
+            modelOptionsCache.set(cacheKey, models);
+            setExternalOptions(uniqueModels([source.model, ...models]));
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [source?.apiKey, source?.baseUrl, source?.model, source?.target]);
+
+    return useMemo(() => {
+        if (mode === "image") return getImageModelOptionsForProfile(activeProfileId);
+        return externalOptions.length ? externalOptions : currentModel ? [currentModel] : undefined;
+    }, [activeProfileId, currentModel, externalOptions, mode]);
+}
+
+function getExternalModelSource(config: AiConfig, mode: ExternalModelTarget) {
+    if (mode === "video") {
+        return {
+            target: mode,
+            baseUrl: config.videoBaseUrl.trim() || config.textVideoBaseUrl.trim(),
+            apiKey: config.videoApiKey.trim() || config.textVideoApiKey.trim(),
+            model: config.model || config.videoModel,
+        };
+    }
+
+    return {
+        target: mode,
+        baseUrl: config.textBaseUrl.trim() || config.textVideoBaseUrl.trim(),
+        apiKey: config.textApiKey.trim() || config.textVideoApiKey.trim(),
+        model: config.model || config.textModel,
+    };
+}
+
+async function fetchExternalModelOptions(baseUrl: string, apiKey: string) {
+    try {
+        const response = await fetch(buildApiUrl(baseUrl, "/models"), {
+            headers: apiKey.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : undefined,
+            cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) return [];
+        return parseModelListPayload(payload);
+    } catch {
+        return [];
+    }
+}
+
+function uniqueModels(models: Array<string | undefined>) {
+    return Array.from(new Set(models.map((model) => model?.trim() || "").filter(Boolean)));
+}

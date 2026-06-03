@@ -1,0 +1,366 @@
+import axios from "axios";
+
+import { buildApiUrl, type AiConfig } from "@/stores/use-config-store";
+import { useUserStore } from "@/stores/use-user-store";
+import { nanoid } from "nanoid";
+import { imageToDataUrl } from "@/services/image-storage";
+import type { ReferenceImage } from "@/types/image";
+import { callImageApi } from "../../../lib/api";
+import { normalizeSettings } from "../../../lib/apiProfiles";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig } from "../../../lib/devProxy";
+import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
+import { useStore } from "../../../store";
+import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from "../../../types";
+
+export type ChatCompletionMessage = {
+    role: "system" | "user" | "assistant";
+    content: string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+};
+
+type ImageApiResponse = {
+    data?: Array<Record<string, unknown>>;
+    error?: { message?: string };
+    code?: number;
+    msg?: string;
+};
+
+const MAX_REFERENCE_IMAGE_EDGE = 2048;
+const MAX_REFERENCE_IMAGE_PIXELS = 2048 * 2048;
+const REFERENCE_IMAGE_JPEG_QUALITY = 0.88;
+
+const QUALITY_BASE: Record<string, number> = {
+    low: 1024,
+    medium: 2048,
+    high: 2880,
+    standard: 1024,
+    hd: 2048,
+};
+const QUALITY_ALIASES: Record<string, string> = {
+    "1k": "low",
+    "2k": "medium",
+    "4k": "high",
+};
+
+function normalizeQuality(quality: string) {
+    const value = quality.trim().toLowerCase();
+    const normalized = QUALITY_ALIASES[value] || value;
+    return QUALITY_BASE[normalized] ? normalized : undefined;
+}
+
+/** Map "quality + ratio" to an explicit pixel dimension like "3840x2160". Returns undefined when quality is auto. */
+function resolveSize(quality: string, ratio: string): string | undefined {
+    const basePixels = QUALITY_BASE[quality];
+    if (!basePixels || ratio === "auto" || !ratio) return undefined;
+
+    const parts = ratio.split(":");
+    if (parts.length !== 2) return undefined;
+    const w = Number(parts[0]);
+    const h = Number(parts[1]);
+    if (!w || !h) return undefined;
+
+    const targetPixels = basePixels * basePixels;
+    const isLandscape = w >= h;
+    const longRatio = isLandscape ? w / h : h / w;
+
+    const longSideRaw = Math.sqrt(targetPixels * longRatio);
+    const longSide = Math.floor(longSideRaw / 16) * 16;
+    const shortSide = Math.round((longSide / longRatio) / 16) * 16;
+
+    const width = isLandscape ? longSide : shortSide;
+    const height = isLandscape ? shortSide : longSide;
+
+    return `${width}x${height}`;
+}
+
+function resolveRequestSize(quality: string | undefined, size: string) {
+    const value = size.trim();
+    if (!value || value === "auto") return undefined;
+    if (/^\d+x\d+$/.test(value)) return value;
+    return (quality && resolveSize(quality, value)) || value;
+}
+
+function resolveTaskQuality(config: AiConfig): TaskParams["quality"] {
+    const quality = normalizeQuality(config.quality);
+    return quality === "low" || quality === "medium" || quality === "high" ? quality : DEFAULT_PARAMS.quality;
+}
+
+function buildTaskParams(config: AiConfig): TaskParams {
+    const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const quality = resolveTaskQuality(config);
+    return {
+        ...DEFAULT_PARAMS,
+        n,
+        quality,
+        size: resolveRequestSize(quality === "auto" ? undefined : quality, config.size) || DEFAULT_PARAMS.size,
+    };
+}
+
+function buildCanvasImageSettings(config: AiConfig): AppSettings {
+    const current = normalizeSettings(useStore.getState().settings);
+    const model = config.imageModel || config.model || current.model;
+
+    return normalizeSettings({
+        ...current,
+        apiKey: config.apiKey || current.apiKey,
+        model,
+        timeout: config.timeout || current.timeout,
+        profiles: current.profiles.map((profile) =>
+            profile.id === current.activeProfileId
+                ? {
+                      ...profile,
+                      apiKey: config.apiKey || profile.apiKey,
+                      model,
+                      timeout: config.timeout || profile.timeout,
+                  }
+                : profile,
+        ),
+    });
+}
+
+function toCanvasImages(images: string[]) {
+    return images.map((dataUrl) => ({ id: nanoid(), dataUrl }));
+}
+
+function resolveImageDataUrl(item: Record<string, unknown>) {
+    if (typeof item.b64_json === "string" && item.b64_json) {
+        return `data:image/png;base64,${item.b64_json}`;
+    }
+    if (typeof item.url === "string" && item.url) {
+        return item.url;
+    }
+    return null;
+}
+
+function parseImagePayload(payload: ImageApiResponse) {
+    if (typeof payload.code === "number" && payload.code !== 0) {
+        throw new Error(payload.msg || "请求失败");
+    }
+    const images =
+        payload.data
+            ?.map(resolveImageDataUrl)
+            .filter((value): value is string => Boolean(value))
+            .map((dataUrl) => ({ id: nanoid(), dataUrl })) || [];
+
+    if (images.length === 0) {
+        throw new Error("接口没有返回图片");
+    }
+
+    return images;
+}
+
+function readAxiosError(error: unknown, fallback: string) {
+    if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
+        const responseData = error.response?.data;
+        return sanitizeApiErrorMessage(responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback));
+    }
+    return sanitizeApiErrorMessage(error instanceof Error ? error.message : fallback);
+}
+
+function parseStreamChunk(chunk: string, onDelta: (value: string) => void) {
+    let deltaText = "";
+    for (const eventBlock of chunk.split("\n\n")) {
+        const data = eventBlock
+            .split("\n")
+            .find((line) => line.startsWith("data: "))
+            ?.slice(6);
+        if (!data || data === "[DONE]") continue;
+        const delta = (JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> }).choices?.[0]?.delta?.content || "";
+        deltaText += delta;
+    }
+    if (deltaText) onDelta(deltaText);
+}
+
+function withSystemPrompt(config: AiConfig, prompt: string) {
+    const systemPrompt = config.systemPrompt.trim();
+    return systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+}
+
+function aiApiUrl(config: AiConfig, path: string, target: "image" | "textVideo" = "image") {
+    const baseUrl = target === "textVideo" && (config.textBaseUrl.trim() || config.textVideoBaseUrl.trim()) ? config.textBaseUrl.trim() || config.textVideoBaseUrl : config.baseUrl;
+    if (config.channelMode === "remote") return `/api/v1${path}`;
+
+    const proxyConfig = readClientDevProxyConfig();
+    return buildDevApiUrl(baseUrl, path, proxyConfig, false);
+}
+
+function aiHeaders(config: AiConfig, contentType?: string, target: "image" | "textVideo" = "image") {
+    const token = useUserStore.getState().token;
+    const apiKey = target === "textVideo" && (config.textApiKey.trim() || config.textVideoApiKey.trim()) ? config.textApiKey.trim() || config.textVideoApiKey : config.apiKey;
+    return config.channelMode === "remote"
+        ? {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              ...(contentType ? { "Content-Type": contentType } : {}),
+          }
+        : {
+              Authorization: `Bearer ${apiKey}`,
+              ...(contentType ? { "Content-Type": contentType } : {}),
+          };
+}
+
+function refreshRemoteUser(config: AiConfig) {
+    if (config.channelMode === "remote") void useUserStore.getState().hydrateUser();
+}
+
+function requestTimeout(config: AiConfig, target: "image" | "textVideo" = "image") {
+    const seconds = target === "textVideo" ? config.textTimeout || config.textVideoTimeout : config.timeout;
+    return Math.max(1, Number(seconds) || 120) * 1000;
+}
+
+function withSystemMessage(config: AiConfig, messages: ChatCompletionMessage[]) {
+    const systemPrompt = config.systemPrompt.trim();
+    return systemPrompt ? [{ role: "system" as const, content: systemPrompt }, ...messages] : messages;
+}
+
+export async function requestGeneration(config: AiConfig, prompt: string) {
+    try {
+        const result = await callImageApi({
+            settings: buildCanvasImageSettings(config),
+            prompt: withSystemPrompt(config, prompt),
+            params: buildTaskParams(config),
+            inputImageDataUrls: [],
+        });
+        refreshRemoteUser(config);
+        return toCanvasImages(result.images);
+    } catch (error) {
+        throw new Error(readAxiosError(error, "请求失败"));
+    }
+}
+
+export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[]) {
+    try {
+        const inputImageDataUrls = (
+            await Promise.all(
+                references.map(async (image) => {
+                    const dataUrl = await imageToDataUrl(image);
+                    return dataUrl ? prepareReferenceImageForApi(dataUrl, image) : "";
+                }),
+            )
+        ).filter((dataUrl): dataUrl is string => Boolean(dataUrl));
+        const maskDataUrl = references.find((image) => image.isMaskTarget && image.maskDataUrl)?.maskDataUrl;
+        const result = await callImageApi({
+            settings: buildCanvasImageSettings(config),
+            prompt: withSystemPrompt(config, prompt),
+            params: buildTaskParams(config),
+            inputImageDataUrls,
+            maskDataUrl,
+        });
+        refreshRemoteUser(config);
+        return toCanvasImages(result.images);
+    } catch (error) {
+        throw new Error(readAxiosError(error, "请求失败"));
+    }
+}
+
+async function prepareReferenceImageForApi(dataUrl: string, image: ReferenceImage) {
+    if (!dataUrl.startsWith("data:image/")) return dataUrl;
+    if (image.isMaskTarget && image.maskDataUrl) return dataUrl;
+
+    const source = await loadImageForApi(dataUrl);
+    const scale = getReferenceImageScale(source.naturalWidth || source.width, source.naturalHeight || source.height);
+    if (scale >= 1) return dataUrl;
+
+    // 参考图只在发给接口前降采样，画布里的原图不改，避免 4K 图导致编辑接口请求失败或卡住。
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round((source.naturalWidth || source.width) * scale));
+    canvas.height = Math.max(1, Math.round((source.naturalHeight || source.height) * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("当前浏览器不支持 Canvas");
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", REFERENCE_IMAGE_JPEG_QUALITY);
+}
+
+function getReferenceImageScale(width: number, height: number) {
+    const maxEdge = Math.max(width, height);
+    const pixels = width * height;
+    if (!maxEdge || !pixels) return 1;
+    return Math.min(1, MAX_REFERENCE_IMAGE_EDGE / maxEdge, Math.sqrt(MAX_REFERENCE_IMAGE_PIXELS / pixels));
+}
+
+function loadImageForApi(dataUrl: string) {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("参考图加载失败，请换一张图片后重试"));
+        image.src = dataUrl;
+    });
+}
+
+export async function requestImageQuestion(config: AiConfig, messages: ChatCompletionMessage[], onDelta: (text: string) => void) {
+    let buffer = "";
+    let answer = "";
+    let processedLength = 0;
+
+    try {
+        const response = await axios.post(
+            aiApiUrl(config, "/chat/completions", "textVideo"),
+            {
+                model: config.textModel || config.model,
+                messages: withSystemMessage(config, messages),
+                stream: true,
+            },
+            {
+                headers: {
+                    ...aiHeaders(config, "application/json", "textVideo"),
+                } as Record<string, string>,
+                timeout: requestTimeout(config, "textVideo"),
+                responseType: "text",
+                onDownloadProgress: (event) => {
+                    const responseText = String(event.event?.target?.responseText || "");
+                    const nextText = responseText.slice(processedLength);
+                    processedLength = responseText.length;
+                    buffer += nextText;
+                    const chunks = buffer.split("\n\n");
+                    buffer = chunks.pop() || "";
+                    for (const chunk of chunks) {
+                        parseStreamChunk(chunk, (delta) => {
+                            answer += delta;
+                            onDelta(answer);
+                        });
+                    }
+                },
+            },
+        );
+        if (typeof response.data === "object" && response.data && "code" in response.data && (response.data as { code?: number; msg?: string }).code !== 0) {
+            throw new Error((response.data as { msg?: string }).msg || "请求失败");
+        }
+        if (typeof response.data === "string") {
+            let apiError = "";
+            try {
+                const payload = JSON.parse(response.data) as { code?: number; msg?: string };
+                if (typeof payload.code === "number" && payload.code !== 0) {
+                    apiError = payload.msg || "请求失败";
+                }
+            } catch {
+                // ignore plain text stream content
+            }
+            if (apiError) throw new Error(apiError);
+        }
+        if (buffer) {
+            parseStreamChunk(buffer, (delta) => {
+                answer += delta;
+                onDelta(answer);
+            });
+        }
+    } catch (error) {
+        throw new Error(readAxiosError(error, "请求失败"));
+    }
+    refreshRemoteUser(config);
+    return answer || "没有返回内容";
+}
+
+export async function fetchImageModels(config: AiConfig) {
+    if (config.channelMode === "remote") return config.models;
+    try {
+        const response = await axios.get<{ data?: Array<{ id?: string }>; error?: { message?: string } }>(buildApiUrl(config.baseUrl, "/models"), {
+            headers: {
+                Authorization: `Bearer ${config.apiKey}`,
+            },
+        });
+        return (response.data.data || [])
+            .map((model) => model.id)
+            .filter((id): id is string => Boolean(id))
+            .sort((a, b) => a.localeCompare(b));
+    } catch (error) {
+        throw new Error(readAxiosError(error, "读取模型失败"));
+    }
+}
