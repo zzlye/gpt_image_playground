@@ -2005,7 +2005,7 @@ function InfiniteCanvasPage() {
         async (node: CanvasNodeData, params: CanvasImageAngleParams) => {
             if (!node.metadata?.content) return;
             const generationConfig = { ...buildGenerationConfig(effectiveConfig, node, "image", activeProfile.id), count: "1" };
-            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+            if (!isCanvasGenerationConfigReady(generationConfig, "image", isAiConfigReady)) {
                 openConfigDialog(true);
                 return;
             }
@@ -2186,7 +2186,7 @@ function InfiniteCanvasPage() {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
             if (isCanvasNodeGenerationLocked(sourceNode, runningNodeIdsRef.current)) return;
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode, activeProfile.id);
-            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+            if (!isCanvasGenerationConfigReady(generationConfig, mode, isAiConfigReady)) {
                 openConfigDialog(true);
                 return;
             }
@@ -2480,9 +2480,10 @@ function InfiniteCanvasPage() {
                           quality: savedImageMetadata.quality || effectiveConfig.quality,
                           size: savedImageMetadata.size || effectiveConfig.size,
                           count: "1",
-                      }
+                    }
                     : { ...buildGenerationConfig(effectiveConfig, sourceNode, node.type === CanvasNodeType.Text ? "text" : node.type === CanvasNodeType.Video ? "video" : "image", activeProfile.id), count: "1" };
-            if (!isAiConfigReady(generationConfig, generationConfig.model)) {
+            const generationMode = node.type === CanvasNodeType.Text ? "text" : node.type === CanvasNodeType.Video ? "video" : "image";
+            if (!isCanvasGenerationConfigReady(generationConfig, generationMode, isAiConfigReady)) {
                 openConfigDialog(true);
                 return;
             }
@@ -3632,6 +3633,21 @@ function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefine
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
         count: String(node?.metadata?.count || (mode === "image" ? 1 : config.count) || defaultConfig.count),
     };
+}
+
+function isCanvasGenerationConfigReady(config: AiConfig, mode: CanvasNodeGenerationMode, isAiConfigReady: (config: AiConfig, model: string) => boolean) {
+    const model = mode === "image" ? config.imageModel || config.model : mode === "video" ? config.videoModel || config.model : config.textModel || config.model;
+    if (!model.trim()) return false;
+    if (config.channelMode === "remote") return true;
+    if (mode === "image") return isAiConfigReady(config, model);
+    if (mode === "text") return Boolean((config.textBaseUrl.trim() && config.textApiKey.trim()) || (config.textVideoBaseUrl.trim() && config.textVideoApiKey.trim()) || (config.baseUrl.trim() && config.apiKey.trim()));
+    // 视频节点兼容新版视频 API、旧文字视频 API、文字 API 和出图 API，避免用户填了视频专用接口却被出图配置拦住。
+    return Boolean(
+        (config.videoBaseUrl.trim() && (config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.textApiKey.trim() || config.apiKey.trim())) ||
+            (config.textVideoBaseUrl.trim() && (config.textVideoApiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.apiKey.trim())) ||
+            (config.textBaseUrl.trim() && (config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey.trim())) ||
+            (config.baseUrl.trim() && (config.apiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim())),
+    );
 }
 
 function resetInterruptedGeneration(nodes: CanvasNodeData[]) {

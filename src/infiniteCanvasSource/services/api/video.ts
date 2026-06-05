@@ -7,13 +7,15 @@ import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { ReferenceImage } from "@/types/image";
 import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
-import { fetchImageUrlAsDataUrl, sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
+import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 
-type VideoResponse = { id: string; status?: string; error?: { message?: string } };
+type VideoResponse = { id?: string; status?: string; url?: string; video_url?: string; videoUrl?: string; output?: unknown; error?: { message?: string } };
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
-type NewApiVideoTask = { id: string; status?: string; url?: string; videoUrl?: string; error?: { message?: string } };
+type NewApiVideoTask = { id: string; status?: string; url?: string; videoUrl?: string; output?: unknown; error?: { message?: string } };
 type NewApiVideoResponse = NewApiVideoTask | { code?: number; data?: unknown; msg?: string; error?: { message?: string } };
 type VideoApiSource = { label: string; baseUrl: string; apiKey: string; apiProxy: boolean; timeout: number; versioned: boolean };
+
+const VIDEO_POLL_INTERVAL_MS = typeof process !== "undefined" && process.env.NODE_ENV === "test" ? 1 : 2500;
 
 class VideoAttemptError extends Error {
     readonly label: string;
@@ -120,53 +122,78 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 
     for (const source of sources) {
         const labelPrefix = sources.length > 1 ? `${source.label} ` : "";
-        // Grok Video 3 在部分兼容站里挂在聊天接口下，直接走视频任务接口会返回 405。
-        if (isGrokChatVideoModel(model)) {
-            const result = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToTaskVideoApi);
+        if (isJsonVideosFirstModel(model) && !references.length) {
+            const result = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, model), shouldFallbackToNextVideoSource);
             if (result) return result;
         }
 
-        // Sora 2 在 NewAPI 里对应 OpenAI 兼容的 /videos multipart 接口。
-        if (isSoraVideoModel(model)) {
-            const result = await tryGeneration(`${labelPrefix}Sora 兼容 /videos`, () => requestOpenAiCompatibleVideoGeneration(config, source, prompt, references, model, true), shouldFallbackToTaskVideoApi);
+        // GeekNow 的 Grok Pro 和带参考图的 Sora/Veo 需要 multipart /videos，不能先走聊天接口。
+        if (isGrokVideosMultipartModel(model) || ((isSoraVideoModel(model) || isVeoVideoModel(model)) && references.length)) {
+            const result = await tryGeneration(`${labelPrefix}OpenAI multipart /videos`, () => requestOpenAiVideosMultipartGeneration(config, source, prompt, references, model, false), shouldFallbackToNextVideoSource);
             if (result) return result;
         }
 
-        const taskResult = await tryGeneration(`${labelPrefix}NewAPI 任务 /video/generations`, () => requestNewApiVideoGeneration(config, source, prompt, references, model), shouldFallbackToLegacyVideoApi);
+        const taskResult = await tryGeneration(`${labelPrefix}NewAPI 任务 /video/generations`, () => requestNewApiVideoGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
         if (taskResult) return taskResult;
 
-        // NewAPI 兼容接口不可用时，回退到旧版 /videos 流程。
-        const openAiResult = await tryGeneration(`${labelPrefix}OpenAI 兼容 /videos`, () => requestOpenAiCompatibleVideoGeneration(config, source, prompt, references, model, false), shouldFallbackToTaskVideoApi);
-        if (openAiResult) return openAiResult;
-
-        if (!isGrokChatVideoModel(model)) {
-            const chatResult = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToTaskVideoApi);
-            if (chatResult) return chatResult;
+        if (!(isGrokVideosMultipartModel(model) || ((isSoraVideoModel(model) || isVeoVideoModel(model)) && references.length))) {
+            const openAiResult = await tryGeneration(`${labelPrefix}OpenAI multipart /videos`, () => requestOpenAiVideosMultipartGeneration(config, source, prompt, references, model, !isJsonVideosFirstModel(model)), shouldFallbackToNextVideoSource);
+            if (openAiResult) return openAiResult;
         }
+
+        if (isJsonVideosFirstModel(model) && references.length) {
+            const jsonResult = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, model), shouldFallbackToNextVideoSource);
+            if (jsonResult) return jsonResult;
+        }
+
+        const chatResult = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
+        if (chatResult) return chatResult;
     }
 
     throw buildVideoGenerationError(failures);
 }
 
-async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string, isSoraCompatible: boolean) {
+async function requestOpenAiVideosJsonGeneration(config: AiConfig, source: VideoApiSource, prompt: string, model: string) {
+    const payload: Record<string, unknown> = {
+        model,
+        prompt,
+        seconds: normalizeVideoSeconds(config.videoSeconds),
+        size: normalizeVideoSize(config.size) || undefined,
+    };
+    const created = unwrapVideoTask((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), payload, { headers: { ...aiHeaders(config, source), "Content-Type": "application/json" }, timeout: requestTimeout(source) })).data);
+    return waitOpenAiVideoResult(config, source, created, model);
+}
+
+async function requestOpenAiVideosMultipartGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string, includeLegacyFields: boolean) {
     const body = new FormData();
     body.append("model", model);
     body.append("prompt", prompt);
     body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
     if (normalizeVideoSize(config.size)) body.append("size", normalizeVideoSize(config.size)!);
-    if (!isSoraCompatible) {
+    if (includeLegacyFields) {
         body.append("resolution_name", normalizeVideoResolution(config.vquality));
         body.append("preset", "normal");
     }
     const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => body.append(isSoraCompatible ? "input_reference" : "input_reference[]", file));
-    const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), body, { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
+    files.forEach((file) => body.append(includeLegacyFields ? "input_reference[]" : "input_reference", file));
+    const created = unwrapVideoTask((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), body, { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
+    return waitOpenAiVideoResult(config, source, created, model);
+}
+
+async function waitOpenAiVideoResult(config: AiConfig, source: VideoApiSource, created: NewApiVideoTask, model: string) {
     if (!created.id) throw new Error("视频接口没有返回任务 ID");
+    let task = created;
     for (;;) {
-        const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, source, `/videos/${created.id}`), { headers: aiHeaders(config, source), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(source) })).data);
-        if (isVideoStatusCompleted(video.status)) break;
-        if (isVideoStatusFailed(video.status)) throw new Error(video.error?.message || "视频生成失败");
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        const videoUrl = findVideoUrl(task);
+        if (videoUrl) {
+            const blob = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
+            refreshRemoteUser(config);
+            return blob;
+        }
+        if (isVideoStatusCompleted(task.status)) break;
+        if (isVideoStatusFailed(task.status)) throw new Error(task.error?.message || "视频生成失败");
+        await delayVideoPoll();
+        task = unwrapVideoTask((await axios.get<ApiVideoResponse>(aiApiUrl(config, source, `/videos/${created.id}`), { headers: aiHeaders(config, source), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(source) })).data);
     }
     const content = await axios.get<Blob>(aiApiUrl(config, source, `/videos/${created.id}/content`), { headers: aiHeaders(config, source), params: config.channelMode === "remote" ? { model } : undefined, responseType: "blob", timeout: requestTimeout(source) });
     await assertVideoBlob(content.data);
@@ -187,17 +214,16 @@ async function requestChatCompletionsVideoGeneration(config: AiConfig, source: V
     );
     const videoUrl = findVideoUrl(response.data);
     if (!videoUrl) throw new Error("视频接口没有返回视频地址");
-    const dataUrl = await fetchImageUrlAsDataUrl(videoUrl, "video/mp4");
-    const videoResponse = await fetch(dataUrl);
+    const videoResponse = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
     refreshRemoteUser(config);
-    return videoResponse.blob();
+    return videoResponse;
 }
 
 async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string) {
     const payload: Record<string, unknown> = {
         model,
         prompt,
-        seconds: Number(normalizeVideoSeconds(config.videoSeconds)),
+        seconds: normalizeVideoSeconds(config.videoSeconds),
         size: normalizeVideoSize(config.size) || undefined,
         resolution: normalizeVideoResolution(config.vquality),
     };
@@ -211,16 +237,15 @@ async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSo
     for (;;) {
         if (isVideoTaskCompleted(task)) break;
         if (isVideoTaskFailed(task)) throw new Error(task.error?.message || "视频生成失败");
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        await delayVideoPoll();
         task = unwrapNewApiVideoResponse((await axios.get<NewApiVideoResponse>(aiApiUrl(config, source, `/video/generations/${created.id}`), { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
     }
 
-    const videoUrl = task.url || task.videoUrl;
+    const videoUrl = findVideoUrl(task);
     if (!videoUrl) throw new Error("视频接口没有返回视频地址");
-    const dataUrl = await fetchImageUrlAsDataUrl(videoUrl, "video/mp4");
-    const response = await fetch(dataUrl);
+    const response = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
     refreshRemoteUser(config);
-    return response.blob();
+    return response;
 }
 
 async function buildChatVideoContent(config: AiConfig, prompt: string, references: ReferenceImage[]) {
@@ -260,14 +285,16 @@ function normalizeVideoResolution(value: string) {
     return `${resolution}p`;
 }
 
-function unwrapVideoResponse(payload: ApiVideoResponse) {
+function unwrapVideoTask(payload: ApiVideoResponse): NewApiVideoTask {
     if (!payload) throw new Error("接口没有返回视频任务");
     if ("code" in payload && typeof payload.code === "number") {
         if (payload.code !== 0) throw new Error(payload.msg || "请求失败");
         if (!payload.data) throw new Error("接口没有返回视频任务");
-        return payload.data;
+        return unwrapVideoTask(payload.data);
     }
-    return payload;
+    const task = findVideoTask(payload);
+    if (!task) throw new Error("接口没有返回视频任务");
+    return task;
 }
 
 function unwrapNewApiVideoResponse(payload: NewApiVideoResponse): NewApiVideoTask {
@@ -290,13 +317,13 @@ function findVideoTask(input: unknown): NewApiVideoTask | null {
     }
     if (typeof input !== "object") return null;
     const record = input as Record<string, unknown>;
-    const id = stringValue(record.id) || stringValue(record.task_id) || stringValue(record.taskId);
     const nested = findNestedVideoFields(record);
-    const url = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || nested.url;
-    const status = stringValue(record.status) || stringValue(record.state);
+    const id = stringValue(record.id) || stringValue(record.task_id) || stringValue(record.taskId) || nested.id;
+    const url = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output) || nested.url;
+    const status = stringValue(record.status) || stringValue(record.state) || nested.status;
     if (id || url || status) {
         const errorMessage = stringValue((record.error as Record<string, unknown> | undefined)?.message) || stringValue(record.error_message) || stringValue(record.fail_reason);
-        return { id: id || nested.id, url, videoUrl: stringValue(record.videoUrl), status: status || nested.status, error: errorMessage ? { message: errorMessage } : undefined };
+        return { id, url, videoUrl: stringValue(record.videoUrl), output: record.output, status, error: errorMessage ? { message: errorMessage } : undefined };
     }
     for (const value of Object.values(record)) {
         const task = findVideoTask(value);
@@ -319,7 +346,7 @@ function findNestedVideoFields(input: unknown, depth = 0): { id: string; status:
     const direct = {
         id: stringValue(record.id) || stringValue(record.task_id) || stringValue(record.taskId),
         status: stringValue(record.status) || stringValue(record.state),
-        url: stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl),
+        url: stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output),
     };
     if (direct.url) return direct;
     for (const value of Object.values(record)) {
@@ -355,13 +382,18 @@ function findVideoUrl(input: unknown): string {
     }
     if (typeof input !== "object") return "";
     const record = input as Record<string, unknown>;
-    const direct = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url);
+    const direct = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output);
     if (direct) return direct;
     for (const value of Object.values(record)) {
         const url = findVideoUrl(value);
         if (url) return url;
     }
     return "";
+}
+
+function directHttpUrl(value: unknown) {
+    const text = stringValue(value);
+    return /^https?:\/\//i.test(text) ? text : "";
 }
 
 function parseJsonString(value: string) {
@@ -380,7 +412,7 @@ function findVideoUrlInText(value: string) {
 }
 
 function isVideoTaskCompleted(task: NewApiVideoTask) {
-    return Boolean(task.url || task.videoUrl) || isVideoStatusCompleted(task.status);
+    return Boolean(findVideoUrl(task)) || isVideoStatusCompleted(task.status);
 }
 
 function isVideoTaskFailed(task: NewApiVideoTask) {
@@ -395,20 +427,62 @@ function isVideoStatusFailed(status?: string) {
     return ["failed", "cancelled", "canceled", "error"].includes((status || "").toLowerCase());
 }
 
-function shouldFallbackToLegacyVideoApi(error: unknown) {
-    return axios.isAxiosError(error) && [404, 405].includes(error.response?.status || 0);
-}
-
 function shouldFallbackToTaskVideoApi(error: unknown) {
     return axios.isAxiosError(error) && [400, 404, 405].includes(error.response?.status || 0);
 }
 
-function isGrokChatVideoModel(model: string) {
+function shouldFallbackToNextVideoSource(error: unknown) {
+    return shouldFallbackToTaskVideoApi(error) || (error instanceof Error && /没有返回视频地址/.test(error.message));
+}
+
+function isGrokVideosMultipartModel(model: string) {
     return /^grok-video-3(?:-|$)/i.test(model.trim());
 }
 
 function isSoraVideoModel(model: string) {
     return /^sora(?:-|$)/i.test(model.trim());
+}
+
+function isVeoVideoModel(model: string) {
+    return /^veo(?:[_-]|$)/i.test(model.trim());
+}
+
+function isJsonVideosFirstModel(model: string) {
+    return isSoraVideoModel(model) || isVeoVideoModel(model);
+}
+
+function videoDownloadHeaders(config: AiConfig, source: VideoApiSource, url: string) {
+    const headers = aiHeaders(config, source);
+    if (!headers || !shouldSendVideoDownloadAuth(source, url)) return undefined;
+    return headers;
+}
+
+function shouldSendVideoDownloadAuth(source: VideoApiSource, url: string) {
+    if (url.startsWith("/api/v1/videos/") || url.startsWith("/api-proxy/videos/")) return true;
+    if (!/^https?:\/\//i.test(url) || !source.baseUrl) return false;
+    try {
+        const target = new URL(url);
+        const baseCandidates = [source.baseUrl, source.baseUrl.endsWith("/v1") ? source.baseUrl : `${source.baseUrl}/v1`];
+        return baseCandidates.some((base) => {
+            const apiRoot = new URL(base);
+            const rootPath = apiRoot.pathname.replace(/\/+$/, "");
+            return target.origin === apiRoot.origin && target.pathname.startsWith(`${rootPath}/videos/`);
+        });
+    } catch {
+        return false;
+    }
+}
+
+async function fetchVideoUrlAsBlob(url: string, headers?: Record<string, string>) {
+    const response = await fetch(url, { cache: "no-store", headers });
+    if (!response.ok) throw new Error(`视频 URL 下载失败：HTTP ${response.status}`);
+    const blob = await response.blob();
+    await assertVideoBlob(blob);
+    return blob;
+}
+
+function delayVideoPoll() {
+    return new Promise((resolve) => setTimeout(resolve, VIDEO_POLL_INTERVAL_MS));
 }
 
 function readAxiosError(error: unknown, fallback: string) {
