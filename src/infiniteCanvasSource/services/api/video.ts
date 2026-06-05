@@ -122,13 +122,13 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
 
     for (const source of sources) {
         const labelPrefix = sources.length > 1 ? `${source.label} ` : "";
-        if (isJsonVideosFirstModel(model) && !references.length) {
-            const result = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, model), shouldFallbackToNextVideoSource);
+        if (isJsonVideosFirstModel(model)) {
+            const result = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
             if (result) return result;
         }
 
-        // GeekNow 的 Grok Pro 和带参考图的 Sora/Veo 需要 multipart /videos，不能先走聊天接口。
-        if (isGrokVideosMultipartModel(model) || ((isSoraVideoModel(model) || isVeoVideoModel(model)) && references.length)) {
+        // GeekNow 的 Grok Pro 需要 multipart /videos，不能先走聊天接口。
+        if (isGrokVideosMultipartModel(model)) {
             const result = await tryGeneration(`${labelPrefix}OpenAI multipart /videos`, () => requestOpenAiVideosMultipartGeneration(config, source, prompt, references, model, false), shouldFallbackToNextVideoSource);
             if (result) return result;
         }
@@ -136,14 +136,9 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
         const taskResult = await tryGeneration(`${labelPrefix}NewAPI 任务 /video/generations`, () => requestNewApiVideoGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
         if (taskResult) return taskResult;
 
-        if (!(isGrokVideosMultipartModel(model) || ((isSoraVideoModel(model) || isVeoVideoModel(model)) && references.length))) {
+        if (!isGrokVideosMultipartModel(model)) {
             const openAiResult = await tryGeneration(`${labelPrefix}OpenAI multipart /videos`, () => requestOpenAiVideosMultipartGeneration(config, source, prompt, references, model, !isJsonVideosFirstModel(model)), shouldFallbackToNextVideoSource);
             if (openAiResult) return openAiResult;
-        }
-
-        if (isJsonVideosFirstModel(model) && references.length) {
-            const jsonResult = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, model), shouldFallbackToNextVideoSource);
-            if (jsonResult) return jsonResult;
         }
 
         const chatResult = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
@@ -153,13 +148,16 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
     throw buildVideoGenerationError(failures);
 }
 
-async function requestOpenAiVideosJsonGeneration(config: AiConfig, source: VideoApiSource, prompt: string, model: string) {
+async function requestOpenAiVideosJsonGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string) {
     const payload: Record<string, unknown> = {
         model,
         prompt,
         seconds: normalizeVideoSeconds(config.videoSeconds),
         size: normalizeVideoSize(config.size) || undefined,
     };
+    const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
+    // 部分 NewAPI 中转站的 Sora/Veo 图生视频不接受 multipart，但接受 JSON image 字段。
+    if (images.length) payload.image = images.length === 1 ? images[0] : images;
     const created = unwrapVideoTask((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), payload, { headers: { ...aiHeaders(config, source), "Content-Type": "application/json" }, timeout: requestTimeout(source) })).data);
     return waitOpenAiVideoResult(config, source, created, model);
 }

@@ -225,12 +225,11 @@ describe("canvas video api", () => {
         ]);
     });
 
-    it("uses multipart videos endpoint for Sora models with references", async () => {
+    it("uses JSON videos endpoint with image payload for Sora models with references", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-1", status: "queued" } });
         (axios.get as Mock)
-            .mockResolvedValueOnce({ data: { id: "task-1", status: "completed" } })
-            .mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
-        vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch should not be called"));
+            .mockResolvedValueOnce({ data: { id: "task-1", status: "completed", video_url: "https://cdn.example.com/sora-ref.mp4" } });
+        vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
 
         const reference = {
             id: "ref-1",
@@ -239,7 +238,7 @@ describe("canvas video api", () => {
             dataUrl: "data:image/png;base64,cmVm",
         };
 
-        const blob = await requestVideoGeneration({
+        await requestVideoGeneration({
             ...defaultConfig,
             videoBaseUrl: "https://api.example.com/v1",
             videoApiKey: "video-key",
@@ -251,26 +250,19 @@ describe("canvas video api", () => {
 
         const [url, body] = (axios.post as Mock).mock.calls[0];
         expect(url).toBe("https://api.example.com/v1/videos");
-        expect(body).toBeInstanceOf(FormData);
-        expect(body.get("model")).toBe("sora-2");
-        expect(body.get("prompt")).toBe("prompt");
-        expect(body.get("seconds")).toBe("6");
-        expect(body.get("size")).toBe("1280x720");
-        expect(body.get("input_reference")).toBeInstanceOf(File);
-        expect(body.has("input_reference[]")).toBe(false);
-        expect(body.has("resolution_name")).toBe(false);
-        expect(body.has("preset")).toBe(false);
+        expect(body).toEqual(expect.objectContaining({
+            model: "sora-2",
+            prompt: "prompt",
+            seconds: "6",
+            size: "1280x720",
+            image: "data:image/png;base64,cmVm",
+        }));
         expect(axios.get).toHaveBeenNthCalledWith(
             1,
             "https://api.example.com/v1/videos/task-1",
             expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }) }),
         );
-        expect(axios.get).toHaveBeenNthCalledWith(
-            2,
-            "https://api.example.com/v1/videos/task-1/content",
-            expect.objectContaining({ responseType: "blob" }),
-        );
-        expect(blob.type).toBe("video/mp4");
+        expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/sora-ref.mp4", expect.any(Object));
     });
 
     it("reads nested NewAPI video result url", async () => {
