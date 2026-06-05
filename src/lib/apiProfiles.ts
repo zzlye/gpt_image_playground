@@ -85,6 +85,7 @@ export const LOCKED_OPENAI_API_PROFILES = LOCKED_OPENAI_PROFILE_DEFINITIONS
 
 const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
 const CLOUD_SYNC_PROVIDERS = new Set<CloudSyncProvider>([
+  'local-file',
   'webdav',
   'google-drive',
   'onedrive',
@@ -113,7 +114,7 @@ export const DEFAULT_CLOUD_SYNC_SETTINGS: CloudSyncSettings = {
   pullTasks: true,
   pullCanvasProjects: true,
   pullAssets: true,
-  provider: 'webdav',
+  provider: 'local-file',
   endpoint: '',
   username: '',
   password: '',
@@ -377,6 +378,7 @@ function normalizeCloudSyncSettings(value: unknown): CloudSyncSettings {
     folderId: typeof record.folderId === 'string' ? record.folderId.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.folderId,
     remotePath: typeof record.remotePath === 'string' && record.remotePath.trim() ? record.remotePath.trim() : DEFAULT_CLOUD_SYNC_SETTINGS.remotePath,
     fileName: fileName.endsWith('.zip') ? fileName : `${fileName}.zip`,
+    localFileName: typeof record.localFileName === 'string' && record.localFileName.trim() ? record.localFileName.trim() : undefined,
     lastUploadAt: normalizeApiBalanceUpdatedAt(record.lastUploadAt),
     lastPullAt: normalizeApiBalanceUpdatedAt(record.lastPullAt),
     lastAutoSyncAt: normalizeApiBalanceUpdatedAt(record.lastAutoSyncAt),

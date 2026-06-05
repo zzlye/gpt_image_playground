@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { hasCloudSyncUploadScope, isCloudSyncReady, uploadDataBackupToCloud } from '../lib/cloudSync'
+import { hasLocalSyncFileHandle } from '../lib/localFileSync'
 import { useStore } from '../store'
 
 export default function DataSyncManager() {
@@ -13,6 +14,7 @@ export default function DataSyncManager() {
     const runAutoSync = async () => {
       const latest = useStore.getState().settings.cloudSync
       if (runningRef.current || !latest.enabled || !latest.autoSync || !isCloudSyncReady(latest) || !hasCloudSyncUploadScope(latest)) return
+      if (latest.provider === 'local-file' && !(await hasLocalSyncFileHandle())) return
 
       const lastUploadAt = latest.lastUploadAt ?? 0
       if (Date.now() - lastUploadAt < intervalMs) return
@@ -44,6 +46,7 @@ export default function DataSyncManager() {
     cloudSync.endpoint,
     cloudSync.fileName,
     cloudSync.folderId,
+    cloudSync.localFileName,
     cloudSync.password,
     cloudSync.provider,
     cloudSync.uploadAssets,

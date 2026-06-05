@@ -10,6 +10,7 @@ export type BuiltInApiProvider = 'openai' | 'fal'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
 export type CloudSyncProvider =
+  | 'local-file'
   | 'webdav'
   | 'google-drive'
   | 'onedrive'
@@ -135,6 +136,8 @@ export interface CloudSyncSettings {
   remotePath: string
   /** 远端固定备份文件名 */
   fileName: string
+  /** 本地硬盘备份文件名 */
+  localFileName?: string
   /** 最近一次上传成功时间 */
   lastUploadAt?: number
   /** 最近一次拉取成功时间 */

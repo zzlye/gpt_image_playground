@@ -1,16 +1,18 @@
 import type { CloudSyncProvider, CloudSyncSettings } from '../types'
 import { createDataExportFile, getFullDataExportOptions, importData, useStore, type ExportOptions } from '../store'
+import { ensureZipFileName, isLocalFileSyncSupported, readLocalSyncFile, writeLocalSyncFile } from './localFileSync'
 
 export type CloudSyncProviderInfo = {
   value: CloudSyncProvider
   label: string
-  protocol: 'webdav' | 'google-drive' | 'onedrive' | 'dropbox' | 'custom-api' | 'bridge'
+  protocol: 'local-file' | 'webdav' | 'google-drive' | 'onedrive' | 'dropbox' | 'custom-api' | 'bridge'
   direct: boolean
   help: string
   docsUrl?: string
 }
 
 export const CLOUD_SYNC_PROVIDER_OPTIONS: CloudSyncProviderInfo[] = [
+  { value: 'local-file', label: '本地硬盘文件', protocol: 'local-file', direct: true, help: '选择电脑上的一个备份 zip 文件，之后手动同步和自动同步都会直接写入这个文件。' },
   { value: 'webdav', label: 'WebDAV 通用', protocol: 'webdav', direct: true, help: '适合自建盘和支持 WebDAV 的网盘。', docsUrl: 'https://datatracker.ietf.org/doc/html/rfc4918' },
   { value: 'nextcloud', label: 'Nextcloud / ownCloud', protocol: 'webdav', direct: true, help: '填写 Nextcloud/ownCloud 的 WebDAV 地址和应用密码。' },
   { value: 'jianguoyun', label: '坚果云', protocol: 'webdav', direct: true, help: '坚果云使用 WebDAV 地址、账号和应用密码同步。' },
@@ -39,6 +41,7 @@ export function getCloudSyncProviderInfo(provider: CloudSyncProvider) {
 export function isCloudSyncReady(settings: CloudSyncSettings) {
   const info = getCloudSyncProviderInfo(settings.provider)
   if (!settings.enabled || !info.direct) return false
+  if (settings.provider === 'local-file') return isLocalFileSyncSupported() && Boolean(settings.localFileName?.trim())
   if (WEB_DAV_PROVIDERS.has(settings.provider)) return Boolean(settings.endpoint.trim() && settings.username.trim() && settings.password)
   if (settings.provider === 'google-drive' || settings.provider === 'onedrive' || settings.provider === 'dropbox') return Boolean(settings.token.trim())
   if (settings.provider === 'custom-api') return Boolean(settings.endpoint.trim())
@@ -80,18 +83,13 @@ function assertOk(response: Response, action: string) {
   throw new Error(`${action}失败：HTTP ${response.status}`)
 }
 
-function ensureZipName(fileName: string) {
-  const name = fileName.trim() || 'gpt-image-playground-backup.zip'
-  return name.endsWith('.zip') ? name : `${name}.zip`
-}
-
 function normalizeRemotePath(path: string) {
   const trimmed = path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   return trimmed ? `/${trimmed}` : ''
 }
 
 function getRemoteFilePath(settings: CloudSyncSettings) {
-  return `${normalizeRemotePath(settings.remotePath)}/${ensureZipName(settings.fileName)}`.replace(/\/+/g, '/')
+  return `${normalizeRemotePath(settings.remotePath)}/${ensureZipFileName(settings.fileName)}`.replace(/\/+/g, '/')
 }
 
 function appendPathToUrl(baseUrl: string, remotePath: string) {
@@ -145,7 +143,7 @@ function googleDriveQueryValue(value: string) {
 }
 
 async function findGoogleDriveFile(settings: CloudSyncSettings) {
-  const queryParts = [`name='${googleDriveQueryValue(ensureZipName(settings.fileName))}'`, 'trashed=false']
+  const queryParts = [`name='${googleDriveQueryValue(ensureZipFileName(settings.fileName))}'`, 'trashed=false']
   if (settings.folderId.trim()) queryParts.push(`'${googleDriveQueryValue(settings.folderId.trim())}' in parents`)
   const url = new URL('https://www.googleapis.com/drive/v3/files')
   url.searchParams.set('q', queryParts.join(' and '))
@@ -175,7 +173,7 @@ async function uploadGoogleDrive(settings: CloudSyncSettings, blob: Blob) {
 
   const boundary = `sync-${Date.now().toString(36)}`
   const metadata = {
-    name: ensureZipName(settings.fileName),
+    name: ensureZipFileName(settings.fileName),
     mimeType: 'application/zip',
     ...(settings.folderId.trim() ? { parents: [settings.folderId.trim()] } : {}),
   }
@@ -261,8 +259,8 @@ async function downloadDropbox(settings: CloudSyncSettings) {
 
 async function uploadCustomApi(settings: CloudSyncSettings, blob: Blob) {
   const formData = new FormData()
-  formData.append('file', blob, ensureZipName(settings.fileName))
-  formData.append('fileName', ensureZipName(settings.fileName))
+  formData.append('file', blob, ensureZipFileName(settings.fileName))
+  formData.append('fileName', ensureZipFileName(settings.fileName))
   formData.append('remotePath', normalizeRemotePath(settings.remotePath))
   const response = await fetch(settings.endpoint, {
     method: 'POST',
@@ -274,7 +272,7 @@ async function uploadCustomApi(settings: CloudSyncSettings, blob: Blob) {
 
 async function downloadCustomApi(settings: CloudSyncSettings) {
   const url = new URL(settings.endpoint)
-  url.searchParams.set('fileName', ensureZipName(settings.fileName))
+  url.searchParams.set('fileName', ensureZipFileName(settings.fileName))
   url.searchParams.set('remotePath', normalizeRemotePath(settings.remotePath))
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -284,7 +282,8 @@ async function downloadCustomApi(settings: CloudSyncSettings) {
   return response.blob()
 }
 
-async function uploadBlob(settings: CloudSyncSettings, blob: Blob) {
+async function uploadBlob(settings: CloudSyncSettings, blob: Blob, options: { auto?: boolean } = {}) {
+  if (settings.provider === 'local-file') return writeLocalSyncFile(blob, settings.fileName, { allowPrompt: !options.auto })
   if (WEB_DAV_PROVIDERS.has(settings.provider)) return uploadWebDav(settings, blob)
   if (settings.provider === 'google-drive') return uploadGoogleDrive(settings, blob)
   if (settings.provider === 'onedrive') return uploadOneDrive(settings, blob)
@@ -294,6 +293,7 @@ async function uploadBlob(settings: CloudSyncSettings, blob: Blob) {
 }
 
 async function downloadBlob(settings: CloudSyncSettings) {
+  if (settings.provider === 'local-file') return readLocalSyncFile({ allowPrompt: true })
   if (WEB_DAV_PROVIDERS.has(settings.provider)) return downloadWebDav(settings)
   if (settings.provider === 'google-drive') return downloadGoogleDrive(settings)
   if (settings.provider === 'onedrive') return downloadOneDrive(settings)
@@ -306,22 +306,23 @@ export async function uploadDataBackupToCloud(settings: CloudSyncSettings, optio
   if (!isCloudSyncReady(settings)) throw new Error('请先完整填写可用的同步配置')
   if (!hasCloudSyncUploadScope(settings)) throw new Error('请至少勾选一个上传同步范围')
   const exportFile = await createDataExportFile(getCloudSyncExportOptions(settings))
-  await uploadBlob(settings, exportFile.blob)
+  const localFile = await uploadBlob(settings, exportFile.blob, { auto: options.auto })
   const cloudSync = {
     ...settings,
+    ...(settings.provider === 'local-file' && localFile?.name ? { localFileName: localFile.name } : {}),
     lastUploadAt: Date.now(),
     lastAutoSyncAt: options.auto ? Date.now() : settings.lastAutoSyncAt,
     lastError: undefined,
   }
   useStore.getState().setSettings({ cloudSync })
-  if (!options.silent) useStore.getState().showToast('已上传数据备份到网盘', 'success')
+  if (!options.silent) useStore.getState().showToast(settings.provider === 'local-file' ? '已写入本地备份文件' : '已上传数据备份到网盘', 'success')
 }
 
 export async function pullDataBackupFromCloud(settings: CloudSyncSettings) {
   if (!isCloudSyncReady(settings)) throw new Error('请先完整填写可用的同步配置')
   if (!hasCloudSyncPullScope(settings)) throw new Error('请至少勾选一个拉取导入范围')
   const blob = await downloadBlob(settings)
-  const file = new File([blob], ensureZipName(settings.fileName), { type: 'application/zip' })
+  const file = blob instanceof File ? blob : new File([blob], ensureZipFileName(settings.fileName), { type: 'application/zip' })
   const imported = await importData(file, {
     importConfig: false,
     importTasks: settings.pullTasks,
@@ -332,6 +333,7 @@ export async function pullDataBackupFromCloud(settings: CloudSyncSettings) {
   useStore.getState().setSettings({
     cloudSync: {
       ...settings,
+      ...(settings.provider === 'local-file' ? { localFileName: file.name } : {}),
       lastPullAt: Date.now(),
       lastError: undefined,
     },

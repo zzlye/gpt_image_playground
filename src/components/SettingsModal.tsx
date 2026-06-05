@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Cloud, CloudDownload, CloudUpload, RefreshCw } from 'lucide-react'
+import { Cloud, CloudDownload, CloudUpload, HardDrive, RefreshCw } from 'lucide-react'
 import { normalizeBaseUrl } from '../lib/api'
 import { buildApiUrl, isApiProxyAvailable, isApiProxyLocked, readClientDevProxyConfig, shouldUseApiProxy } from '../lib/devProxy'
 import { useStore, exportData, importData, clearData, type SettingsTab } from '../store'
@@ -30,6 +30,7 @@ import { copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboar
 import { queryNewApiBalance } from '../lib/newApi'
 import { parseModelListPayload } from '../lib/modelList'
 import { CLOUD_SYNC_PROVIDER_OPTIONS, getCloudSyncProviderInfo, hasCloudSyncPullScope, hasCloudSyncUploadScope, isCloudSyncReady, pullDataBackupFromCloud, uploadDataBackupToCloud } from '../lib/cloudSync'
+import { chooseLocalSyncFile, clearLocalSyncFile, getLocalSyncFileInfo, hasLocalSyncFileHandle, isLocalFileSyncSupported } from '../lib/localFileSync'
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type AppSettings, type CloudSyncProvider, type CustomProviderDefinition } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
@@ -667,6 +668,9 @@ export default function SettingsModal() {
   const [clearAssets, setClearAssets] = useState(false)
   const [isImportingData, setIsImportingData] = useState(false)
   const [isCloudSyncBusy, setIsCloudSyncBusy] = useState(false)
+  const [isChoosingLocalSyncFile, setIsChoosingLocalSyncFile] = useState(false)
+  const [localSyncFileName, setLocalSyncFileName] = useState('')
+  const [localSyncFileReady, setLocalSyncFileReady] = useState(false)
   const [isImportingJson, setIsImportingJson] = useState(false)
   const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null)
   const [dragOverProfileId, setDragOverProfileId] = useState<string | null>(null)
@@ -768,6 +772,19 @@ export default function SettingsModal() {
   useEffect(() => {
     if (showSettings && settingsTabRequest) setActiveTab(settingsTabRequest)
   }, [settingsTabRequest, showSettings])
+
+  useEffect(() => {
+    if (!showSettings) return
+    void Promise.all([getLocalSyncFileInfo(), hasLocalSyncFileHandle()]).then(([info, hasHandle]) => {
+      const name = info?.name ?? ''
+      setLocalSyncFileName(name)
+      setLocalSyncFileReady(hasHandle)
+      if (!name || normalizeSettings(useStore.getState().settings).cloudSync.localFileName) return
+      const cloudSync = { ...normalizeSettings(useStore.getState().settings).cloudSync, localFileName: name }
+      setSettings({ cloudSync })
+      setDraft((current) => normalizeSettings({ ...current, cloudSync }))
+    })
+  }, [setSettings, showSettings])
 
   useEffect(() => {
     setExportCanvasProjectIds((ids) => ids.filter((id) => canvasProjects.some((project) => project.id === id)))
@@ -1033,9 +1050,12 @@ export default function SettingsModal() {
   const canClearData = clearConfig || clearTasks || clearCanvasProjects || clearAssets
   const cloudSync = draft.cloudSync
   const cloudSyncInfo = getCloudSyncProviderInfo(cloudSync.provider)
+  const isLocalFileSync = cloudSync.provider === 'local-file'
+  const localFileSyncSupported = isLocalFileSyncSupported()
+  const displayLocalSyncFileName = localSyncFileName || cloudSync.localFileName || ''
   const cloudSyncReady = isCloudSyncReady(cloudSync)
-  const cloudSyncUploadReady = cloudSyncReady && hasCloudSyncUploadScope(cloudSync)
-  const cloudSyncPullReady = cloudSyncReady && hasCloudSyncPullScope(cloudSync)
+  const cloudSyncUploadReady = isLocalFileSync ? localFileSyncSupported && hasCloudSyncUploadScope(cloudSync) : cloudSyncReady && hasCloudSyncUploadScope(cloudSync)
+  const cloudSyncPullReady = isLocalFileSync ? cloudSyncReady && localSyncFileReady && hasCloudSyncPullScope(cloudSync) : cloudSyncReady && hasCloudSyncPullScope(cloudSync)
   const formatCloudSyncTime = (value?: number) => value ? new Date(value).toLocaleString('zh-CN') : '从未'
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1099,6 +1119,31 @@ export default function SettingsModal() {
     } finally {
       setIsCloudSyncBusy(false)
     }
+  }
+
+  const handleChooseLocalSyncFile = async () => {
+    setIsChoosingLocalSyncFile(true)
+    try {
+      const info = await chooseLocalSyncFile(cloudSync.fileName)
+      setLocalSyncFileName(info.name)
+      setLocalSyncFileReady(true)
+      updateCloudSync({ provider: 'local-file', localFileName: info.name, lastError: undefined })
+      showToast('已选择本地备份文件', 'success')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      updateCloudSync({ lastError: message })
+      showToast(message, 'error')
+    } finally {
+      setIsChoosingLocalSyncFile(false)
+    }
+  }
+
+  const handleClearLocalSyncFile = async () => {
+    await clearLocalSyncFile()
+    setLocalSyncFileName('')
+    setLocalSyncFileReady(false)
+    updateCloudSync({ localFileName: undefined })
+    showToast('已清除本地备份文件授权', 'success')
   }
 
   const createNewProfile = () => {
@@ -2487,7 +2532,7 @@ export default function SettingsModal() {
                       </label>
 
                       <label className="block">
-                        <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">远端文件名</span>
+                        <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">{isLocalFileSync ? '备份文件名' : '远端文件名'}</span>
                         <input
                           value={cloudSync.fileName}
                           onChange={(e) => updateCloudSync({ fileName: e.target.value })}
@@ -2506,7 +2551,69 @@ export default function SettingsModal() {
                       ) : null}
                     </div>
 
-                    {cloudSyncInfo.direct ? (
+                    {isLocalFileSync ? (
+                      <div className="grid gap-3">
+                        <div className="rounded-xl border border-gray-100 bg-white/70 p-3 dark:border-white/[0.06] dark:bg-white/[0.04]">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                <HardDrive className="h-4 w-4" />
+                                本地备份文件
+                              </div>
+                              <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                                {displayLocalSyncFileName ? `当前文件：${displayLocalSyncFileName}` : '还没有选择本地备份文件'}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={handleChooseLocalSyncFile}
+                                disabled={isChoosingLocalSyncFile || !localFileSyncSupported}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isChoosingLocalSyncFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5" />}
+                                选择文件
+                              </button>
+                              {displayLocalSyncFileName ? (
+                                <button
+                                  type="button"
+                                  onClick={handleClearLocalSyncFile}
+                                  className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]"
+                                >
+                                  清除授权
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:border-amber-400/10 dark:bg-amber-400/10 dark:text-amber-200">
+                            {localFileSyncSupported
+                              ? '浏览器需要你先手动选择一次文件授权。授权后自动同步会写入这个文件；如果清理浏览器站点数据，授权会失效，但硬盘上的备份文件还在。'
+                              : '当前浏览器或访问地址不支持本地硬盘同步，请使用 Chrome/Edge，并通过 HTTPS 或 localhost 打开。'}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-gray-500 dark:text-gray-400">自动同步间隔</span>
+                            <input
+                              value={cloudSync.autoSyncIntervalMinutes}
+                              onChange={(e) => updateCloudSync({ autoSyncIntervalMinutes: Number(e.target.value) || 5 })}
+                              type="number"
+                              min={5}
+                              step={1}
+                              className="w-full rounded-xl border border-gray-200/70 bg-white/80 px-3 py-2.5 text-sm text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-gray-200 dark:focus:border-blue-500/50"
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <Checkbox checked={cloudSync.autoSync} onChange={(checked) => updateCloudSync({ autoSync: checked })} label={`每 ${Math.max(5, Number(cloudSync.autoSyncIntervalMinutes) || 5)} 分钟自动写入本地文件`} />
+                          <div className="text-xs text-gray-400 dark:text-gray-500">
+                            上次写入：{formatCloudSyncTime(cloudSync.lastUploadAt)}；上次拉取：{formatCloudSyncTime(cloudSync.lastPullAt)}
+                          </div>
+                        </div>
+                      </div>
+                    ) : cloudSyncInfo.direct ? (
                       <>
                         {(cloudSyncInfo.protocol === 'webdav' || cloudSyncInfo.protocol === 'custom-api') && (
                           <label className="block">
