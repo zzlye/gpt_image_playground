@@ -71,6 +71,27 @@ describe("canvas video api", () => {
         expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/sora.mp4", expect.any(Object));
     });
 
+    it("normalizes invalid Sora seconds before sending requests", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "queued" } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "completed", output: "https://cdn.example.com/sora.mp4" } });
+        vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
+
+        await requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "sora-2",
+            videoSeconds: "10",
+            size: "16:9",
+        }, "prompt");
+
+        expect(axios.post).toHaveBeenCalledWith(
+            "https://api.example.com/v1/videos",
+            expect.objectContaining({ model: "sora-2", seconds: "8" }),
+            expect.any(Object),
+        );
+    });
+
     it("keeps authorization when the videos status output points to the content endpoint", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "queued" } });
         (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "completed", output: "https://api.example.com/v1/videos/task-sora/content" } });
@@ -225,6 +246,24 @@ describe("canvas video api", () => {
         ]);
     });
 
+    it("does not hide invalid parameter errors behind fallback 404s", async () => {
+        const invalidSeconds = Object.assign(new Error("invalid seconds"), {
+            isAxiosError: true,
+            response: { status: 400, data: { code: "invalid_seconds", message: "oai sora-2 seconds is invalid (must be 4, 8, or 12)" } },
+        });
+        (axios.post as Mock).mockRejectedValueOnce(invalidSeconds);
+
+        await expect(requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "sora-2",
+            videoSeconds: "10",
+        }, "prompt")).rejects.toThrow("oai sora-2 seconds is invalid");
+
+        expect(axios.post).toHaveBeenCalledTimes(1);
+    });
+
     it("uses JSON videos endpoint with image payload for Sora models with references", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-1", status: "queued" } });
         (axios.get as Mock)
@@ -253,7 +292,7 @@ describe("canvas video api", () => {
         expect(body).toEqual(expect.objectContaining({
             model: "sora-2",
             prompt: "prompt",
-            seconds: "6",
+            seconds: "8",
             size: "1280x720",
             image: "data:image/png;base64,cmVm",
             input_reference: "data:image/png;base64,cmVm",

@@ -146,7 +146,7 @@ async function requestOpenAiVideosJsonGeneration(config: AiConfig, source: Video
     const payload: Record<string, unknown> = {
         model,
         prompt,
-        seconds: normalizeVideoSeconds(config.videoSeconds),
+        seconds: normalizeVideoSecondsForModel(config.videoSeconds, model),
         size: normalizeVideoSize(config.size) || undefined,
     };
     const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
@@ -163,7 +163,7 @@ async function requestOpenAiVideosMultipartGeneration(config: AiConfig, source: 
     const body = new FormData();
     body.append("model", model);
     body.append("prompt", prompt);
-    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
+    body.append("seconds", normalizeVideoSecondsForModel(config.videoSeconds, model));
     if (normalizeVideoSize(config.size)) body.append("size", normalizeVideoSize(config.size)!);
     if (includeLegacyFields) {
         body.append("resolution_name", normalizeVideoResolution(config.vquality));
@@ -218,7 +218,7 @@ async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSo
     const payload: Record<string, unknown> = {
         model,
         prompt,
-        seconds: normalizeVideoSeconds(config.videoSeconds),
+        seconds: normalizeVideoSecondsForModel(config.videoSeconds, model),
         size: normalizeVideoSize(config.size) || undefined,
         resolution: normalizeVideoResolution(config.vquality),
     };
@@ -244,7 +244,8 @@ async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSo
 }
 
 async function buildChatVideoContent(config: AiConfig, prompt: string, references: ReferenceImage[]) {
-    const settingsText = `视频参数：${normalizeVideoSeconds(config.videoSeconds)}秒，${normalizeVideoResolution(config.vquality)}，${videoAspectLabel(config.size)}。`;
+    const model = config.videoModel || config.model;
+    const settingsText = `视频参数：${normalizeVideoSecondsForModel(config.videoSeconds, model)}秒，${normalizeVideoResolution(config.vquality)}，${videoAspectLabel(config.size)}。`;
     const text = `${settingsText}\n\n${prompt}`;
     const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
     if (!images.length) return text;
@@ -264,6 +265,15 @@ function videoAspectLabel(value: string) {
 function normalizeVideoSeconds(value: string) {
     const seconds = Math.floor(Number(value) || 6);
     return String(Math.max(1, Math.min(20, seconds)));
+}
+
+function normalizeVideoSecondsForModel(value: string, model: string) {
+    const seconds = Math.floor(Number(value) || 6);
+    if (!isSoraVideoModel(model)) return normalizeVideoSeconds(value);
+    // Sora 系列只接受 4、8、12 秒，避免旧节点保存的 6s/10s 继续发出后被接口拒绝。
+    if (seconds <= 4) return "4";
+    if (seconds >= 12) return "12";
+    return "8";
 }
 
 function normalizeVideoSize(value: string) {
@@ -423,7 +433,7 @@ function isVideoStatusFailed(status?: string) {
 }
 
 function shouldFallbackToTaskVideoApi(error: unknown) {
-    return axios.isAxiosError(error) && [400, 404, 405].includes(error.response?.status || 0);
+    return axios.isAxiosError(error) && [404, 405].includes(error.response?.status || 0);
 }
 
 function shouldFallbackToNextVideoSource(error: unknown) {

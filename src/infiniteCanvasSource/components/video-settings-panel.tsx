@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { type CanvasTheme } from "@/lib/canvas-theme";
@@ -20,7 +20,8 @@ const sizeOptions = [
     { value: "auto", label: "auto", width: 0, height: 0 },
 ];
 
-const secondOptions = [6, 10, 12, 16, 20];
+const defaultSecondOptions = [6, 10, 12, 16, 20];
+const soraSecondOptions = [4, 8, 12];
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
@@ -31,7 +32,9 @@ type VideoSettingsPanelProps = {
 };
 
 export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
-    const seconds = config.videoSeconds || "6";
+    const videoModel = config.model || config.videoModel;
+    const secondOptions = getVideoSecondOptions(videoModel);
+    const seconds = normalizeVideoSecondsForModel(config.videoSeconds || "6", videoModel);
     const size = normalizeVideoSizeValue(config.size);
     const dimensions = readSizeDimensions(size);
     const resolution = normalizeVideoResolutionValue(config.vquality);
@@ -39,6 +42,11 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         const next = Math.max(1, Math.floor(value || dimensions[key] || 720));
         onConfigChange("size", `${key === "width" ? next : dimensions.width}x${key === "height" ? next : dimensions.height}`);
     };
+
+    useEffect(() => {
+        if ((config.videoSeconds || "") === seconds) return;
+        onConfigChange("videoSeconds", seconds);
+    }, [config.videoSeconds, onConfigChange, seconds]);
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -88,7 +96,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 {value}s
                             </OptionPill>
                         ))}
-                        <NumberInput value={seconds} min={1} max={20} theme={theme} onChange={(value) => onConfigChange("videoSeconds", value)} />
+                        {isSoraVideoModel(videoModel) ? null : <NumberInput value={seconds} min={1} max={20} theme={theme} onChange={(value) => onConfigChange("videoSeconds", value)} />}
                     </div>
                 </SettingGroup>
             </div>
@@ -105,8 +113,8 @@ export function videoSizeLabel(value: string) {
     return sizeOptions.find((item) => item.value === size)?.label || size;
 }
 
-export function videoSecondsLabel(value: string) {
-    return `${value || "6"}s`;
+export function videoSecondsLabel(value: string, model = "") {
+    return `${normalizeVideoSecondsForModel(value || "6", model)}s`;
 }
 
 export function normalizeVideoSizeValue(value: string) {
@@ -119,6 +127,22 @@ export function normalizeVideoResolutionValue(value: string) {
     if (value === "480p" || value === "low") return "480";
     if (value === "720p" || value === "auto" || value === "high" || value === "medium") return "720";
     return value.replace(/p$/i, "") || "720";
+}
+
+export function normalizeVideoSecondsForModel(value: string, model = "") {
+    const seconds = Math.floor(Number(value) || 6);
+    if (!isSoraVideoModel(model)) return String(Math.max(1, Math.min(20, seconds)));
+    if (seconds <= 4) return "4";
+    if (seconds >= 12) return "12";
+    return "8";
+}
+
+function getVideoSecondOptions(model = "") {
+    return isSoraVideoModel(model) ? soraSecondOptions : defaultSecondOptions;
+}
+
+function isSoraVideoModel(model = "") {
+    return /^sora(?:-|$)/i.test(model.trim());
 }
 
 function OptionPill({ selected, theme, onClick, children }: { selected: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
