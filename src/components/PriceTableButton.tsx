@@ -4,6 +4,7 @@ import { QrCode, ReceiptText, X } from 'lucide-react'
 import type { ApiProfile } from '../types'
 import { useStore } from '../store'
 import { buildFixedModelPriceRows } from '../lib/modelPricing'
+import SupportJoinGroupNotice from './SupportJoinGroupNotice'
 
 type PriceTableButtonProps = {
   activeProfile: ApiProfile
@@ -133,8 +134,7 @@ export default function PriceTableButton({ activeProfile, buttonClassName, butto
               <div className="mt-4 text-base font-semibold text-gray-900 dark:text-gray-100">微信：zzlye674</div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">扫码联系获取更多生图模型</div>
               <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium leading-relaxed text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
-                欢迎加入QQ群，进群领取免费额度<br />
-                群号：667324081
+                <SupportJoinGroupNotice />
               </div>
             </div>
           </div>

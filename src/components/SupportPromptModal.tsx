@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { CloseIcon } from './icons'
+import SupportJoinGroupNotice from './SupportJoinGroupNotice'
 
 export default function SupportPromptModal() {
   const supportPromptOpen = useStore((s) => s.supportPromptOpen)
@@ -56,8 +57,7 @@ export default function SupportPromptModal() {
         <p className="px-2 text-center text-[15px] font-medium leading-relaxed text-gray-700 dark:text-gray-200">
           你已经成功生成了超过20张图片!<br />
           需要更多生图模型欢迎联系：zzlye674<br />
-          欢迎加入QQ群，进群领取免费额度<br />
-          群号：667324081
+          <SupportJoinGroupNotice />
         </p>
       </div>
     </div>,

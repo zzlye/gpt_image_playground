@@ -83,6 +83,7 @@ const OPENAI_INTERRUPTED_ERROR = '请求中断'
 const AGENT_STOPPED_MESSAGE = '已停止生成。'
 const AGENT_CONVERSATION_TITLE_MAX_LENGTH = 28
 const ERROR_TOAST_MAX_LENGTH = 80
+const SUPPORT_PROMPT_VERSION = 'qq-free-quota-20260605'
 type ToastType = 'info' | 'success' | 'error'
 type AgentInputDraft = {
   prompt: string
@@ -351,7 +352,7 @@ function countSuccessfulOutputImages(tasks: TaskRecord[]) {
 function skipSupportPromptForImportedData(tasks: TaskRecord[]) {
   const count = countSuccessfulOutputImages(tasks)
   useStore.setState((state) => {
-    if (state.supportPromptDismissed) return {}
+    if (state.supportPromptDismissed && state.supportPromptDismissedVersion === SUPPORT_PROMPT_VERSION) return {}
     if (count < SUPPORT_PROMPT_IMAGE_THRESHOLD) {
       return { supportPromptSkippedForImportedData: false }
     }
@@ -363,7 +364,7 @@ function skipSupportPromptForImportedData(tasks: TaskRecord[]) {
 function showSupportPromptForExistingLocalData(tasks: TaskRecord[]) {
   const count = countSuccessfulOutputImages(tasks)
   useStore.setState((state) => {
-    if (state.supportPromptDismissed || state.supportPromptOpen) return {}
+    if ((state.supportPromptDismissed && state.supportPromptDismissedVersion === SUPPORT_PROMPT_VERSION) || state.supportPromptOpen) return {}
     if (count < SUPPORT_PROMPT_IMAGE_THRESHOLD) {
       return { supportPromptSkippedForImportedData: false }
     }
@@ -374,7 +375,8 @@ function showSupportPromptForExistingLocalData(tasks: TaskRecord[]) {
 
 function maybeOpenSupportPrompt(previousTasks: TaskRecord[], nextTasks: TaskRecord[], taskId: string) {
   const state = useStore.getState()
-  if (state.supportPromptDismissed || state.supportPromptOpen || state.supportPromptSkippedForImportedData) return
+  const currentPromptDismissed = state.supportPromptDismissed && state.supportPromptDismissedVersion === SUPPORT_PROMPT_VERSION
+  if (currentPromptDismissed || state.supportPromptOpen || state.supportPromptSkippedForImportedData) return
 
   const previousTask = previousTasks.find((task) => task.id === taskId)
   const nextTask = nextTasks.find((task) => task.id === taskId)
@@ -625,6 +627,7 @@ export function getPersistedState(state: AppState) {
     agentAssetTab: state.agentAssetTab,
     agentAssetPanelCollapsed: state.agentAssetPanelCollapsed,
     supportPromptDismissed: state.supportPromptDismissed,
+    supportPromptDismissedVersion: state.supportPromptDismissedVersion,
     supportPromptOpen: state.supportPromptOpen,
     supportPromptSkippedForImportedData: state.supportPromptSkippedForImportedData,
   }
@@ -679,7 +682,8 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     agentSidebarCollapsed: Boolean(persisted.agentSidebarCollapsed),
     agentAssetTab: persisted.agentAssetTab === 'references' ? 'references' : 'outputs',
     agentAssetPanelCollapsed: Boolean(persisted.agentAssetPanelCollapsed),
-    supportPromptDismissed: Boolean(persisted.supportPromptDismissed),
+    supportPromptDismissed: Boolean(persisted.supportPromptDismissed) && persisted.supportPromptDismissedVersion === SUPPORT_PROMPT_VERSION,
+    supportPromptDismissedVersion: typeof persisted.supportPromptDismissedVersion === 'string' ? persisted.supportPromptDismissedVersion : '',
     supportPromptOpen: Boolean(persisted.supportPromptOpen),
     supportPromptSkippedForImportedData: Boolean(persisted.supportPromptSkippedForImportedData),
     prompt: galleryInputDraft?.prompt ?? '',
@@ -783,6 +787,7 @@ interface AppState {
   setShowSettings: (v: boolean, tab?: SettingsTab) => void
   supportPromptOpen: boolean
   supportPromptDismissed: boolean
+  supportPromptDismissedVersion: string
   supportPromptSkippedForImportedData: boolean
   setSupportPromptOpen: (v: boolean) => void
   dismissSupportPrompt: () => void
@@ -1432,9 +1437,10 @@ export const useStore = create<AppState>()(
       },
       supportPromptOpen: false,
       supportPromptDismissed: false,
+      supportPromptDismissedVersion: '',
       supportPromptSkippedForImportedData: false,
       setSupportPromptOpen: (supportPromptOpen) => set({ supportPromptOpen }),
-      dismissSupportPrompt: () => set({ supportPromptOpen: false, supportPromptDismissed: true }),
+      dismissSupportPrompt: () => set({ supportPromptOpen: false, supportPromptDismissed: true, supportPromptDismissedVersion: SUPPORT_PROMPT_VERSION }),
 
       // Toast
       toast: null,
@@ -4213,7 +4219,7 @@ export async function clearData(options: ClearOptions = { clearConfig: true, cle
   }
 
   if (options.clearConfig) {
-    useStore.setState({ dismissedCodexCliPrompts: [], supportPromptDismissed: false })
+    useStore.setState({ dismissedCodexCliPrompts: [], supportPromptDismissed: false, supportPromptDismissedVersion: '' })
     setSettings({ ...DEFAULT_SETTINGS })
     setParams({ ...DEFAULT_PARAMS })
   }

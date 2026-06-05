@@ -13,7 +13,7 @@ type VideoResponse = { id: string; status?: string; error?: { message?: string }
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
 type NewApiVideoTask = { id: string; status?: string; url?: string; videoUrl?: string; error?: { message?: string } };
 type NewApiVideoResponse = NewApiVideoTask | { code?: number; data?: unknown; msg?: string; error?: { message?: string } };
-type VideoApiSource = { baseUrl: string; apiKey: string; apiProxy: boolean; timeout: number };
+type VideoApiSource = { label: string; baseUrl: string; apiKey: string; apiProxy: boolean; timeout: number; versioned: boolean };
 
 class VideoAttemptError extends Error {
     readonly label: string;
@@ -25,54 +25,73 @@ class VideoAttemptError extends Error {
     }
 }
 
-function resolveVideoApiSource(config: AiConfig): VideoApiSource {
-    const videoBaseUrl = config.videoBaseUrl.trim();
-    const legacyBaseUrl = config.textVideoBaseUrl.trim();
-    const textBaseUrl = config.textBaseUrl.trim();
-    const imageBaseUrl = config.baseUrl.trim();
-    if (videoBaseUrl) {
-        return {
-            baseUrl: videoBaseUrl,
+function resolveVideoApiSources(config: AiConfig): VideoApiSource[] {
+    if (config.channelMode === "remote") return [{ label: "系统后端", baseUrl: "", apiKey: "", apiProxy: false, timeout: Number(config.videoTimeout || config.textVideoTimeout || config.textTimeout || config.timeout), versioned: true }];
+    const candidates = [
+        {
+            label: "视频 API",
+            baseUrl: config.videoBaseUrl.trim(),
             apiKey: config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.textApiKey.trim() || config.apiKey,
             apiProxy: Boolean(config.videoApiProxy),
             timeout: Number(config.videoTimeout || config.textVideoTimeout || config.textTimeout || config.timeout),
-        };
-    }
-    if (legacyBaseUrl) {
-        return {
-            baseUrl: legacyBaseUrl,
+        },
+        {
+            label: "旧文字视频 API",
+            baseUrl: config.textVideoBaseUrl.trim(),
             apiKey: config.textVideoApiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.apiKey,
             apiProxy: Boolean(config.textVideoApiProxy || config.videoApiProxy),
             timeout: Number(config.textVideoTimeout || config.videoTimeout || config.textTimeout || config.timeout),
-        };
-    }
-    if (textBaseUrl) {
-        return {
-            baseUrl: textBaseUrl,
+        },
+        {
+            label: "文字 API",
+            baseUrl: config.textBaseUrl.trim(),
             apiKey: config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey,
             apiProxy: Boolean(config.textApiProxy || config.videoApiProxy || config.textVideoApiProxy),
             timeout: Number(config.textTimeout || config.videoTimeout || config.textVideoTimeout || config.timeout),
-        };
+        },
+        {
+            label: "出图 API",
+            baseUrl: config.baseUrl.trim(),
+            apiKey: config.apiKey || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim(),
+            apiProxy: false,
+            timeout: Number(config.timeout || config.videoTimeout || config.textTimeout || config.textVideoTimeout),
+        },
+    ];
+    const sources: VideoApiSource[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        if (!candidate.baseUrl) continue;
+        const normalizedBaseUrl = candidate.baseUrl.replace(/\/+$/, "");
+        const key = `${normalizedBaseUrl}|${candidate.apiKey}|${candidate.apiProxy}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            sources.push({ ...candidate, baseUrl: normalizedBaseUrl, versioned: true });
+        }
+        if (/\/v1$/i.test(normalizedBaseUrl) && !candidate.apiProxy) {
+            const unversionedBaseUrl = normalizedBaseUrl.replace(/\/v1$/i, "");
+            const unversionedKey = `${unversionedBaseUrl}|${candidate.apiKey}|${candidate.apiProxy}|no-v1`;
+            if (!seen.has(unversionedKey)) {
+                seen.add(unversionedKey);
+                sources.push({ ...candidate, label: `${candidate.label}(无 /v1)`, baseUrl: unversionedBaseUrl, versioned: false });
+            }
+        }
     }
-    return {
-        baseUrl: imageBaseUrl,
-        apiKey: config.apiKey || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim(),
-        apiProxy: false,
-        timeout: Number(config.timeout || config.videoTimeout || config.textTimeout || config.textVideoTimeout),
-    };
+    return sources.length ? sources : [{ label: "出图 API", baseUrl: config.baseUrl.trim().replace(/\/+$/, ""), apiKey: config.apiKey, apiProxy: false, timeout: Number(config.timeout), versioned: true }];
 }
 
-function aiApiUrl(config: AiConfig, path: string) {
+function aiApiUrl(config: AiConfig, source: VideoApiSource, path: string) {
     if (config.channelMode === "remote") return `/api/v1${path}`;
 
     const proxyConfig = readClientDevProxyConfig();
-    const source = resolveVideoApiSource(config);
-    return buildDevApiUrl(source.baseUrl, path, proxyConfig, shouldUseApiProxy(source.apiProxy, proxyConfig));
+    if (shouldUseApiProxy(source.apiProxy, proxyConfig)) return buildDevApiUrl(source.baseUrl, path, proxyConfig, true);
+    if (source.versioned) return buildDevApiUrl(source.baseUrl, path, proxyConfig, false);
+    const endpointPath = path.replace(/^\/+/, "");
+    return source.baseUrl ? `${source.baseUrl}/${endpointPath}` : `/${endpointPath}`;
 }
 
-function aiHeaders(config: AiConfig) {
+function aiHeaders(config: AiConfig, source: VideoApiSource) {
     const token = useUserStore.getState().token;
-    const apiKey = resolveVideoApiSource(config).apiKey;
+    const apiKey = source.apiKey;
     return config.channelMode === "remote" ? (token ? { Authorization: `Bearer ${token}` } : undefined) : { Authorization: `Bearer ${apiKey}` };
 }
 
@@ -80,12 +99,13 @@ function refreshRemoteUser(config: AiConfig) {
     if (config.channelMode === "remote") void useUserStore.getState().hydrateUser();
 }
 
-function requestTimeout(config: AiConfig) {
-    return Math.max(1, resolveVideoApiSource(config).timeout || 120) * 1000;
+function requestTimeout(source: VideoApiSource) {
+    return Math.max(1, source.timeout || 120) * 1000;
 }
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = []) {
     const model = config.videoModel || config.model;
+    const sources = resolveVideoApiSources(config);
     const failures: VideoAttemptError[] = [];
     const tryGeneration = async <T>(label: string, task: () => Promise<T>, shouldContinue: (error: unknown) => boolean) => {
         try {
@@ -98,34 +118,37 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
         }
     };
 
-    // Grok Video 3 在部分兼容站里挂在聊天接口下，直接走视频任务接口会返回 405。
-    if (isGrokChatVideoModel(model)) {
-        const result = await tryGeneration("聊天兼容 /chat/completions", () => requestChatCompletionsVideoGeneration(config, prompt, references, model), shouldFallbackToTaskVideoApi);
-        if (result) return result;
-    }
+    for (const source of sources) {
+        const labelPrefix = sources.length > 1 ? `${source.label} ` : "";
+        // Grok Video 3 在部分兼容站里挂在聊天接口下，直接走视频任务接口会返回 405。
+        if (isGrokChatVideoModel(model)) {
+            const result = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToTaskVideoApi);
+            if (result) return result;
+        }
 
-    // Sora 2 在 NewAPI 里对应 OpenAI 兼容的 /videos multipart 接口。
-    if (isSoraVideoModel(model)) {
-        const result = await tryGeneration("Sora 兼容 /videos", () => requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, true), shouldFallbackToTaskVideoApi);
-        if (result) return result;
-    }
+        // Sora 2 在 NewAPI 里对应 OpenAI 兼容的 /videos multipart 接口。
+        if (isSoraVideoModel(model)) {
+            const result = await tryGeneration(`${labelPrefix}Sora 兼容 /videos`, () => requestOpenAiCompatibleVideoGeneration(config, source, prompt, references, model, true), shouldFallbackToTaskVideoApi);
+            if (result) return result;
+        }
 
-    const taskResult = await tryGeneration("NewAPI 任务 /video/generations", () => requestNewApiVideoGeneration(config, prompt, references, model), shouldFallbackToLegacyVideoApi);
-    if (taskResult) return taskResult;
+        const taskResult = await tryGeneration(`${labelPrefix}NewAPI 任务 /video/generations`, () => requestNewApiVideoGeneration(config, source, prompt, references, model), shouldFallbackToLegacyVideoApi);
+        if (taskResult) return taskResult;
 
-    // NewAPI 兼容接口不可用时，回退到旧版 /videos 流程。
-    const openAiResult = await tryGeneration("OpenAI 兼容 /videos", () => requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, false), shouldFallbackToTaskVideoApi);
-    if (openAiResult) return openAiResult;
+        // NewAPI 兼容接口不可用时，回退到旧版 /videos 流程。
+        const openAiResult = await tryGeneration(`${labelPrefix}OpenAI 兼容 /videos`, () => requestOpenAiCompatibleVideoGeneration(config, source, prompt, references, model, false), shouldFallbackToTaskVideoApi);
+        if (openAiResult) return openAiResult;
 
-    if (!isGrokChatVideoModel(model)) {
-        const chatResult = await tryGeneration("聊天兼容 /chat/completions", () => requestChatCompletionsVideoGeneration(config, prompt, references, model), () => false);
-        if (chatResult) return chatResult;
+        if (!isGrokChatVideoModel(model)) {
+            const chatResult = await tryGeneration(`${labelPrefix}聊天兼容 /chat/completions`, () => requestChatCompletionsVideoGeneration(config, source, prompt, references, model), shouldFallbackToTaskVideoApi);
+            if (chatResult) return chatResult;
+        }
     }
 
     throw buildVideoGenerationError(failures);
 }
 
-async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string, isSoraCompatible: boolean) {
+async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string, isSoraCompatible: boolean) {
     const body = new FormData();
     body.append("model", model);
     body.append("prompt", prompt);
@@ -137,30 +160,30 @@ async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, prompt: 
     }
     const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
     files.forEach((file) => body.append(isSoraCompatible ? "input_reference" : "input_reference[]", file));
-    const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), timeout: requestTimeout(config) })).data);
+    const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), body, { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
     if (!created.id) throw new Error("视频接口没有返回任务 ID");
     for (;;) {
-        const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${created.id}`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(config) })).data);
+        const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, source, `/videos/${created.id}`), { headers: aiHeaders(config, source), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(source) })).data);
         if (isVideoStatusCompleted(video.status)) break;
         if (isVideoStatusFailed(video.status)) throw new Error(video.error?.message || "视频生成失败");
         await new Promise((resolve) => setTimeout(resolve, 2500));
     }
-    const content = await axios.get<Blob>(aiApiUrl(config, `/videos/${created.id}/content`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, responseType: "blob", timeout: requestTimeout(config) });
+    const content = await axios.get<Blob>(aiApiUrl(config, source, `/videos/${created.id}/content`), { headers: aiHeaders(config, source), params: config.channelMode === "remote" ? { model } : undefined, responseType: "blob", timeout: requestTimeout(source) });
     await assertVideoBlob(content.data);
     refreshRemoteUser(config);
     return content.data;
 }
 
-async function requestChatCompletionsVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string) {
+async function requestChatCompletionsVideoGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string) {
     const content = await buildChatVideoContent(config, prompt, references);
     const response = await axios.post(
-        aiApiUrl(config, "/chat/completions"),
+        aiApiUrl(config, source, "/chat/completions"),
         {
             model,
             messages: [{ role: "user", content }],
             stream: false,
         },
-        { headers: { ...aiHeaders(config), "Content-Type": "application/json" }, timeout: requestTimeout(config) },
+        { headers: { ...aiHeaders(config, source), "Content-Type": "application/json" }, timeout: requestTimeout(source) },
     );
     const videoUrl = findVideoUrl(response.data);
     if (!videoUrl) throw new Error("视频接口没有返回视频地址");
@@ -170,7 +193,7 @@ async function requestChatCompletionsVideoGeneration(config: AiConfig, prompt: s
     return videoResponse.blob();
 }
 
-async function requestNewApiVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string) {
+async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSource, prompt: string, references: ReferenceImage[], model: string) {
     const payload: Record<string, unknown> = {
         model,
         prompt,
@@ -181,7 +204,7 @@ async function requestNewApiVideoGeneration(config: AiConfig, prompt: string, re
     const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
     if (images.length) payload.image = images.length === 1 ? images[0] : images;
 
-    const created = unwrapNewApiVideoResponse((await axios.post<NewApiVideoResponse>(aiApiUrl(config, "/video/generations"), payload, { headers: { ...aiHeaders(config), "Content-Type": "application/json" }, timeout: requestTimeout(config) })).data);
+    const created = unwrapNewApiVideoResponse((await axios.post<NewApiVideoResponse>(aiApiUrl(config, source, "/video/generations"), payload, { headers: { ...aiHeaders(config, source), "Content-Type": "application/json" }, timeout: requestTimeout(source) })).data);
     if (!created.id) throw new Error("视频接口没有返回任务 ID");
 
     let task = created;
@@ -189,7 +212,7 @@ async function requestNewApiVideoGeneration(config: AiConfig, prompt: string, re
         if (isVideoTaskCompleted(task)) break;
         if (isVideoTaskFailed(task)) throw new Error(task.error?.message || "视频生成失败");
         await new Promise((resolve) => setTimeout(resolve, 2500));
-        task = unwrapNewApiVideoResponse((await axios.get<NewApiVideoResponse>(aiApiUrl(config, `/video/generations/${created.id}`), { headers: aiHeaders(config), timeout: requestTimeout(config) })).data);
+        task = unwrapNewApiVideoResponse((await axios.get<NewApiVideoResponse>(aiApiUrl(config, source, `/video/generations/${created.id}`), { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
     }
 
     const videoUrl = task.url || task.videoUrl;

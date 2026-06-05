@@ -154,6 +154,37 @@ describe("canvas video api", () => {
         );
     });
 
+    it("tries unversioned API root when versioned video root returns 404", async () => {
+        const notFound = Object.assign(new Error("not found"), {
+            isAxiosError: true,
+            response: { status: 404, data: { error: { message: "not found" } } },
+        });
+        (axios.post as Mock)
+            .mockRejectedValueOnce(notFound)
+            .mockRejectedValueOnce(notFound)
+            .mockRejectedValueOnce(notFound)
+            .mockResolvedValueOnce({ data: { data: { task_id: "task-3", status: "queued" } } });
+        (axios.get as Mock)
+            .mockResolvedValueOnce({ data: { data: { id: "task-3", status: "completed", video_url: "https://cdn.example.com/video.mp4" } } });
+        vi.spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })))
+            .mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
+
+        await requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "veo_3_1",
+        }, "prompt");
+
+        expect((axios.post as Mock).mock.calls.map((call) => call[0])).toEqual([
+            "https://api.example.com/v1/video/generations",
+            "https://api.example.com/v1/videos",
+            "https://api.example.com/v1/chat/completions",
+            "https://api.example.com/video/generations",
+        ]);
+    });
+
     it("uses OpenAI compatible videos endpoint first for Sora models", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-1", status: "queued" } });
         (axios.get as Mock)
