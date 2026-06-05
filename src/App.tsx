@@ -12,6 +12,7 @@ import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams 
 import { LOCKED_WENYUN_BASE_URL, mergeImportedSettings } from './lib/apiProfiles'
 import { getCustomProviderConfigUrl, loadCustomProviderSettingsFromUrl } from './lib/customProviderConfigUrl'
 import { fetchNewApiNotice, type NewApiNoticeItem } from './lib/newApi'
+import { requestPersistentStorage } from './lib/persistentStorage'
 import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigrationNotice'
 import Header from './components/Header'
 import SearchBar from './components/SearchBar'
@@ -93,6 +94,14 @@ export default function App() {
   const announcementAutoOpenAttemptedRef = useRef(false)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
+
+  useEffect(() => {
+    void requestPersistentStorage().then((result) => {
+      if (result.supported && !result.persisted) {
+        console.info('Persistent storage was not granted by the browser.')
+      }
+    })
+  }, [])
 
   const loadAnnouncement = useCallback(async (autoOpen = false) => {
     setAnnouncementLoading(true)
