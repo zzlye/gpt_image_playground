@@ -47,6 +47,15 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
         }
     }
 
+    // Sora 2 在 NewAPI 里对应 OpenAI 兼容的 /videos multipart 接口。
+    if (isSoraVideoModel(model)) {
+        try {
+            return await requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, true);
+        } catch (error) {
+            if (!shouldFallbackToLegacyVideoApi(error)) throw new Error(readAxiosError(error, "视频生成失败"));
+        }
+    }
+
     try {
         return await requestNewApiVideoGeneration(config, prompt, references, model);
     } catch (error) {
@@ -54,28 +63,8 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
     }
 
     // NewAPI 兼容接口不可用时，回退到旧版 /videos 流程。
-    const body = new FormData();
-    body.append("model", model);
-    body.append("prompt", prompt);
-    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
-    if (normalizeVideoSize(config.size)) body.append("size", normalizeVideoSize(config.size)!);
-    body.append("resolution_name", normalizeVideoResolution(config.vquality));
-    body.append("preset", "normal");
-    const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => body.append("input_reference[]", file));
     try {
-        const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), timeout: requestTimeout(config) })).data);
-        if (!created.id) throw new Error("视频接口没有返回任务 ID");
-        for (;;) {
-            const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${created.id}`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(config) })).data);
-            if (video.status === "completed") break;
-            if (video.status === "failed" || video.status === "cancelled") throw new Error(video.error?.message || "视频生成失败");
-            await new Promise((resolve) => setTimeout(resolve, 2500));
-        }
-        const content = await axios.get<Blob>(aiApiUrl(config, `/videos/${created.id}/content`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, responseType: "blob", timeout: requestTimeout(config) });
-        await assertVideoBlob(content.data);
-        refreshRemoteUser(config);
-        return content.data;
+        return await requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, false);
     } catch (error) {
         if (!isGrokChatVideoModel(model) && shouldFallbackToTaskVideoApi(error)) {
             try {
@@ -86,6 +75,32 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
         }
         throw new Error(readAxiosError(error, "视频生成失败"));
     }
+}
+
+async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string, isSoraCompatible: boolean) {
+    const body = new FormData();
+    body.append("model", model);
+    body.append("prompt", prompt);
+    body.append("seconds", normalizeVideoSeconds(config.videoSeconds));
+    if (normalizeVideoSize(config.size)) body.append("size", normalizeVideoSize(config.size)!);
+    if (!isSoraCompatible) {
+        body.append("resolution_name", normalizeVideoResolution(config.vquality));
+        body.append("preset", "normal");
+    }
+    const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    files.forEach((file) => body.append(isSoraCompatible ? "input_reference" : "input_reference[]", file));
+    const created = unwrapVideoResponse((await axios.post<ApiVideoResponse>(aiApiUrl(config, "/videos"), body, { headers: aiHeaders(config), timeout: requestTimeout(config) })).data);
+    if (!created.id) throw new Error("视频接口没有返回任务 ID");
+    for (;;) {
+        const video = unwrapVideoResponse((await axios.get<ApiVideoResponse>(aiApiUrl(config, `/videos/${created.id}`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, timeout: requestTimeout(config) })).data);
+        if (isVideoStatusCompleted(video.status)) break;
+        if (isVideoStatusFailed(video.status)) throw new Error(video.error?.message || "视频生成失败");
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    const content = await axios.get<Blob>(aiApiUrl(config, `/videos/${created.id}/content`), { headers: aiHeaders(config), params: config.channelMode === "remote" ? { model } : undefined, responseType: "blob", timeout: requestTimeout(config) });
+    await assertVideoBlob(content.data);
+    refreshRemoteUser(config);
+    return content.data;
 }
 
 async function requestChatCompletionsVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string) {
@@ -294,12 +309,19 @@ function findVideoUrlInText(value: string) {
 }
 
 function isVideoTaskCompleted(task: NewApiVideoTask) {
-    const status = (task.status || "").toLowerCase();
-    return Boolean(task.url || task.videoUrl) || ["completed", "succeeded", "success", "done"].includes(status);
+    return Boolean(task.url || task.videoUrl) || isVideoStatusCompleted(task.status);
 }
 
 function isVideoTaskFailed(task: NewApiVideoTask) {
-    return ["failed", "cancelled", "canceled", "error"].includes((task.status || "").toLowerCase());
+    return isVideoStatusFailed(task.status);
+}
+
+function isVideoStatusCompleted(status?: string) {
+    return ["completed", "succeeded", "success", "done"].includes((status || "").toLowerCase());
+}
+
+function isVideoStatusFailed(status?: string) {
+    return ["failed", "cancelled", "canceled", "error"].includes((status || "").toLowerCase());
 }
 
 function shouldFallbackToLegacyVideoApi(error: unknown) {
@@ -314,12 +336,33 @@ function isGrokChatVideoModel(model: string) {
     return /^grok-video-3(?:-|$)/i.test(model.trim());
 }
 
+function isSoraVideoModel(model: string) {
+    return /^sora(?:-|$)/i.test(model.trim());
+}
+
 function readAxiosError(error: unknown, fallback: string) {
-    if (axios.isAxiosError<{ error?: { message?: string }; msg?: string; code?: number }>(error)) {
+    if (axios.isAxiosError(error)) {
         const responseData = error.response?.data;
-        return sanitizeApiErrorMessage(responseData?.msg || responseData?.error?.message || (error.response?.status ? `${fallback}：${error.response.status}` : fallback));
+        return sanitizeApiErrorMessage(extractApiErrorMessage(responseData) || (error.response?.status ? `${fallback}：${error.response.status}` : fallback));
     }
     return sanitizeApiErrorMessage(error instanceof Error ? error.message : fallback);
+}
+
+function extractApiErrorMessage(input: unknown): string {
+    if (!input) return "";
+    if (typeof input === "string") return input.trim();
+    if (typeof input !== "object") return "";
+    const record = input as Record<string, unknown>;
+    const direct =
+        stringValue(record.msg) ||
+        stringValue(record.message) ||
+        stringValue(record.detail) ||
+        stringValue(record.reason) ||
+        stringValue(record.error_message) ||
+        stringValue(record.fail_reason);
+    if (direct) return direct;
+    if (typeof record.error === "string") return record.error.trim();
+    return extractApiErrorMessage(record.error) || extractApiErrorMessage(record.data);
 }
 
 async function assertVideoBlob(blob: Blob) {

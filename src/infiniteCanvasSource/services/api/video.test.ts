@@ -1,5 +1,5 @@
 import axios from "axios";
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { defaultConfig } from "../../stores/use-config-store";
 import { requestVideoGeneration } from "./video";
@@ -13,6 +13,10 @@ vi.mock("axios", () => ({
 }));
 
 describe("canvas video api", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     afterEach(() => {
         vi.restoreAllMocks();
     });
@@ -85,6 +89,53 @@ describe("canvas video api", () => {
         expect(axios.get).toHaveBeenCalledWith(
             "https://api.example.com/v1/video/generations/task-1",
             expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }) }),
+        );
+        expect(blob.type).toBe("video/mp4");
+    });
+
+    it("uses OpenAI compatible videos endpoint first for Sora models", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-1", status: "queued" } });
+        (axios.get as Mock)
+            .mockResolvedValueOnce({ data: { id: "task-1", status: "completed" } })
+            .mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
+
+        const reference = {
+            id: "ref-1",
+            name: "reference.png",
+            type: "image/png",
+            dataUrl: "data:image/png;base64,cmVm",
+        };
+
+        const blob = await requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "sora-2",
+            videoSeconds: "6",
+            vquality: "720",
+            size: "16:9",
+        }, "prompt", [reference]);
+
+        const [url, body] = (axios.post as Mock).mock.calls[0];
+        expect(url).toBe("https://api.example.com/v1/videos");
+        expect(body).toBeInstanceOf(FormData);
+        expect(body.get("model")).toBe("sora-2");
+        expect(body.get("prompt")).toBe("prompt");
+        expect(body.get("seconds")).toBe("6");
+        expect(body.get("size")).toBe("1280x720");
+        expect(body.get("input_reference")).toBeInstanceOf(File);
+        expect(body.has("input_reference[]")).toBe(false);
+        expect(body.has("resolution_name")).toBe(false);
+        expect(body.has("preset")).toBe(false);
+        expect(axios.get).toHaveBeenNthCalledWith(
+            1,
+            "https://api.example.com/v1/videos/task-1",
+            expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }) }),
+        );
+        expect(axios.get).toHaveBeenNthCalledWith(
+            2,
+            "https://api.example.com/v1/videos/task-1/content",
+            expect.objectContaining({ responseType: "blob" }),
         );
         expect(blob.type).toBe("video/mp4");
     });
