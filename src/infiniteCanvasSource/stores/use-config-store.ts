@@ -38,6 +38,7 @@ export type AiConfig = {
 };
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
+export const DEFAULT_VIDEO_MODEL = "sora-2";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
@@ -58,7 +59,7 @@ export const defaultConfig: AiConfig = {
     videoTimeout: 120,
     model: "gpt-image-2",
     imageModel: "gpt-image-2",
-    videoModel: "grok-imagine-video",
+    videoModel: DEFAULT_VIDEO_MODEL,
     textModel: "gpt-5.5",
     videoSeconds: "6",
     vquality: "720",
@@ -148,7 +149,7 @@ export const useConfigStore = create<ConfigStore>()(
                         ...config,
                         channelMode: config.channelMode || "remote",
                         imageModel: config.imageModel || config.model,
-                        videoModel: config.videoModel || "grok-imagine-video",
+                        videoModel: normalizeVideoModel(config.videoModel),
                         textModel: config.textModel || config.model,
                         videoSeconds: config.videoSeconds || "6",
                         vquality: config.vquality || "720",
@@ -182,4 +183,11 @@ export function buildApiUrl(baseUrl: string, path: string) {
     const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
     const apiBaseUrl = normalizedBaseUrl.endsWith("/v1") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`;
     return `${apiBaseUrl}${path}`;
+}
+
+function normalizeVideoModel(model: string) {
+    const value = model.trim();
+    // 旧版原画布项目默认模型在当前中转站不可用，迁移到真实可拉取的视频模型。
+    if (!value || /^grok-imagine-video$/i.test(value)) return DEFAULT_VIDEO_MODEL;
+    return value;
 }

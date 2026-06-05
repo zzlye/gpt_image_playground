@@ -1,7 +1,7 @@
 // @ts-nocheck
 import axios from "axios";
 
-import { dataUrlToFile } from "@/lib/image-utils";
+import { dataUrlToFile, getDataUrlByteSize } from "@/lib/image-utils";
 import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
@@ -16,6 +16,9 @@ type NewApiVideoResponse = NewApiVideoTask | { code?: number; data?: unknown; ms
 type VideoApiSource = { label: string; baseUrl: string; apiKey: string; apiProxy: boolean; timeout: number; versioned: boolean };
 
 const VIDEO_POLL_INTERVAL_MS = typeof process !== "undefined" && process.env.NODE_ENV === "test" ? 1 : 2500;
+const VIDEO_REFERENCE_MAX_EDGE = 1920;
+const VIDEO_REFERENCE_MAX_INLINE_BYTES = 8 * 1024 * 1024;
+const VIDEO_REFERENCE_JPEG_QUALITY = 0.88;
 
 class VideoAttemptError extends Error {
     readonly label: string;
@@ -115,7 +118,7 @@ export async function requestVideoGeneration(config: AiConfig, prompt: string, r
     };
 
     for (const source of sources) {
-        const labelPrefix = sources.length > 1 ? `${source.label} ` : "";
+        const labelPrefix = `${formatVideoSourceLabel(source, model)} `;
         if (isJsonVideosFirstModel(model)) {
             const result = await tryGeneration(`${labelPrefix}OpenAI JSON /videos`, () => requestOpenAiVideosJsonGeneration(config, source, prompt, references, model), shouldFallbackToNextVideoSource);
             if (result) return result;
@@ -169,7 +172,7 @@ async function requestOpenAiVideosMultipartGeneration(config: AiConfig, source: 
         body.append("resolution_name", normalizeVideoResolution(config.vquality));
         body.append("preset", "normal");
     }
-    const files = await Promise.all(references.slice(0, 7).map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
+    const files = await Promise.all(references.slice(0, 7).map((image) => imageToVideoReferenceFile(image)));
     files.forEach((file) => body.append(includeLegacyFields ? "input_reference[]" : "input_reference", file));
     const created = unwrapVideoTask((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), body, { headers: aiHeaders(config, source), timeout: requestTimeout(source) })).data);
     return waitOpenAiVideoResult(config, source, created, model);
@@ -288,6 +291,67 @@ function normalizeVideoResolution(value: string) {
     if (value === "auto" || value === "high" || value === "medium") return "720p";
     const resolution = value.replace(/p$/i, "") || "720";
     return `${resolution}p`;
+}
+
+async function imageToVideoReferenceFile(image: ReferenceImage) {
+    const dataUrl = await imageToDataUrl(image);
+    const optimizedDataUrl = await optimizeVideoReferenceDataUrl(dataUrl);
+    return dataUrlToFile({ ...image, name: videoReferenceFileName(image.name), type: "image/jpeg", dataUrl: optimizedDataUrl });
+}
+
+async function optimizeVideoReferenceDataUrl(dataUrl: string) {
+    if (!dataUrl.startsWith("data:image/") || typeof document === "undefined" || typeof Image === "undefined") return dataUrl;
+
+    const image = await loadVideoReferenceImage(dataUrl);
+    const maxEdge = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height);
+    if (maxEdge <= VIDEO_REFERENCE_MAX_EDGE && getDataUrlByteSize(dataUrl) <= VIDEO_REFERENCE_MAX_INLINE_BYTES) return dataUrl;
+
+    const scale = Math.min(1, VIDEO_REFERENCE_MAX_EDGE / Math.max(1, maxEdge));
+    const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return dataUrl;
+    // 视频图生图只需要视觉参考，先压到中转站更稳定接受的尺寸，避免 4K 原图触发接口异常。
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const blob = await canvasToVideoReferenceBlob(canvas);
+    return blobToDataUrl(blob);
+}
+
+function loadVideoReferenceImage(dataUrl: string) {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("视频参考图读取失败，请重新上传或替换这张图片后重试"));
+        image.src = dataUrl;
+    });
+}
+
+function canvasToVideoReferenceBlob(canvas: HTMLCanvasElement) {
+    return new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (!blob) reject(new Error("视频参考图压缩失败"));
+            else resolve(blob);
+        }, "image/jpeg", VIDEO_REFERENCE_JPEG_QUALITY);
+    });
+}
+
+function blobToDataUrl(blob: Blob) {
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("视频参考图读取失败"));
+        reader.readAsDataURL(blob);
+    });
+}
+
+function videoReferenceFileName(name?: string) {
+    const base = (name || "reference").replace(/\.[^.]+$/, "");
+    return `${base || "reference"}.jpg`;
 }
 
 function unwrapVideoTask(payload: ApiVideoResponse): NewApiVideoTask {
@@ -542,7 +606,12 @@ function buildVideoGenerationError(failures: VideoAttemptError[]) {
         .map((failure) => `${failure.label}：${failure.message}`)
         .filter((item, index, array) => array.indexOf(item) === index)
         .join("；");
-    return new Error(visibleFailures.length > 1 ? `视频生成失败：${summary}` : first.message);
+    return new Error(visibleFailures.length > 1 ? `视频生成失败：${summary}` : `视频生成失败：${first.label}：${first.message}`);
+}
+
+function formatVideoSourceLabel(source: VideoApiSource, model: string) {
+    const baseUrl = source.baseUrl ? ` ${source.baseUrl}` : "";
+    return `${source.label}${baseUrl} [${model}]`;
 }
 
 async function assertVideoBlob(blob: Blob) {

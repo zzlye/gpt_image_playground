@@ -43,8 +43,30 @@ function collectModelIds(input: unknown, output: Set<string>, depth = 0) {
   }
 }
 
+const VIDEO_MODEL_PRIORITY = [
+  'sora-2',
+  'sora-2-8s',
+  'sora-2-12s',
+  'veo_3_1',
+  'veo_3_1-fast',
+  'grok-video-3',
+  'grok-video-3-max',
+  'grok-video-3-pro',
+]
+
+function compareModelId(a: string, b: string) {
+  const aPriority = VIDEO_MODEL_PRIORITY.findIndex((model) => model.toLowerCase() === a.toLowerCase())
+  const bPriority = VIDEO_MODEL_PRIORITY.findIndex((model) => model.toLowerCase() === b.toLowerCase())
+  if (aPriority >= 0 || bPriority >= 0) {
+    if (aPriority < 0) return 1
+    if (bPriority < 0) return -1
+    return aPriority - bPriority
+  }
+  return a.localeCompare(b)
+}
+
 export function parseModelListPayload(payload: unknown): string[] {
   const models = new Set<string>()
   collectModelIds(payload, models)
-  return Array.from(models).sort((a, b) => a.localeCompare(b))
+  return Array.from(models).sort(compareModelId)
 }

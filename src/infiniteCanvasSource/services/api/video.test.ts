@@ -388,4 +388,19 @@ describe("canvas video api", () => {
 
         expect(axios.post).not.toHaveBeenCalled();
     });
+
+    it("shows the video source and model when a single source fails", async () => {
+        const upstreamError = Object.assign(new Error("bad request"), {
+            isAxiosError: true,
+            response: { status: 400, data: { message: "模型暂不可用" } },
+        });
+        (axios.post as Mock).mockRejectedValueOnce(upstreamError);
+
+        await expect(requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "grok-video-3-pro",
+        }, "prompt")).rejects.toThrow("视频 API https://api.example.com/v1 [grok-video-3-pro] OpenAI multipart /videos：模型暂不可用");
+    });
 });

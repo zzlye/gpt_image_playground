@@ -20,4 +20,15 @@ describe('parseModelListPayload', () => {
       },
     })).toEqual(['text-model-a', 'video-model-b'])
   })
+
+  it('puts currently stable video models before Grok video models', () => {
+    expect(parseModelListPayload({
+      data: [
+        { id: 'grok-video-3-pro' },
+        { id: 'veo_3_1-fast' },
+        { id: 'sora-2' },
+        { id: 'grok-video-3' },
+      ],
+    })).toEqual(['sora-2', 'veo_3_1-fast', 'grok-video-3', 'grok-video-3-pro'])
+  })
 })
