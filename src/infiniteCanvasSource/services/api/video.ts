@@ -6,25 +6,73 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { ReferenceImage } from "@/types/image";
-import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig } from "../../../lib/devProxy";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
 import { fetchImageUrlAsDataUrl, sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 
 type VideoResponse = { id: string; status?: string; error?: { message?: string } };
 type ApiVideoResponse = VideoResponse | { code?: number; data?: VideoResponse | null; msg?: string };
 type NewApiVideoTask = { id: string; status?: string; url?: string; videoUrl?: string; error?: { message?: string } };
 type NewApiVideoResponse = NewApiVideoTask | { code?: number; data?: unknown; msg?: string; error?: { message?: string } };
+type VideoApiSource = { baseUrl: string; apiKey: string; apiProxy: boolean; timeout: number };
+
+class VideoAttemptError extends Error {
+    readonly label: string;
+
+    constructor(message: string, label: string) {
+        super(message);
+        this.name = "VideoAttemptError";
+        this.label = label;
+    }
+}
+
+function resolveVideoApiSource(config: AiConfig): VideoApiSource {
+    const videoBaseUrl = config.videoBaseUrl.trim();
+    const legacyBaseUrl = config.textVideoBaseUrl.trim();
+    const textBaseUrl = config.textBaseUrl.trim();
+    const imageBaseUrl = config.baseUrl.trim();
+    if (videoBaseUrl) {
+        return {
+            baseUrl: videoBaseUrl,
+            apiKey: config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.textApiKey.trim() || config.apiKey,
+            apiProxy: Boolean(config.videoApiProxy),
+            timeout: Number(config.videoTimeout || config.textVideoTimeout || config.textTimeout || config.timeout),
+        };
+    }
+    if (legacyBaseUrl) {
+        return {
+            baseUrl: legacyBaseUrl,
+            apiKey: config.textVideoApiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.apiKey,
+            apiProxy: Boolean(config.textVideoApiProxy || config.videoApiProxy),
+            timeout: Number(config.textVideoTimeout || config.videoTimeout || config.textTimeout || config.timeout),
+        };
+    }
+    if (textBaseUrl) {
+        return {
+            baseUrl: textBaseUrl,
+            apiKey: config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey,
+            apiProxy: Boolean(config.textApiProxy || config.videoApiProxy || config.textVideoApiProxy),
+            timeout: Number(config.textTimeout || config.videoTimeout || config.textVideoTimeout || config.timeout),
+        };
+    }
+    return {
+        baseUrl: imageBaseUrl,
+        apiKey: config.apiKey || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim(),
+        apiProxy: false,
+        timeout: Number(config.timeout || config.videoTimeout || config.textTimeout || config.textVideoTimeout),
+    };
+}
 
 function aiApiUrl(config: AiConfig, path: string) {
-    const baseUrl = config.videoBaseUrl.trim() || config.textVideoBaseUrl.trim() || config.baseUrl;
     if (config.channelMode === "remote") return `/api/v1${path}`;
 
     const proxyConfig = readClientDevProxyConfig();
-    return buildDevApiUrl(baseUrl, path, proxyConfig, false);
+    const source = resolveVideoApiSource(config);
+    return buildDevApiUrl(source.baseUrl, path, proxyConfig, shouldUseApiProxy(source.apiProxy, proxyConfig));
 }
 
 function aiHeaders(config: AiConfig) {
     const token = useUserStore.getState().token;
-    const apiKey = config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey;
+    const apiKey = resolveVideoApiSource(config).apiKey;
     return config.channelMode === "remote" ? (token ? { Authorization: `Bearer ${token}` } : undefined) : { Authorization: `Bearer ${apiKey}` };
 }
 
@@ -33,48 +81,48 @@ function refreshRemoteUser(config: AiConfig) {
 }
 
 function requestTimeout(config: AiConfig) {
-    return Math.max(1, Number(config.videoTimeout || config.textVideoTimeout || config.timeout) || 120) * 1000;
+    return Math.max(1, resolveVideoApiSource(config).timeout || 120) * 1000;
 }
 
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = []) {
     const model = config.videoModel || config.model;
+    const failures: VideoAttemptError[] = [];
+    const tryGeneration = async <T>(label: string, task: () => Promise<T>, shouldContinue: (error: unknown) => boolean) => {
+        try {
+            return await task();
+        } catch (error) {
+            const message = readAxiosError(error, "视频生成失败");
+            failures.push(new VideoAttemptError(message, label));
+            if (!shouldContinue(error)) throw buildVideoGenerationError(failures);
+            return null;
+        }
+    };
+
     // Grok Video 3 在部分兼容站里挂在聊天接口下，直接走视频任务接口会返回 405。
     if (isGrokChatVideoModel(model)) {
-        try {
-            return await requestChatCompletionsVideoGeneration(config, prompt, references, model);
-        } catch (error) {
-            if (!shouldFallbackToTaskVideoApi(error)) throw new Error(readAxiosError(error, "视频生成失败"));
-        }
+        const result = await tryGeneration("聊天兼容 /chat/completions", () => requestChatCompletionsVideoGeneration(config, prompt, references, model), shouldFallbackToTaskVideoApi);
+        if (result) return result;
     }
 
     // Sora 2 在 NewAPI 里对应 OpenAI 兼容的 /videos multipart 接口。
     if (isSoraVideoModel(model)) {
-        try {
-            return await requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, true);
-        } catch (error) {
-            if (!shouldFallbackToLegacyVideoApi(error)) throw new Error(readAxiosError(error, "视频生成失败"));
-        }
+        const result = await tryGeneration("Sora 兼容 /videos", () => requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, true), shouldFallbackToTaskVideoApi);
+        if (result) return result;
     }
 
-    try {
-        return await requestNewApiVideoGeneration(config, prompt, references, model);
-    } catch (error) {
-        if (!shouldFallbackToLegacyVideoApi(error)) throw new Error(readAxiosError(error, "视频生成失败"));
-    }
+    const taskResult = await tryGeneration("NewAPI 任务 /video/generations", () => requestNewApiVideoGeneration(config, prompt, references, model), shouldFallbackToLegacyVideoApi);
+    if (taskResult) return taskResult;
 
     // NewAPI 兼容接口不可用时，回退到旧版 /videos 流程。
-    try {
-        return await requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, false);
-    } catch (error) {
-        if (!isGrokChatVideoModel(model) && shouldFallbackToTaskVideoApi(error)) {
-            try {
-                return await requestChatCompletionsVideoGeneration(config, prompt, references, model);
-            } catch (chatError) {
-                throw new Error(readAxiosError(chatError, "视频生成失败"));
-            }
-        }
-        throw new Error(readAxiosError(error, "视频生成失败"));
+    const openAiResult = await tryGeneration("OpenAI 兼容 /videos", () => requestOpenAiCompatibleVideoGeneration(config, prompt, references, model, false), shouldFallbackToTaskVideoApi);
+    if (openAiResult) return openAiResult;
+
+    if (!isGrokChatVideoModel(model)) {
+        const chatResult = await tryGeneration("聊天兼容 /chat/completions", () => requestChatCompletionsVideoGeneration(config, prompt, references, model), () => false);
+        if (chatResult) return chatResult;
     }
+
+    throw buildVideoGenerationError(failures);
 }
 
 async function requestOpenAiCompatibleVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[], model: string, isSoraCompatible: boolean) {
@@ -363,6 +411,17 @@ function extractApiErrorMessage(input: unknown): string {
     if (direct) return direct;
     if (typeof record.error === "string") return record.error.trim();
     return extractApiErrorMessage(record.error) || extractApiErrorMessage(record.data);
+}
+
+function buildVideoGenerationError(failures: VideoAttemptError[]) {
+    const visibleFailures = failures.filter((failure) => failure.message.trim());
+    if (!visibleFailures.length) return new Error("视频生成失败");
+    const first = visibleFailures[0];
+    const summary = visibleFailures
+        .map((failure) => `${failure.label}：${failure.message}`)
+        .filter((item, index, array) => array.indexOf(item) === index)
+        .join("；");
+    return new Error(visibleFailures.length > 1 ? `视频生成失败：${summary}` : first.message);
 }
 
 async function assertVideoBlob(blob: Blob) {
