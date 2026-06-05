@@ -24,6 +24,7 @@ describe("canvas video api", () => {
     it("uses multipart videos endpoint first for Grok video 3 pro models", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-grok", status: "processing" } });
         (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-grok", status: "completed", video_url: "https://cdn.example.com/grok-video.mp4" } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
         vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
 
         const blob = await requestVideoGeneration({
@@ -42,14 +43,16 @@ describe("canvas video api", () => {
         expect(body.get("model")).toBe("grok-video-3-pro");
         expect(body.get("prompt")).toBe("prompt");
         expect(body.get("seconds")).toBe("6");
-        expect(axios.get).toHaveBeenCalledTimes(1);
-        expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/grok-video.mp4", expect.any(Object));
+        expect(axios.get).toHaveBeenCalledTimes(2);
+        expect(axios.get).toHaveBeenNthCalledWith(2, "https://api.example.com/v1/videos/task-grok/content", expect.objectContaining({ responseType: "blob" }));
+        expect(fetch).not.toHaveBeenCalled();
         expect(blob.type).toBe("video/mp4");
     });
 
     it("uses JSON videos endpoint first for Sora models without references", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "queued" } });
         (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "completed", output: "https://cdn.example.com/sora.mp4" } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
         vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
 
         await requestVideoGeneration({
@@ -67,8 +70,9 @@ describe("canvas video api", () => {
             expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }) }),
         );
         expect((axios.post as Mock).mock.calls[0][1]).not.toBeInstanceOf(FormData);
-        expect(axios.get).toHaveBeenCalledTimes(1);
-        expect(fetch).toHaveBeenCalledWith("https://cdn.example.com/sora.mp4", expect.any(Object));
+        expect(axios.get).toHaveBeenCalledTimes(2);
+        expect(axios.get).toHaveBeenNthCalledWith(2, "https://api.example.com/v1/videos/task-sora/content", expect.objectContaining({ responseType: "blob" }));
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it("normalizes invalid Sora seconds before sending requests", async () => {
@@ -95,6 +99,32 @@ describe("canvas video api", () => {
     it("keeps authorization when the videos status output points to the content endpoint", async () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "queued" } });
         (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "completed", output: "https://api.example.com/v1/videos/task-sora/content" } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
+
+        await requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "sora-2",
+        }, "prompt");
+
+        expect(axios.get).toHaveBeenNthCalledWith(
+            2,
+            "https://api.example.com/v1/videos/task-sora/content",
+            expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }), responseType: "blob" }),
+        );
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("falls back to direct video url when content download is unavailable", async () => {
+        const notFound = Object.assign(new Error("not found"), {
+            isAxiosError: true,
+            response: { status: 404, data: { error: { message: "not found" } } },
+        });
+        (axios.post as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "queued" } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: { id: "task-sora", status: "completed", output: "https://api.example.com/v1/videos/task-sora/content" } });
+        (axios.get as Mock).mockRejectedValueOnce(notFound);
         vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
 
         await requestVideoGeneration({
@@ -309,6 +339,7 @@ describe("canvas video api", () => {
         (axios.post as Mock).mockResolvedValueOnce({ data: { data: { task_id: "task-2", status: "queued" } } });
         (axios.get as Mock)
             .mockResolvedValueOnce({ data: { data: { id: "task-2", status: "completed", result: { video_url: "https://cdn.example.com/nested.mp4" } } } });
+        (axios.get as Mock).mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
         vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
 
         await expect(requestVideoGeneration({
@@ -317,6 +348,28 @@ describe("canvas video api", () => {
             videoApiKey: "video-key",
             videoModel: "video-model",
         }, "prompt")).resolves.toEqual(expect.any(Blob));
+    });
+
+    it("reads NewAPI result_url and downloads through content endpoint first", async () => {
+        (axios.post as Mock).mockResolvedValueOnce({ data: { data: { task_id: "task-4", status: "IN_PROGRESS" } } });
+        (axios.get as Mock)
+            .mockResolvedValueOnce({ data: { data: { task_id: "task-4", status: "SUCCESS", result_url: "https://cdn.example.com/result.mp4" } } })
+            .mockResolvedValueOnce({ data: new Blob(["video"], { type: "video/mp4" }) });
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(new Blob(["video"], { type: "video/mp4" })));
+
+        await expect(requestVideoGeneration({
+            ...defaultConfig,
+            videoBaseUrl: "https://api.example.com/v1",
+            videoApiKey: "video-key",
+            videoModel: "video-model",
+        }, "prompt")).resolves.toEqual(expect.any(Blob));
+
+        expect(axios.get).toHaveBeenNthCalledWith(
+            2,
+            "https://api.example.com/v1/videos/task-4/content",
+            expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer video-key" }), responseType: "blob" }),
+        );
+        expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it("does not use image API settings as a silent video fallback", async () => {

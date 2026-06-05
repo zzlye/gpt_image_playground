@@ -181,7 +181,7 @@ async function waitOpenAiVideoResult(config: AiConfig, source: VideoApiSource, c
     for (;;) {
         const videoUrl = findVideoUrl(task);
         if (videoUrl) {
-            const blob = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
+            const blob = await fetchVideoResultBlob(config, source, created.id, videoUrl);
             refreshRemoteUser(config);
             return blob;
         }
@@ -209,7 +209,7 @@ async function requestChatCompletionsVideoGeneration(config: AiConfig, source: V
     );
     const videoUrl = findVideoUrl(response.data);
     if (!videoUrl) throw new Error("视频接口没有返回视频地址");
-    const videoResponse = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
+    const videoResponse = await fetchVideoResultBlob(config, source, "", videoUrl);
     refreshRemoteUser(config);
     return videoResponse;
 }
@@ -238,7 +238,7 @@ async function requestNewApiVideoGeneration(config: AiConfig, source: VideoApiSo
 
     const videoUrl = findVideoUrl(task);
     if (!videoUrl) throw new Error("视频接口没有返回视频地址");
-    const response = await fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
+    const response = await fetchVideoResultBlob(config, source, created.id || task.id, videoUrl);
     refreshRemoteUser(config);
     return response;
 }
@@ -324,7 +324,7 @@ function findVideoTask(input: unknown): NewApiVideoTask | null {
     const record = input as Record<string, unknown>;
     const nested = findNestedVideoFields(record);
     const id = stringValue(record.id) || stringValue(record.task_id) || stringValue(record.taskId) || nested.id;
-    const url = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output) || nested.url;
+    const url = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || stringValue(record.result_url) || stringValue(record.file_url) || directHttpUrl(record.output) || directHttpUrl(record.fail_reason) || nested.url;
     const status = stringValue(record.status) || stringValue(record.state) || nested.status;
     if (id || url || status) {
         const errorMessage = stringValue((record.error as Record<string, unknown> | undefined)?.message) || stringValue(record.error_message) || stringValue(record.fail_reason);
@@ -351,7 +351,7 @@ function findNestedVideoFields(input: unknown, depth = 0): { id: string; status:
     const direct = {
         id: stringValue(record.id) || stringValue(record.task_id) || stringValue(record.taskId),
         status: stringValue(record.status) || stringValue(record.state),
-        url: stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output),
+        url: stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || stringValue(record.result_url) || stringValue(record.file_url) || directHttpUrl(record.output) || directHttpUrl(record.fail_reason),
     };
     if (direct.url) return direct;
     for (const value of Object.values(record)) {
@@ -387,7 +387,7 @@ function findVideoUrl(input: unknown): string {
     }
     if (typeof input !== "object") return "";
     const record = input as Record<string, unknown>;
-    const direct = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || directHttpUrl(record.output);
+    const direct = stringValue(record.url) || stringValue(record.video_url) || stringValue(record.videoUrl) || stringValue(record.output_url) || stringValue(record.result_url) || stringValue(record.file_url) || directHttpUrl(record.output) || directHttpUrl(record.fail_reason);
     if (direct) return direct;
     for (const value of Object.values(record)) {
         const url = findVideoUrl(value);
@@ -429,7 +429,7 @@ function isVideoStatusCompleted(status?: string) {
 }
 
 function isVideoStatusFailed(status?: string) {
-    return ["failed", "cancelled", "canceled", "error"].includes((status || "").toLowerCase());
+    return ["fail", "failed", "failure", "cancelled", "canceled", "error"].includes((status || "").toLowerCase());
 }
 
 function shouldFallbackToTaskVideoApi(error: unknown) {
@@ -484,6 +484,25 @@ async function fetchVideoUrlAsBlob(url: string, headers?: Record<string, string>
     const blob = await response.blob();
     await assertVideoBlob(blob);
     return blob;
+}
+
+// 生成结果优先从原视频接口的 content 端点下载，避免中转站返回的外部直链被浏览器跨域拦截。
+async function fetchVideoResultBlob(config: AiConfig, source: VideoApiSource, taskId: string, videoUrl: string) {
+    if (taskId) {
+        try {
+            const content = await axios.get<Blob>(aiApiUrl(config, source, `/videos/${taskId}/content`), { headers: aiHeaders(config, source), responseType: "blob", timeout: requestTimeout(source) });
+            await assertVideoBlob(content.data);
+            return content.data;
+        } catch (error) {
+            if (!shouldFallbackToDirectVideoUrl(error)) throw error;
+        }
+    }
+    return fetchVideoUrlAsBlob(videoUrl, videoDownloadHeaders(config, source, videoUrl));
+}
+
+function shouldFallbackToDirectVideoUrl(error: unknown) {
+    if (!axios.isAxiosError(error)) return true;
+    return !error.response || [400, 404, 405].includes(error.response.status || 0);
 }
 
 function delayVideoPoll() {
