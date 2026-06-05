@@ -3641,12 +3641,11 @@ function isCanvasGenerationConfigReady(config: AiConfig, mode: CanvasNodeGenerat
     if (config.channelMode === "remote") return true;
     if (mode === "image") return isAiConfigReady(config, model);
     if (mode === "text") return Boolean((config.textBaseUrl.trim() && config.textApiKey.trim()) || (config.textVideoBaseUrl.trim() && config.textVideoApiKey.trim()) || (config.baseUrl.trim() && config.apiKey.trim()));
-    // 视频节点兼容新版视频 API、旧文字视频 API、文字 API 和出图 API，避免用户填了视频专用接口却被出图配置拦住。
+    // 视频节点只使用视频相关接口，避免误把出图 API 当成视频接口后连续返回 404。
     return Boolean(
         (config.videoBaseUrl.trim() && (config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.textApiKey.trim() || config.apiKey.trim())) ||
             (config.textVideoBaseUrl.trim() && (config.textVideoApiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.apiKey.trim())) ||
-            (config.textBaseUrl.trim() && (config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey.trim())) ||
-            (config.baseUrl.trim() && (config.apiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim())),
+            (config.textBaseUrl.trim() && (config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey.trim())),
     );
 }
 

@@ -51,13 +51,6 @@ function resolveVideoApiSources(config: AiConfig): VideoApiSource[] {
             apiProxy: Boolean(config.textApiProxy || config.videoApiProxy || config.textVideoApiProxy),
             timeout: Number(config.textTimeout || config.videoTimeout || config.textVideoTimeout || config.timeout),
         },
-        {
-            label: "出图 API",
-            baseUrl: config.baseUrl.trim(),
-            apiKey: config.apiKey || config.videoApiKey.trim() || config.textApiKey.trim() || config.textVideoApiKey.trim(),
-            apiProxy: false,
-            timeout: Number(config.timeout || config.videoTimeout || config.textTimeout || config.textVideoTimeout),
-        },
     ];
     const sources: VideoApiSource[] = [];
     const seen = new Set<string>();
@@ -78,7 +71,7 @@ function resolveVideoApiSources(config: AiConfig): VideoApiSource[] {
             }
         }
     }
-    return sources.length ? sources : [{ label: "出图 API", baseUrl: config.baseUrl.trim().replace(/\/+$/, ""), apiKey: config.apiKey, apiProxy: false, timeout: Number(config.timeout), versioned: true }];
+    return sources;
 }
 
 function aiApiUrl(config: AiConfig, source: VideoApiSource, path: string) {
@@ -108,6 +101,7 @@ function requestTimeout(source: VideoApiSource) {
 export async function requestVideoGeneration(config: AiConfig, prompt: string, references: ReferenceImage[] = []) {
     const model = config.videoModel || config.model;
     const sources = resolveVideoApiSources(config);
+    if (!sources.length) throw new Error("请先在设置里填写支持视频生成的 API URL 和 Key");
     const failures: VideoAttemptError[] = [];
     const tryGeneration = async <T>(label: string, task: () => Promise<T>, shouldContinue: (error: unknown) => boolean) => {
         try {
@@ -156,8 +150,11 @@ async function requestOpenAiVideosJsonGeneration(config: AiConfig, source: Video
         size: normalizeVideoSize(config.size) || undefined,
     };
     const images = (await Promise.all(references.slice(0, 7).map((image) => imageToDataUrl(image)))).filter(Boolean);
-    // 部分 NewAPI 中转站的 Sora/Veo 图生视频不接受 multipart，但接受 JSON image 字段。
-    if (images.length) payload.image = images.length === 1 ? images[0] : images;
+    // 部分 NewAPI 中转站的 Sora/Veo 图生视频不接受 multipart，但接受 JSON 图片字段。
+    if (images.length) {
+        payload.image = images[0];
+        payload.input_reference = images.length === 1 ? images[0] : images;
+    }
     const created = unwrapVideoTask((await axios.post<ApiVideoResponse>(aiApiUrl(config, source, "/videos"), payload, { headers: { ...aiHeaders(config, source), "Content-Type": "application/json" }, timeout: requestTimeout(source) })).data);
     return waitOpenAiVideoResult(config, source, created, model);
 }

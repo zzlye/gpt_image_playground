@@ -256,6 +256,7 @@ describe("canvas video api", () => {
             seconds: "6",
             size: "1280x720",
             image: "data:image/png;base64,cmVm",
+            input_reference: "data:image/png;base64,cmVm",
         }));
         expect(axios.get).toHaveBeenNthCalledWith(
             1,
@@ -277,5 +278,22 @@ describe("canvas video api", () => {
             videoApiKey: "video-key",
             videoModel: "video-model",
         }, "prompt")).resolves.toEqual(expect.any(Blob));
+    });
+
+    it("does not use image API settings as a silent video fallback", async () => {
+        await expect(requestVideoGeneration({
+            ...defaultConfig,
+            baseUrl: "https://image.example.com/v1",
+            apiKey: "image-key",
+            videoBaseUrl: "",
+            videoApiKey: "",
+            textBaseUrl: "",
+            textApiKey: "",
+            textVideoBaseUrl: "",
+            textVideoApiKey: "",
+            videoModel: "sora-2",
+        }, "prompt")).rejects.toThrow("请先在设置里填写支持视频生成的 API URL 和 Key");
+
+        expect(axios.post).not.toHaveBeenCalled();
     });
 });
