@@ -1,0 +1,50 @@
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { defaultConfig, useConfigStore } from '../infiniteCanvasSource/stores/use-config-store'
+import { DEFAULT_SETTINGS } from './apiProfiles'
+import { syncInfiniteCanvasConfigFromSettings } from './syncInfiniteCanvasConfig'
+
+afterEach(() => {
+  useConfigStore.setState({
+    config: defaultConfig,
+    publicSettings: null,
+    isPublicSettingsLoading: false,
+    isConfigOpen: false,
+    shouldPromptContinue: false,
+  })
+})
+
+describe('syncInfiniteCanvasConfigFromSettings', () => {
+  it('keeps canvas video requests on local direct settings when old backend settings remain in store', () => {
+    useConfigStore.setState({
+      publicSettings: {
+        modelChannel: {
+          allowCustomChannel: false,
+          availableModels: ['backend-video'],
+          defaultModel: 'backend-video',
+          defaultImageModel: 'backend-image',
+          defaultVideoModel: 'backend-video',
+          defaultTextModel: 'backend-text',
+          systemPrompt: '',
+          modelCosts: [],
+        },
+        auth: { allowRegister: false, linuxDo: { enabled: false } },
+      },
+    })
+
+    syncInfiniteCanvasConfigFromSettings({
+      ...DEFAULT_SETTINGS,
+      videoBaseUrl: 'https://api.geeknow.ai/v1',
+      videoApiKey: 'video-key',
+      videoModel: 'sora-2',
+      videoTimeout: 120,
+    })
+
+    const state = useConfigStore.getState()
+    expect(state.publicSettings).toBeNull()
+    expect(state.config.channelMode).toBe('local')
+    expect(state.config.videoBaseUrl).toBe('https://api.geeknow.ai/v1')
+    expect(state.config.videoApiKey).toBe('video-key')
+    expect(state.config.videoModel).toBe('sora-2')
+  })
+})

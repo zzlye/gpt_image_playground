@@ -401,6 +401,6 @@ describe("canvas video api", () => {
             videoBaseUrl: "https://api.example.com/v1",
             videoApiKey: "video-key",
             videoModel: "grok-video-3-pro",
-        }, "prompt")).rejects.toThrow("视频 API https://api.example.com/v1 [grok-video-3-pro] OpenAI multipart /videos：模型暂不可用");
+        }, "prompt")).rejects.toThrow("视频 API https://api.example.com/v1 [grok-video-3-pro，直连] OpenAI multipart /videos：模型暂不可用");
     });
 });

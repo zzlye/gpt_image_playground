@@ -611,7 +611,8 @@ function buildVideoGenerationError(failures: VideoAttemptError[]) {
 
 function formatVideoSourceLabel(source: VideoApiSource, model: string) {
     const baseUrl = source.baseUrl ? ` ${source.baseUrl}` : "";
-    return `${source.label}${baseUrl} [${model}]`;
+    const route = source.baseUrl ? "直连" : source.label === "系统后端" ? "当前站点 /api/v1" : "本地";
+    return `${source.label}${baseUrl} [${model}，${route}]`;
 }
 
 async function assertVideoBlob(blob: Blob) {

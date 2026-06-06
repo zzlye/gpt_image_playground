@@ -6,11 +6,11 @@ import OriginalCanvasClientPage from '../infiniteCanvasSource/app/(user)/canvas/
 import PromptsPage from '../infiniteCanvasSource/app/(user)/prompts/page'
 import AssetsPage from '../infiniteCanvasSource/app/(user)/assets/page'
 import { AppProviders } from '../infiniteCanvasSource/components/layout/app-providers'
-import { useConfigStore } from '../infiniteCanvasSource/stores/use-config-store'
 import { useThemeStore } from '../infiniteCanvasSource/stores/use-theme-store'
 import { CanvasNavigationProvider, type CanvasRoute } from '../infiniteCanvasCompat/nextNavigation'
 import { useStore } from '../store'
-import { getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
+import { normalizeSettings } from '../lib/apiProfiles'
+import { syncInfiniteCanvasConfigFromSettings } from '../lib/syncInfiniteCanvasConfig'
 
 type CanvasWorkshopProps = {
   onBack: () => void
@@ -70,7 +70,6 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
   const setSettings = useStore((s) => s.setSettings)
   const settings = useStore((s) => s.settings)
   const normalizedSettings = normalizeSettings(settings)
-  const activeProfile = getActiveApiProfile(normalizedSettings)
   const appearanceTheme: 'light' | 'dark' = normalizedSettings.appearanceNightMode ? 'dark' : 'light'
   const [route, setRoute] = useState<CanvasRoute>({ pathname: '/canvas', params: {} })
 
@@ -79,36 +78,8 @@ export default function CanvasWorkshop({ onBack, onOpenSettings }: CanvasWorksho
   useEffect(() => {
     // 画布工坊复用文运工坊设置，避免打开画布时继续拉取原项目的后端配置。
     useThemeStore.getState().setTheme(appearanceTheme)
-    useConfigStore.setState((state) => ({
-      config: {
-        ...state.config,
-        channelMode: 'local',
-        baseUrl: activeProfile.baseUrl,
-        apiKey: activeProfile.apiKey,
-        timeout: activeProfile.timeout,
-        model: activeProfile.model,
-        imageModel: activeProfile.model,
-        textVideoBaseUrl: normalizedSettings.textVideoBaseUrl,
-        textVideoApiKey: normalizedSettings.textVideoApiKey,
-        textVideoApiProxy: normalizedSettings.textVideoApiProxy,
-        textVideoTimeout: normalizedSettings.textVideoTimeout,
-        textBaseUrl: normalizedSettings.textBaseUrl,
-        textApiKey: normalizedSettings.textApiKey,
-        textApiProxy: normalizedSettings.textApiProxy,
-        textTimeout: normalizedSettings.textTimeout,
-        videoBaseUrl: normalizedSettings.videoBaseUrl,
-        videoApiKey: normalizedSettings.videoApiKey,
-        videoApiProxy: normalizedSettings.videoApiProxy,
-        videoTimeout: normalizedSettings.videoTimeout,
-        textModel: normalizedSettings.textModel || state.config.textModel,
-        videoModel: normalizedSettings.videoModel || state.config.videoModel,
-      },
-    }))
+    syncInfiniteCanvasConfigFromSettings(normalizedSettings)
   }, [
-    activeProfile.apiKey,
-    activeProfile.baseUrl,
-    activeProfile.model,
-    activeProfile.timeout,
     appearanceTheme,
     normalizedSettings.textVideoApiKey,
     normalizedSettings.textVideoApiProxy,

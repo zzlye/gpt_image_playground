@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { AppProviders } from './infiniteCanvasSource/components/layout/app-providers'
 import { PromptSelectDialog } from './infiniteCanvasSource/components/prompts/prompt-select-dialog'
-import { useConfigStore } from './infiniteCanvasSource/stores/use-config-store'
 import { useThemeStore } from './infiniteCanvasSource/stores/use-theme-store'
-import { getActiveApiProfile, normalizeSettings } from './lib/apiProfiles'
+import { normalizeSettings } from './lib/apiProfiles'
 import { flushSync } from 'react-dom'
 import { initStore } from './store'
 import { useStore } from './store'
@@ -30,6 +29,7 @@ import AnnouncementModal from './components/AnnouncementModal'
 import CanvasWorkshop from './components/CanvasWorkshop'
 import DataSyncManager from './components/DataSyncManager'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
+import { syncInfiniteCanvasConfigFromSettings } from './lib/syncInfiniteCanvasConfig'
 
 let customProviderConfigUrlImportStarted = false
 
@@ -56,35 +56,10 @@ export default function App() {
   useEffect(() => {
     if (workspaceMode !== 'gallery') return
     const normalizedSettings = normalizeSettings(settings)
-    const activeProfile = getActiveApiProfile(normalizedSettings)
     const appearanceTheme: 'light' | 'dark' = normalizedSettings.appearanceNightMode ? 'dark' : 'light'
 
     useThemeStore.getState().setTheme(appearanceTheme)
-    useConfigStore.setState((state) => ({
-      config: {
-        ...state.config,
-        channelMode: 'local',
-        baseUrl: activeProfile.baseUrl,
-        apiKey: activeProfile.apiKey,
-        timeout: activeProfile.timeout,
-        model: activeProfile.model,
-        imageModel: activeProfile.model,
-        textVideoBaseUrl: normalizedSettings.textVideoBaseUrl,
-        textVideoApiKey: normalizedSettings.textVideoApiKey,
-        textVideoApiProxy: normalizedSettings.textVideoApiProxy,
-        textVideoTimeout: normalizedSettings.textVideoTimeout,
-        textBaseUrl: normalizedSettings.textBaseUrl,
-        textApiKey: normalizedSettings.textApiKey,
-        textApiProxy: normalizedSettings.textApiProxy,
-        textTimeout: normalizedSettings.textTimeout,
-        videoBaseUrl: normalizedSettings.videoBaseUrl,
-        videoApiKey: normalizedSettings.videoApiKey,
-        videoApiProxy: normalizedSettings.videoApiProxy,
-        videoTimeout: normalizedSettings.videoTimeout,
-        textModel: normalizedSettings.textModel || state.config.textModel,
-        videoModel: normalizedSettings.videoModel || state.config.videoModel,
-      },
-    }))
+    syncInfiniteCanvasConfigFromSettings(normalizedSettings)
   }, [settings, workspaceMode])
   const [announcementOpen, setAnnouncementOpen] = useState(false)
   const [announcementContent, setAnnouncementContent] = useState('')
