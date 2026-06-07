@@ -61,6 +61,8 @@ export default defineConfig(({ command }) => {
                 target: devProxyConfig.target,
                 changeOrigin: devProxyConfig.changeOrigin,
                 secure: devProxyConfig.secure,
+                timeout: 900_000,
+                proxyTimeout: 900_000,
                 rewrite: (path) =>
                   path.replace(
                     new RegExp(`^${devProxyConfig.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),

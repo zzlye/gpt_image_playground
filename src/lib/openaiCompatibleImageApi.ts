@@ -9,6 +9,7 @@ import {
   type CallApiOptions,
   type CallApiResult,
   fetchImageUrlAsDataUrl,
+  getImageRequestTimeoutSeconds,
   getApiErrorMessage,
   getDataUrlDecodedByteSize,
   getDataUrlEncodedByteSize,
@@ -353,7 +354,6 @@ async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, s
         try {
           images.push(await fetchImageUrlAsDataUrl(item.url, mime, signal))
         } catch (err) {
-          if (signal?.aborted) throw err
           // 远程图片已生成但浏览器下载失败时，保留原始 URL 避免把整次任务判失败。
           images.push(item.url)
         }
@@ -602,9 +602,10 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   const paths = createOpenAICompatiblePaths(customProvider)
+  const timeoutSeconds = getImageRequestTimeoutSeconds(profile.model, params, profile.timeout)
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   try {
     let response: Response
@@ -995,7 +996,8 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const controller = new AbortController()
-  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  const timeoutSeconds = getImageRequestTimeoutSeconds(profile.model, params, profile.timeout)
+  let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   try {
     const proxyConfig = readClientDevProxyConfig()
@@ -1075,7 +1077,8 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
+  const timeoutSeconds = getImageRequestTimeoutSeconds(profile.model, params, profile.timeout)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   try {
     if (opts.maskDataUrl) {

@@ -48,7 +48,7 @@ import type { CanvasExportAsset, CanvasExportFile, CanvasProjectExportItem } fro
 import { useCanvasStore, type CanvasProject } from '@/app/(user)/canvas/stores/use-canvas-store'
 import { callAgentConversationTitleApi, callAgentResponsesApi, callBatchImageSingle, parseBatchImageCallArguments, type AgentApiResultImage, type BatchImageCallResult } from './lib/agentApi'
 import { collectAgentRoundOutputImageSlots, extractAgentReferenceIds, getAgentCurrentReferenceId, getAgentGeneratedImageReferenceId, replaceAgentPromptImageReferencesForApi } from './lib/agentImageReferences'
-import { IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
+import { getImageRequestTimeoutSeconds, IMAGE_FETCH_CORS_HINT } from './lib/imageApiShared'
 import { getFalErrorMessage, getFalQueuedImageResult } from './lib/falAiImageApi'
 import { getCustomQueuedImageResult } from './lib/openaiCompatibleImageApi'
 import { validateMaskMatchesImage } from './lib/canvasImage'
@@ -3788,7 +3788,7 @@ async function executeTask(taskId: string) {
     : null
 
   if (taskProvider !== 'fal' && !isAsyncCustomProviderTask(requestSettings, taskProvider, task.inputImageIds.length > 0)) {
-    scheduleOpenAIWatchdog(taskId, activeProfile.timeout, activeProfile)
+    scheduleOpenAIWatchdog(taskId, getImageRequestTimeoutSeconds(activeProfile.model, task.params, activeProfile.timeout), activeProfile)
   }
 
   try {

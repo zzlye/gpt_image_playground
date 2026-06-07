@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { GENERIC_QUOTA_ERROR_MESSAGE, getApiErrorMessage, sanitizeApiErrorMessage } from './imageApiShared'
+import { GENERIC_QUOTA_ERROR_MESSAGE, getApiErrorMessage, getImageRequestTimeoutSeconds, isLongImageRequest, sanitizeApiErrorMessage } from './imageApiShared'
 
 describe('sanitizeApiErrorMessage', () => {
   it('hides NewAPI pre-charge quota details', () => {
@@ -26,5 +26,26 @@ describe('getApiErrorMessage', () => {
     })
 
     await expect(getApiErrorMessage(response)).resolves.toBe(GENERIC_QUOTA_ERROR_MESSAGE)
+  })
+})
+
+describe('isLongImageRequest', () => {
+  it('treats Image-2 4K aliases as long requests', () => {
+    expect(isLongImageRequest('gpt-image-2-4k', { size: '1024x1024' })).toBe(true)
+    expect(isLongImageRequest('gpt-image-2-vip', { size: '1024x1024' })).toBe(true)
+  })
+
+  it('treats 4K-sized requests as long requests regardless of model', () => {
+    expect(isLongImageRequest('gpt-image-2', { size: '3840x2160' })).toBe(true)
+  })
+
+  it('keeps ordinary 2K requests on the configured timeout', () => {
+    expect(isLongImageRequest('gpt-image-2', { size: '2560x1440' })).toBe(false)
+    expect(getImageRequestTimeoutSeconds('gpt-image-2', { size: '2560x1440' }, 120)).toBe(120)
+  })
+
+  it('extends long image requests to at least fifteen minutes', () => {
+    expect(getImageRequestTimeoutSeconds('gpt-image-2-4k', { size: '3840x2160' }, 120)).toBe(900)
+    expect(getImageRequestTimeoutSeconds('Nano-Banana-2', { size: '3840x2160' }, 1200)).toBe(1200)
   })
 })

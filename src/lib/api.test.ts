@@ -569,6 +569,43 @@ describe('callImageApi', () => {
     expect(result.rawImageUrls).toEqual([imageUrl])
   })
 
+  it('extends Image-2 4K request timeout instead of aborting at the short configured timeout', async () => {
+    vi.useFakeTimers()
+    let signal: AbortSignal | undefined
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+      signal = (init as RequestInit).signal as AbortSignal
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+      })
+    })
+
+    const promise = callImageApi({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        apiKey: 'test-key',
+        model: 'gpt-image-2-4k',
+        timeout: 1,
+        profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+          ...profile,
+          apiKey: 'test-key',
+          model: 'gpt-image-2-4k',
+          timeout: 1,
+        })),
+      },
+      prompt: 'prompt',
+      params: { ...DEFAULT_PARAMS, size: '3840x2160' },
+      inputImageDataUrls: [],
+    } as any)
+    const handledPromise = promise.catch((error) => error)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(signal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(899000)
+    expect(signal?.aborted).toBe(true)
+    await expect(handledPromise).resolves.toBeInstanceOf(Error)
+  })
+
   it('parses Responses API image result objects in gallery mode', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       output: [{

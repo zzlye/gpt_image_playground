@@ -39,24 +39,26 @@ export type AiConfig = {
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
 export const DEFAULT_VIDEO_MODEL = "sora-2";
+const DEFAULT_IMAGE_TIMEOUT = 600;
+const DEFAULT_TEXT_VIDEO_TIMEOUT = 120;
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: "https://api.openai.com",
     apiKey: "",
-    timeout: 120,
+    timeout: DEFAULT_IMAGE_TIMEOUT,
     textVideoBaseUrl: "",
     textVideoApiKey: "",
     textVideoApiProxy: false,
-    textVideoTimeout: 120,
+    textVideoTimeout: DEFAULT_TEXT_VIDEO_TIMEOUT,
     textBaseUrl: "",
     textApiKey: "",
     textApiProxy: false,
-    textTimeout: 120,
+    textTimeout: DEFAULT_TEXT_VIDEO_TIMEOUT,
     videoBaseUrl: "",
     videoApiKey: "",
     videoApiProxy: false,
-    videoTimeout: 120,
+    videoTimeout: DEFAULT_TEXT_VIDEO_TIMEOUT,
     model: "gpt-image-2",
     imageModel: "gpt-image-2",
     videoModel: DEFAULT_VIDEO_MODEL,
@@ -142,7 +144,7 @@ export const useConfigStore = create<ConfigStore>()(
                 const legacyTextVideoBaseUrl = config.textVideoBaseUrl || "";
                 const legacyTextVideoApiKey = config.textVideoApiKey || "";
                 const legacyTextVideoApiProxy = Boolean(config.textVideoApiProxy);
-                const legacyTextVideoTimeout = Number(config.textVideoTimeout) || 120;
+                const legacyTextVideoTimeout = Number(config.textVideoTimeout) || DEFAULT_TEXT_VIDEO_TIMEOUT;
                 return {
                     ...current,
                     config: {
@@ -153,7 +155,7 @@ export const useConfigStore = create<ConfigStore>()(
                         textModel: config.textModel || config.model,
                         videoSeconds: config.videoSeconds || "6",
                         vquality: config.vquality || "720",
-                        timeout: Number(config.timeout) || 120,
+                        timeout: Number(config.timeout) || DEFAULT_IMAGE_TIMEOUT,
                         textVideoBaseUrl: legacyTextVideoBaseUrl,
                         textVideoApiKey: legacyTextVideoApiKey,
                         textVideoApiProxy: legacyTextVideoApiProxy,

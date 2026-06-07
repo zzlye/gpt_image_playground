@@ -1,4 +1,5 @@
 import type { AppSettings, TaskParams } from '../types'
+import { normalizeImageSize } from './size'
 
 export const MIME_MAP: Record<string, string> = {
   png: 'image/png',
@@ -8,6 +9,10 @@ export const MIME_MAP: Record<string, string> = {
 
 export const MAX_MASK_EDIT_FILE_BYTES = 50 * 1024 * 1024
 export const MAX_IMAGE_INPUT_PAYLOAD_BYTES = 512 * 1024 * 1024
+export const LONG_IMAGE_REQUEST_TIMEOUT_SECONDS = 900
+const API_REFERENCE_IMAGE_MAX_EDGE = 2048
+const API_REFERENCE_IMAGE_MAX_PIXELS = 2048 * 2048
+const API_REFERENCE_IMAGE_JPEG_QUALITY = 0.88
 
 export interface CallApiOptions {
   settings: AppSettings
@@ -198,4 +203,54 @@ export function pickActualParams(source: unknown): Partial<TaskParams> {
 export function mergeActualParams(...sources: Array<Partial<TaskParams> | undefined>): Partial<TaskParams> | undefined {
   const merged = Object.assign({}, ...sources.filter((source) => source && Object.keys(source).length))
   return Object.keys(merged).length ? merged : undefined
+}
+
+export function isLongImageRequest(model: string, params?: Pick<TaskParams, 'size'>): boolean {
+  if (/gpt-image-2-(?:4k|vip)|nano-banana/i.test(model)) return true
+  const size = params?.size ? normalizeImageSize(params.size) : ''
+  const match = size.match(/^(\d+)x(\d+)$/)
+  if (!match) return false
+  return Math.max(Number(match[1]), Number(match[2])) >= 3200
+}
+
+export function getImageRequestTimeoutSeconds(model: string, params: Pick<TaskParams, 'size'>, configuredTimeout: number): number {
+  const timeout = Math.max(1, Number(configuredTimeout) || 1)
+  return isLongImageRequest(model, params) ? Math.max(timeout, LONG_IMAGE_REQUEST_TIMEOUT_SECONDS) : timeout
+}
+
+function getReferenceImageScale(width: number, height: number) {
+  const maxEdge = Math.max(width, height)
+  const pixels = width * height
+  if (!maxEdge || !pixels) return 1
+  return Math.min(1, API_REFERENCE_IMAGE_MAX_EDGE / maxEdge, Math.sqrt(API_REFERENCE_IMAGE_MAX_PIXELS / pixels))
+}
+
+async function loadImageForApi(dataUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('参考图加载失败，请换一张图片后重试'))
+    image.src = dataUrl
+  })
+}
+
+export async function prepareReferenceImageDataUrlForApi(dataUrl: string, options: { keepOriginal?: boolean } = {}): Promise<string> {
+  if (!dataUrl.startsWith('data:image/')) return dataUrl
+  if (options.keepOriginal) return dataUrl
+  if (typeof Image === 'undefined' || typeof document === 'undefined') return dataUrl
+
+  const source = await loadImageForApi(dataUrl)
+  const width = source.naturalWidth || source.width
+  const height = source.naturalHeight || source.height
+  const scale = getReferenceImageScale(width, height)
+  if (scale >= 1) return dataUrl
+
+  // 只压缩接口请求副本，图库和画布里的原图不变，避免 4K 参考图上传过慢或触发网关断开。
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width * scale))
+  canvas.height = Math.max(1, Math.round(height * scale))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('当前浏览器不支持 Canvas')
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', API_REFERENCE_IMAGE_JPEG_QUALITY)
 }

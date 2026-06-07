@@ -24,10 +24,6 @@ type ImageApiResponse = {
     msg?: string;
 };
 
-const MAX_REFERENCE_IMAGE_EDGE = 2048;
-const MAX_REFERENCE_IMAGE_PIXELS = 2048 * 2048;
-const REFERENCE_IMAGE_JPEG_QUALITY = 0.88;
-
 const QUALITY_BASE: Record<string, number> = {
     low: 1024,
     medium: 2048,
@@ -232,7 +228,7 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
             await Promise.all(
                 references.map(async (image) => {
                     const dataUrl = await imageToDataUrl(image);
-                    return dataUrl ? prepareReferenceImageForApi(dataUrl, image) : "";
+                    return dataUrl;
                 }),
             )
         ).filter((dataUrl): dataUrl is string => Boolean(dataUrl));
@@ -249,40 +245,6 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
     } catch (error) {
         throw new Error(readAxiosError(error, "请求失败"));
     }
-}
-
-async function prepareReferenceImageForApi(dataUrl: string, image: ReferenceImage) {
-    if (!dataUrl.startsWith("data:image/")) return dataUrl;
-    if (image.isMaskTarget && image.maskDataUrl) return dataUrl;
-
-    const source = await loadImageForApi(dataUrl);
-    const scale = getReferenceImageScale(source.naturalWidth || source.width, source.naturalHeight || source.height);
-    if (scale >= 1) return dataUrl;
-
-    // 参考图只在发给接口前降采样，画布里的原图不改，避免 4K 图导致编辑接口请求失败或卡住。
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round((source.naturalWidth || source.width) * scale));
-    canvas.height = Math.max(1, Math.round((source.naturalHeight || source.height) * scale));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("当前浏览器不支持 Canvas");
-    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", REFERENCE_IMAGE_JPEG_QUALITY);
-}
-
-function getReferenceImageScale(width: number, height: number) {
-    const maxEdge = Math.max(width, height);
-    const pixels = width * height;
-    if (!maxEdge || !pixels) return 1;
-    return Math.min(1, MAX_REFERENCE_IMAGE_EDGE / maxEdge, Math.sqrt(MAX_REFERENCE_IMAGE_PIXELS / pixels));
-}
-
-function loadImageForApi(dataUrl: string) {
-    return new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = () => reject(new Error("参考图加载失败，请换一张图片后重试"));
-        image.src = dataUrl;
-    });
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: ChatCompletionMessage[], onDelta: (text: string) => void) {
