@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS } from "../../../lib/apiProfiles";
 import { useStore } from "../../../store";
 import { defaultConfig } from "../../stores/use-config-store";
-import { requestGeneration } from "./image";
+import { requestEdit, requestGeneration } from "./image";
 
 describe("canvas image api", () => {
     const initialSettings = useStore.getState().settings;
@@ -53,5 +53,53 @@ describe("canvas image api", () => {
             expect.objectContaining({ method: "POST" }),
         );
         expect(images).toEqual([{ id: expect.any(String), dataUrl: "data:image/png;base64,ZmluYWw=" }]);
+    });
+
+    it("uses Banana JSON generation requests for canvas image edits", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+            new Response(JSON.stringify({ results: [{ url: "data:image/png;base64,ZWRpdGVk" }] }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            }),
+        );
+
+        useStore.setState({
+            settings: {
+                ...DEFAULT_SETTINGS,
+                profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+                    ...profile,
+                    apiKey: "test-key",
+                    model: "Nano-Banana-2",
+                })),
+            },
+        });
+
+        const images = await requestEdit(
+            {
+                ...defaultConfig,
+                baseUrl: "https://api.example.com/v1",
+                apiKey: "test-key",
+                model: "Nano-Banana-2",
+                imageModel: "Nano-Banana-2",
+                size: "16:9",
+                quality: "2k",
+                count: "1",
+            },
+            "改成穿赤霖高中校服",
+            [{ id: "ref-1", name: "ref.txt", type: "text/plain", dataUrl: "data:text/plain;base64,cmVm" }],
+        );
+
+        const [url, init] = fetchMock.mock.calls[0];
+        const body = JSON.parse(String((init as RequestInit).body));
+        expect(String(url)).toMatch(/\/v1\/images\/generations$/);
+        expect(body).toMatchObject({
+            model: "nano-banana-2",
+            prompt: "改成穿赤霖高中校服",
+            images: ["data:text/plain;base64,cmVm"],
+            aspectRatio: "16:9",
+            imageSize: "2K",
+            replyType: "json",
+        });
+        expect(images).toEqual([{ id: expect.any(String), dataUrl: "data:image/png;base64,ZWRpdGVk" }]);
     });
 });

@@ -455,6 +455,52 @@ describe('callImageApi', () => {
     expect(body.replyType).toBe('json')
   })
 
+  it('uses Banana JSON generation requests for image edits through NewAPI custom channels', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      id: 'task-1',
+      status: 'succeeded',
+      results: [{ url: 'data:image/png;base64,ZWRpdGVk' }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      apiKey: 'test-key',
+      model: 'Nano-Banana-2',
+      profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
+        ...profile,
+        apiKey: 'test-key',
+        model: 'Nano-Banana-2',
+      })),
+    }
+
+    const result = await callImageApi({
+      settings,
+      prompt: '改成穿赤霖高中校服',
+      params: { ...DEFAULT_PARAMS, size: '2560x1440' },
+      inputImageDataUrls: ['data:image/png;base64,cmVm'],
+    } as any)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String((init as RequestInit).body))
+    expect(String(url)).toBe('https://zzlye.xyz:60/v1/images/generations')
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+    })
+    expect(body).toMatchObject({
+      model: 'nano-banana-2',
+      prompt: '改成穿赤霖高中校服',
+      images: ['data:image/png;base64,cmVm'],
+      aspectRatio: '16:9',
+      imageSize: '2K',
+      replyType: 'json',
+    })
+    expect(result.images).toEqual(['data:image/png;base64,ZWRpdGVk'])
+  })
+
   it('parses Grsai Banana native result URLs relayed by NewAPI custom channels', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'task-1',

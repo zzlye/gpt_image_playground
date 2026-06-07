@@ -50,6 +50,12 @@ function appendBananaGenerationFields(target: Record<string, unknown>, profile: 
   target.replyType = 'json'
 }
 
+function appendBananaReferenceImages(target: Record<string, unknown>, imageDataUrls: string[]) {
+  if (imageDataUrls.length === 0) return
+  // Grsai 的 Banana 图生图接口使用 JSON images 数组；new-api 的 multipart edits 转换不会生成这个字段。
+  target.images = imageDataUrls
+}
+
 function appendBananaGenerationFormFields(formData: FormData, profile: ApiProfile, params: TaskParams) {
   if (!isBananaImageModel(profile.model)) return
   formData.append('aspectRatio', getBananaAspectRatio(params.size))
@@ -603,7 +609,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
   try {
     let response: Response
 
-    if (isEdit) {
+    if (isEdit && !isBananaImageModel(profile.model)) {
       const formData = new FormData()
       formData.append('model', profile.model)
       formData.append('prompt', prompt)
@@ -692,6 +698,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         body.partial_images = getStreamPartialImages(profile)
       }
       appendBananaGenerationFields(body, profile, params)
+      appendBananaReferenceImages(body, inputImageDataUrls)
 
       response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
         method: 'POST',
