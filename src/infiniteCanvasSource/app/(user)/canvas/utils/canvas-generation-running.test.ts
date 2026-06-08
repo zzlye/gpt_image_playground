@@ -1,36 +1,42 @@
 import { describe, expect, it } from "vitest";
 
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeStatus } from "../types";
-import { isCanvasNodeGenerationLocked, withRunningCanvasNode, withoutRunningCanvasNodes } from "./canvas-generation-running";
+import { clearCanvasGenerationSession, getCanvasGenerationSessionIds, isCanvasNodeGenerationLocked, markCanvasGenerationSession, resetInterruptedCanvasGenerations } from "./canvas-generation-running";
+import { CanvasNodeType, type CanvasNodeData } from "../types";
 
-const node = (id: string, status?: CanvasNodeStatus): CanvasNodeData => ({
-    id,
-    type: CanvasNodeType.Image,
-    title: id,
-    position: { x: 0, y: 0 },
-    width: 100,
-    height: 100,
-    metadata: status ? { status } : {},
-});
+function node(id: string, status: "loading" | "success" | "error"): CanvasNodeData {
+    return {
+        id,
+        type: CanvasNodeType.Image,
+        title: id,
+        position: { x: 0, y: 0 },
+        width: 320,
+        height: 240,
+        metadata: { status },
+    };
+}
 
-describe("canvas generation running lock", () => {
-    it("按节点集合分别锁定多个正在生成的节点", () => {
-        const running = withRunningCanvasNode(withRunningCanvasNode(new Set<string>(), "node-a"), "node-b");
-
-        expect(isCanvasNodeGenerationLocked(node("node-a"), running)).toBe(true);
-        expect(isCanvasNodeGenerationLocked(node("node-b"), running)).toBe(true);
-        expect(isCanvasNodeGenerationLocked(node("node-c"), running)).toBe(false);
+describe("canvas generation running session", () => {
+    it("keeps loading nodes locked but releases stale running ids after completion", () => {
+        expect(isCanvasNodeGenerationLocked(node("image-1", "loading"), new Set())).toBe(true);
+        expect(isCanvasNodeGenerationLocked(node("image-1", "success"), new Set(["image-1"]))).toBe(false);
+        expect(isCanvasNodeGenerationLocked(node("image-1", "error"), new Set(["image-1"]))).toBe(false);
     });
 
-    it("节点处于 loading 状态时即使切换面板也保持锁定", () => {
-        expect(isCanvasNodeGenerationLocked(node("node-a", "loading"), new Set())).toBe(true);
+    it("keeps loading nodes when the same browser session still owns the generation", () => {
+        markCanvasGenerationSession("project-1", "image-1");
+
+        const result = resetInterruptedCanvasGenerations([node("image-1", "loading")], getCanvasGenerationSessionIds("project-1"));
+
+        expect(result[0].metadata?.status).toBe("loading");
+        clearCanvasGenerationSession("project-1", ["image-1"]);
     });
 
-    it("完成一个节点时不会误解锁其他正在生成的节点", () => {
-        const running = withRunningCanvasNode(withRunningCanvasNode(new Set<string>(), "node-a"), "node-b");
-        const next = withoutRunningCanvasNodes(running, ["node-a"]);
+    it("marks stale loading nodes as retryable after session state is gone", () => {
+        const result = resetInterruptedCanvasGenerations([node("image-1", "loading")], getCanvasGenerationSessionIds("project-2"));
 
-        expect(isCanvasNodeGenerationLocked(node("node-a"), next)).toBe(false);
-        expect(isCanvasNodeGenerationLocked(node("node-b"), next)).toBe(true);
+        expect(result[0].metadata).toMatchObject({
+            status: "error",
+            errorDetails: "页面刷新后生成已中断，请重新生成。",
+        });
     });
 });

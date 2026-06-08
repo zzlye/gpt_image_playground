@@ -28,7 +28,7 @@ import { primeImageCache, useStore } from "../../../../../store";
 import PriceTableButton from "../../../../../components/PriceTableButton";
 import { cropDataUrl, cropGridDataUrl } from "../utils/canvas-image-data";
 import { isCanvasEditableTarget } from "../utils/canvas-dom-events";
-import { isCanvasNodeGenerationLocked, withRunningCanvasNode, withoutRunningCanvasNodes } from "../utils/canvas-generation-running";
+import { clearCanvasGenerationSession, getCanvasGenerationSessionIds, isCanvasNodeGenerationLocked, markCanvasGenerationSession, resetInterruptedCanvasGenerations, withRunningCanvasNode, withoutRunningCanvasNodes } from "../utils/canvas-generation-running";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
 import { App, Button, Dropdown, Input, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
@@ -376,6 +376,7 @@ function InfiniteCanvasPage() {
     const nodesRef = useRef(nodes);
     const connectionsRef = useRef(connections);
     const groupsRef = useRef(groups);
+    const pageMountedRef = useRef(false);
     const runningNodeIdsRef = useRef<Set<string>>(new Set());
     const selectedNodeIdsRef = useRef(selectedNodeIds);
     const selectedGroupIdRef = useRef(selectedGroupId);
@@ -406,18 +407,48 @@ function InfiniteCanvasPage() {
     );
 
     const markCanvasNodeRunning = useCallback((nodeId: string) => {
+        markCanvasGenerationSession(projectId, nodeId);
         runningNodeIdsRef.current = withRunningCanvasNode(runningNodeIdsRef.current, nodeId);
-        setRunningNodeIds(new Set(runningNodeIdsRef.current));
-    }, []);
+        if (pageMountedRef.current) setRunningNodeIds(new Set(runningNodeIdsRef.current));
+    }, [projectId]);
 
     const clearCanvasNodeRunning = useCallback((nodeIds: Iterable<string>) => {
-        runningNodeIdsRef.current = withoutRunningCanvasNodes(runningNodeIdsRef.current, nodeIds);
-        setRunningNodeIds(new Set(runningNodeIdsRef.current));
-    }, []);
+        const ids = Array.from(nodeIds);
+        clearCanvasGenerationSession(projectId, ids);
+        runningNodeIdsRef.current = withoutRunningCanvasNodes(runningNodeIdsRef.current, ids);
+        if (pageMountedRef.current) setRunningNodeIds(new Set(runningNodeIdsRef.current));
+    }, [projectId]);
 
     const clearAllCanvasNodeRunning = useCallback(() => {
+        clearCanvasGenerationSession(projectId, runningNodeIdsRef.current);
         runningNodeIdsRef.current = new Set();
-        setRunningNodeIds(new Set());
+        if (pageMountedRef.current) setRunningNodeIds(new Set());
+    }, [projectId]);
+
+    const commitGenerationNodes = useCallback((updater: CanvasNodeData[] | ((prev: CanvasNodeData[]) => CanvasNodeData[])) => {
+        const storeProject = useCanvasStore.getState().projects.find((project) => project.id === projectId);
+        const baseNodes = storeProject?.nodes || nodesRef.current;
+        const next = typeof updater === "function" ? updater(baseNodes) : updater;
+        nodesRef.current = next;
+        if (pageMountedRef.current) setNodes(next);
+        // 后台生成可能在画布页面卸载后才完成，直接写入 store，保证返回画布时能看到结果。
+        useCanvasStore.getState().updateProject(projectId, { nodes: next });
+    }, [projectId]);
+
+    const commitGenerationConnections = useCallback((updater: CanvasConnection[] | ((prev: CanvasConnection[]) => CanvasConnection[])) => {
+        const storeProject = useCanvasStore.getState().projects.find((project) => project.id === projectId);
+        const baseConnections = storeProject?.connections || connectionsRef.current;
+        const next = typeof updater === "function" ? updater(baseConnections) : updater;
+        connectionsRef.current = next;
+        if (pageMountedRef.current) setConnections(next);
+        useCanvasStore.getState().updateProject(projectId, { connections: next });
+    }, [projectId]);
+
+    useEffect(() => {
+        pageMountedRef.current = true;
+        return () => {
+            pageMountedRef.current = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -430,9 +461,12 @@ function InfiniteCanvasPage() {
         }
 
         const restore = async () => {
-            const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
+            const activeGenerationIds = getCanvasGenerationSessionIds(projectId);
+            const restoredNodes = await hydrateCanvasImages(resetInterruptedCanvasGenerations(project.nodes, activeGenerationIds));
             const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
             setNodes(restoredNodes);
+            runningNodeIdsRef.current = activeGenerationIds;
+            setRunningNodeIds(new Set(activeGenerationIds));
             setConnections(project.connections);
             setGroups(project.groups || []);
             setChatSessions(restoredSessions);
@@ -461,6 +495,37 @@ function InfiniteCanvasPage() {
         };
         void restore();
     }, [hydrated, openProject, projectId, router]);
+
+    useEffect(() => {
+        if (!projectLoaded) return;
+        return useCanvasStore.subscribe((state, previousState) => {
+            const project = state.projects.find((item) => item.id === projectId);
+            const previousProject = previousState.projects.find((item) => item.id === projectId);
+            if (!project) return;
+
+            const activeGenerationIds = getCanvasGenerationSessionIds(projectId);
+            runningNodeIdsRef.current = activeGenerationIds;
+            setRunningNodeIds(new Set(activeGenerationIds));
+            const hasGenerationActivity = activeGenerationIds.size > 0 || project.nodes.some((node) => node.metadata?.status === NODE_STATUS_LOADING) || nodesRef.current.some((node) => node.metadata?.status === NODE_STATUS_LOADING);
+            if (!hasGenerationActivity) return;
+
+            const shouldSyncGenerationNodes = project.nodes !== previousProject?.nodes && project.nodes !== nodesRef.current && project.nodes.some((node) => {
+                const current = nodesRef.current.find((item) => item.id === node.id);
+                return activeGenerationIds.has(node.id) || current?.metadata?.status === NODE_STATUS_LOADING || node.metadata?.status === NODE_STATUS_LOADING;
+            });
+            if (shouldSyncGenerationNodes) {
+                void hydrateCanvasImages(project.nodes).then((hydratedNodes) => {
+                    nodesRef.current = hydratedNodes;
+                    setNodes(hydratedNodes);
+                });
+            }
+
+            if (project.connections !== previousProject?.connections && project.connections !== connectionsRef.current) {
+                connectionsRef.current = project.connections;
+                setConnections(project.connections);
+            }
+        });
+    }, [projectId, projectLoaded]);
 
     useEffect(() => {
         if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
@@ -2018,7 +2083,7 @@ function InfiniteCanvasPage() {
             ], prompt);
             setAngleNodeId(null);
             markCanvasNodeRunning(childId);
-            setNodes((prev) => [
+            commitGenerationNodes((prev) => [
                 ...prev,
                 {
                     id: childId,
@@ -2030,7 +2095,7 @@ function InfiniteCanvasPage() {
                     metadata: { prompt, status: NODE_STATUS_LOADING, ...generationMetadata },
                 },
             ]);
-            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
+            commitGenerationConnections((prev) => [...prev, { id: nanoid(), fromNodeId: node.id, toNodeId: childId }]);
             setSelectedNodeIds(new Set([childId]));
             setSelectedGroupId(null);
             setDialogNodeId(childId);
@@ -2040,15 +2105,15 @@ function InfiniteCanvasPage() {
                 );
                 const uploaded = await uploadImage(image.dataUrl);
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, ...getGeneratedMediaSizePatch(item, size), metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                commitGenerationNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, ...getGeneratedMediaSizePatch(item, size), metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
             } catch (error) {
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
+                commitGenerationNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
             } finally {
                 clearCanvasNodeRunning([childId]);
             }
         },
-        [activeProfile.id, clearCanvasNodeRunning, effectiveConfig, markCanvasNodeRunning, openConfigDialog],
+        [activeProfile.id, clearCanvasNodeRunning, commitGenerationConnections, commitGenerationNodes, effectiveConfig, markCanvasNodeRunning, openConfigDialog],
     );
 
     const handleFontSizeChange = useCallback((nodeId: string, fontSize: number) => {
@@ -2197,7 +2262,7 @@ function InfiniteCanvasPage() {
             let pendingChildIds: string[] = [];
             let markSourceStatus = false;
             if (sourceNode?.type === CanvasNodeType.Image && mode === "image") {
-                setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: prompt.trim(), status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)));
+                commitGenerationNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt: prompt.trim(), status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)));
             }
 
             try {
@@ -2217,7 +2282,7 @@ function InfiniteCanvasPage() {
                 if (!effectivePrompt && mode === "text") {
                     return;
                 }
-                if (markSourceStatus) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)));
+                if (markSourceStatus) commitGenerationNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, prompt, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)));
 
                 if (mode === "image") {
                     const count = getGenerationCount(generationConfig.count);
@@ -2278,8 +2343,9 @@ function InfiniteCanvasPage() {
                         metadata: { prompt: sourcePrompt, status: NODE_STATUS_LOADING, generationStartedAt, batchRootId: count > 1 ? rootId : undefined, ...generationMetadata },
                     }));
                     const batchConnections = [...(isImageNode ? [] : [{ id: nanoid(), fromNodeId: nodeId, toNodeId: rootId }]), ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: rootId, toNodeId: childId }))];
+                    pendingChildIds.forEach(markCanvasNodeRunning);
 
-                    setNodes((prev) => [
+                    commitGenerationNodes((prev) => [
                         ...prev.map((node) =>
                             node.id === nodeId
                                 ? isConfigNode
@@ -2309,7 +2375,7 @@ function InfiniteCanvasPage() {
                         ...(isImageNode ? [] : [rootNode]),
                         ...childNodes,
                     ]);
-                    setConnections((prev) => [...prev, ...batchConnections]);
+                    commitGenerationConnections((prev) => [...prev, ...batchConnections]);
                     setSelectedNodeIds(new Set([nodeId]));
                     setSelectedGroupId(null);
                     setSelectedConnectionId(null);
@@ -2325,7 +2391,7 @@ function InfiniteCanvasPage() {
                                     : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt).then((items) => items[0]);
                                 const uploaded = await uploadImage(image.dataUrl);
                                 const imageSize = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                                setNodes((prev) => {
+                                commitGenerationNodes((prev) => {
                                     const root = prev.find((node) => node.id === rootId);
                                     return prev.map((node) => {
                                         if (node.id !== targetId && node.id !== rootId) return node;
@@ -2345,18 +2411,18 @@ function InfiniteCanvasPage() {
                                     });
                                 });
                                 hasSuccess = true;
-                                if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, ...timing() } } : node)));
+                                if (isConfigNode) commitGenerationNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined, ...timing() } } : node)));
                                 return true;
                             } catch (error) {
                                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                                 hasFailure = true;
-                                setNodes((prev) => prev.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails, ...timing() } } : node)));
+                                commitGenerationNodes((prev) => prev.map((node) => (node.id === targetId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails, ...timing() } } : node)));
                                 return false;
                             }
                         }),
                     );
                     if (hasFailure) message.error(hasSuccess ? "部分图片生成失败" : "全部图片生成失败");
-                    setNodes((prev) =>
+                    commitGenerationNodes((prev) =>
                         prev.map((node) =>
                             node.id === nodeId && isConfigNode
                                 ? { ...node, metadata: { ...node.metadata, status: hasSuccess ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: hasSuccess ? undefined : "全部图片生成失败", ...timing() } }
@@ -2385,15 +2451,16 @@ function InfiniteCanvasPage() {
                         metadata: { prompt: sourcePrompt, generationPrompt: effectivePrompt, status: NODE_STATUS_LOADING, generationStartedAt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)) },
                     };
                     pendingChildIds = [videoId];
-                    setNodes((prev) =>
+                    if (videoId !== nodeId) markCanvasNodeRunning(videoId);
+                    commitGenerationNodes((prev) =>
                         isEmptyVideoNode
                             ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode, title: getGeneratedNodeTitle(node, videoNode.title), metadata: { ...node.metadata, ...videoNode.metadata } } : node))
                             : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
                     );
-                    if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
+                    if (!isEmptyVideoNode) commitGenerationConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, effectivePrompt, generationContext.referenceImages), "video");
                     const videoSize = fitNodeSize(video.width || spec.width, video.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, ...getGeneratedMediaSizePatch(node, videoSize), metadata: { ...node.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
+                    commitGenerationNodes((prev) => prev.map((node) => (node.id === videoId ? { ...node, ...getGeneratedMediaSizePatch(node, videoSize), metadata: { ...node.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: effectivePrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, references: generationContext.referenceImages.map(referenceUrl).filter((url): url is string => Boolean(url)), ...timing() } } : node)));
                     return;
                 }
 
@@ -2405,6 +2472,7 @@ function InfiniteCanvasPage() {
                 const parentPosition = sourceNode?.position || { x: 0, y: 0 };
                 const childIds = isConfigNode || editingTextNode ? Array.from({ length: textCount }, () => nanoid()) : [];
                 pendingChildIds = childIds;
+                pendingChildIds.forEach(markCanvasNodeRunning);
                 if (isConfigNode || editingTextNode) {
                     const childNodes: CanvasNodeData[] = childIds.map((id, index) => ({
                         id,
@@ -2418,8 +2486,8 @@ function InfiniteCanvasPage() {
                         height: textConfig.height,
                         metadata: { prompt, status: NODE_STATUS_LOADING, fontSize: 14, generationStartedAt },
                     }));
-                    setNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)), ...childNodes]);
-                    setConnections((prev) => [...prev, ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: childId }))]);
+                    commitGenerationNodes((prev) => [...prev.map((node) => (node.id === nodeId && isConfigNode ? { ...node, metadata: { ...node.metadata, prompt, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : node)), ...childNodes]);
+                    commitGenerationConnections((prev) => [...prev, ...childIds.map((childId) => ({ id: nanoid(), fromNodeId: nodeId, toNodeId: childId }))]);
                 }
 
                 const answers = await Promise.all(
@@ -2429,12 +2497,12 @@ function InfiniteCanvasPage() {
                             localStreamed = text;
                             streamed = text;
                             if (isConfigNode) return;
-                            setNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
+                            commitGenerationNodes((prev) => prev.map((node) => (node.id === targetNodeId ? { ...node, type: CanvasNodeType.Text, metadata: { ...node.metadata, content: text, status: NODE_STATUS_LOADING } } : node)));
                         }).then((answer) => ({ nodeId: targetNodeId, content: answer || localStreamed }));
                     }),
                 );
                 const answerByNodeId = new Map(answers.map((item) => [item.nodeId, item.content]));
-                setNodes((prev) =>
+                commitGenerationNodes((prev) =>
                     prev.map((node) =>
                         childIds.includes(node.id)
                             ? { ...node, metadata: { ...node.metadata, content: answerByNodeId.get(node.id) || streamed, status: NODE_STATUS_SUCCESS, ...timing() } }
@@ -2448,7 +2516,7 @@ function InfiniteCanvasPage() {
             } catch (error) {
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                 message.error(errorDetails);
-                setNodes((prev) =>
+                commitGenerationNodes((prev) =>
                     prev.map((node) => {
                         const isSourceNode = node.id === nodeId;
                         if (!isSourceNode && !pendingChildIds.includes(node.id)) return node;
@@ -2457,10 +2525,10 @@ function InfiniteCanvasPage() {
                     }),
                 );
             } finally {
-                clearCanvasNodeRunning([nodeId]);
+                clearCanvasNodeRunning([nodeId, ...pendingChildIds]);
             }
         },
-        [activeProfile.id, clearCanvasNodeRunning, effectiveConfig, markCanvasNodeRunning, openConfigDialog],
+        [activeProfile.id, clearCanvasNodeRunning, commitGenerationConnections, commitGenerationNodes, effectiveConfig, markCanvasNodeRunning, openConfigDialog],
     );
 
     const handleRetryNode = useCallback(
@@ -2509,7 +2577,7 @@ function InfiniteCanvasPage() {
             const generationStartedAt = Date.now();
             const timing = () => buildGenerationTiming(generationStartedAt);
             markCanvasNodeRunning(node.id);
-            setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : item)));
+            commitGenerationNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, generationStartedAt, generationElapsedMs: undefined } } : item)));
 
             try {
                 if (node.type === CanvasNodeType.Text) {
@@ -2517,15 +2585,15 @@ function InfiniteCanvasPage() {
                     let streamed = "";
                     const answer = await requestImageQuestion(generationConfig, buildNodeChatMessages({ ...context, prompt: requestPrompt }), (text) => {
                         streamed = text;
-                        setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: text, status: NODE_STATUS_LOADING } } : item)));
+                        commitGenerationNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: text, status: NODE_STATUS_LOADING } } : item)));
                     });
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt: sourcePrompt, generationPrompt: requestPrompt, status: NODE_STATUS_SUCCESS, ...timing() } } : item)));
+                    commitGenerationNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, type: CanvasNodeType.Text, metadata: { ...item.metadata, content: answer || streamed, prompt: sourcePrompt, generationPrompt: requestPrompt, status: NODE_STATUS_SUCCESS, ...timing() } } : item)));
                     return;
                 }
                 if (node.type === CanvasNodeType.Video) {
                     const video = await uploadMediaFile(await requestVideoGeneration(generationConfig, requestPrompt, retryReferenceImages || []), "video");
                     const videoSize = fitNodeSize(video.width || node.width, video.height || node.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, ...getGeneratedMediaSizePatch(item, videoSize), metadata: { ...item.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: requestPrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
+                    commitGenerationNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, ...getGeneratedMediaSizePatch(item, videoSize), metadata: { ...item.metadata, ...videoMetadata(video), prompt: sourcePrompt, generationPrompt: requestPrompt, model: generationConfig.model, size: generationConfig.size, seconds: generationConfig.videoSeconds, vquality: generationConfig.vquality, ...timing() } } : item)));
                     return;
                 }
 
@@ -2536,7 +2604,7 @@ function InfiniteCanvasPage() {
                 const generationMetadata = savedImageMetadata?.generationType
                     ? { generationType: savedImageMetadata.generationType, model: generationConfig.model, size: generationConfig.size, quality: generationConfig.quality, count: savedImageMetadata.count || 1, references: savedImageMetadata.references }
                     : buildImageGenerationMetadata(useReferenceImages ? "edit" : "generation", generationConfig, 1, retryReferenceImages || [], requestPrompt);
-                setNodes((prev) =>
+                commitGenerationNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id
                             ? {
@@ -2551,12 +2619,12 @@ function InfiniteCanvasPage() {
             } catch (error) {
                 const errorDetails = error instanceof Error ? error.message : "生成失败";
                 message.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, ...timing() } } : item)));
+                commitGenerationNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, ...timing() } } : item)));
             } finally {
                 clearCanvasNodeRunning([node.id]);
             }
         },
-        [activeProfile.id, clearCanvasNodeRunning, effectiveConfig, markCanvasNodeRunning, message, openConfigDialog],
+        [activeProfile.id, clearCanvasNodeRunning, commitGenerationNodes, effectiveConfig, markCanvasNodeRunning, message, openConfigDialog],
     );
 
     const generateImageFromTextNode = useCallback(
@@ -3647,10 +3715,6 @@ function isCanvasGenerationConfigReady(config: AiConfig, mode: CanvasNodeGenerat
             (config.textVideoBaseUrl.trim() && (config.textVideoApiKey.trim() || config.videoApiKey.trim() || config.textApiKey.trim() || config.apiKey.trim())) ||
             (config.textBaseUrl.trim() && (config.textApiKey.trim() || config.videoApiKey.trim() || config.textVideoApiKey.trim() || config.apiKey.trim())),
     );
-}
-
-function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
-    return nodes.map((node) => (node.metadata?.status === "loading" ? { ...node, metadata: { ...node.metadata, status: "error" as const, errorDetails: "页面刷新后生成已中断，请重新生成。" } } : node));
 }
 
 function findRetrySourceNode(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
