@@ -14,7 +14,7 @@ import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { assetTagOptions, assetTagValues, getAssetTag, normalizeAssetTag, type AssetTag } from "@/lib/asset-tags";
 import type { InputImage } from "../../../../../types";
-import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, isCursorInSelectedImageMention, remapImageMentionsForOrder, stripImageMentionMarkers } from "../../../../../lib/promptImageMentions";
 import { storeImage } from "../../../../../lib/db";
 import { useCanvasModelOptions } from "./canvas-model-options";
@@ -1103,7 +1103,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         textModel: mode === "text" ? resolvedModel : globalConfig.textModel,
         videoModel: mode === "video" ? resolvedModel : globalConfig.videoModel,
         quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
-        size: node.metadata?.size || globalConfig.size || defaultConfig.size,
+        size: normalizeImageSizeForProfile(node.metadata?.size || globalConfig.size || defaultConfig.size, activeProfileId),
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 1 : globalConfig.count) || defaultConfig.count),

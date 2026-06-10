@@ -67,6 +67,20 @@ export function normalizeImageSize(size: string) {
   return `${width}x${height}`
 }
 
+export function normalizeImageSizeForMaxTier(size: string, maxTier: SizeTier) {
+  const normalized = normalizeImageSize(size)
+  const match = normalized.match(SIZE_PATTERN)
+  if (!match) return normalized
+
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return normalized
+  if (width * height <= TIER_PIXEL_BUDGET[maxTier]) return normalized
+
+  // 公益站只能使用 1K 档位时，保留原比例，把过大的历史尺寸压回允许的档位。
+  return normalizeImageSize(calculateImageSize(maxTier, `${width}:${height}`) || normalized)
+}
+
 export function parseRatio(ratio: string) {
   const match = ratio.match(RATIO_PATTERN)
   if (!match) return null

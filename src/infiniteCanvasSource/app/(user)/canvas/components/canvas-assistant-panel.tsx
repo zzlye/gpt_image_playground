@@ -19,6 +19,8 @@ import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { ReferenceImage } from "@/types/image";
 import { DiaTextReveal } from "@/components/ui/dia-text-reveal";
+import { getActiveApiProfile, normalizeImageModelForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { useStore } from "../../../../../store";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasPromptLibrary } from "./canvas-prompt-library";
 import { CanvasNodeType, type CanvasAssistantImage, type CanvasAssistantMessage, type CanvasAssistantReference, type CanvasAssistantSession, type CanvasNodeData } from "../types";
@@ -44,6 +46,8 @@ type CanvasAssistantPanelProps = {
 export function CanvasAssistantPanel({ nodes, selectedNodeIds, sessions, activeSessionId, onSelectNodeIds, onSessionsChange, onInsertImage, onInsertText, onPasteImage, onCollapseStart, onCollapse }: CanvasAssistantPanelProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const effectiveConfig = useEffectiveConfig();
+    const settings = useStore((state) => state.settings);
+    const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const modelCosts = useConfigStore((state) => state.publicSettings?.modelChannel.modelCosts);
     const cleanupImages = useAssetStore((state) => state.cleanupImages);
     const updateConfig = useConfigStore((state) => state.updateConfig);
@@ -140,7 +144,13 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, sessions, activeS
     };
 
     const sendMessage = async (text: string, nextMode: AssistantMode, history: CanvasAssistantMessage[], savedReferences?: CanvasAssistantReference[]) => {
-        const requestConfig = { ...effectiveConfig, model: nextMode === "image" ? effectiveConfig.imageModel || effectiveConfig.model : effectiveConfig.textModel || effectiveConfig.model };
+        const imageModel = normalizeImageModelForProfile(effectiveConfig.imageModel || effectiveConfig.model, activeProfile.id);
+        const requestConfig = {
+            ...effectiveConfig,
+            model: nextMode === "image" ? imageModel : effectiveConfig.textModel || effectiveConfig.model,
+            imageModel,
+            size: nextMode === "image" ? normalizeImageSizeForProfile(effectiveConfig.size, activeProfile.id) : effectiveConfig.size,
+        };
         if (!isAiConfigReady(requestConfig, requestConfig.model)) {
             openConfigDialog(true);
             return;

@@ -20,6 +20,7 @@ import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '..
 import { normalizeBaseUrl, shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
+import { normalizeImageSizeForMaxTier, type SizeTier } from './size'
 import {
   DEFAULT_IMAGES_MODEL,
   FIXED_IMAGE_MODEL_OPTIONS,
@@ -70,6 +71,14 @@ export const DEFAULT_API_TIMEOUT = 600
 export function normalizeImageModelForProfile(model: string, profileId: string): string {
   if (profileId === LOCKED_PUBLIC_PROFILE_ID) return DEFAULT_IMAGES_MODEL
   return normalizeFixedImageModel(model)
+}
+
+export function getImageSizeTiersForProfile(profileId: string): SizeTier[] {
+  return profileId === LOCKED_PUBLIC_PROFILE_ID ? ['1K'] : ['1K', '2K', '4K']
+}
+
+export function normalizeImageSizeForProfile(size: string, profileId: string): string {
+  return profileId === LOCKED_PUBLIC_PROFILE_ID ? normalizeImageSizeForMaxTier(size, '1K') : size
 }
 
 export function getApiModelUnitCostText(_settings: AppSettings, _profileId: string, model: string): string | null {

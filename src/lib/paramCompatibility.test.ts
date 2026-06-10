@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PARAMS } from '../types'
-import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_SETTINGS, normalizeSettings } from './apiProfiles'
+import { createDefaultFalProfile, createDefaultOpenAIProfile, DEFAULT_SETTINGS, LOCKED_PUBLIC_PROFILE_ID, normalizeSettings } from './apiProfiles'
 import { getOutputImageLimitForSettings, normalizeParamsForSettings } from './paramCompatibility'
 
 describe('parameter compatibility', () => {
@@ -49,5 +49,15 @@ describe('parameter compatibility', () => {
 
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, settings).size).toBe('1360x1024')
     expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: 'auto' }, settings, { hasInputImages: true }).size).toBe('auto')
+  })
+
+  it('limits public site image size to 1K', () => {
+    const settings = normalizeSettings({
+      ...DEFAULT_SETTINGS,
+      activeProfileId: LOCKED_PUBLIC_PROFILE_ID,
+    })
+
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: '3840x2160' }, settings).size).toBe('1280x720')
+    expect(normalizeParamsForSettings({ ...DEFAULT_PARAMS, size: '2048x2048' }, settings).size).toBe('1024x1024')
   })
 })

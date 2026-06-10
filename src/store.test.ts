@@ -98,6 +98,7 @@ vi.mock('./lib/agentApi', () => ({
 import { clearAgentConversations, clearImages, getAllAgentConversations, getAllTasks, putAgentConversation, putImage, putTask as putDbTask } from './lib/db'
 import { callAgentResponsesApi, callBatchImageSingle } from './lib/agentApi'
 import { cleanStaleAgentInputDrafts, deleteAgentRoundFromConversation, editOutputs, getActiveAgentRounds, getErrorToastMessage, getPersistedState, getTaskApiProfile, importData, initStore, markInterruptedOpenAIRunningTasks, migratePersistedState, regenerateAgentAssistantMessage, remapAgentRoundMentionsForPathChange, removeTask, reuseConfig, submitAgentMessage, submitTask, useStore } from './store'
+import { useCanvasStore } from './infiniteCanvasSource/app/(user)/canvas/stores/use-canvas-store'
 
 const imageA = { id: 'image-a', dataUrl: 'data:image/png;base64,a' }
 const imageB = { id: 'image-b', dataUrl: 'data:image/png;base64,b' }
@@ -653,6 +654,7 @@ describe('data import', () => {
       activeAgentConversationId: null,
       showToast: vi.fn(),
     })
+    useCanvasStore.setState({ projects: [] })
     await clearAgentConversations()
   })
 
@@ -781,6 +783,48 @@ describe('data import', () => {
     expect('agentConversations' in persisted).toBe(false)
     expect(serializedPersisted).not.toContain('image_generation_call')
     expect(serializedPersisted).not.toContain('imported-legacy-base64')
+  })
+
+  it('resets imported loading canvas nodes so sync does not report page interruption', async () => {
+    const imported = await importData(importFile({
+      version: 4,
+      exportedAt: new Date(0).toISOString(),
+      canvasProjects: [{
+        project: {
+          id: 'canvas-a',
+          title: '同步画布',
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+          nodes: [{
+            id: 'node-a',
+            type: 'image',
+            title: '图片节点',
+            position: { x: 0, y: 0 },
+            width: 320,
+            height: 240,
+            metadata: {
+              status: 'loading',
+              errorDetails: '页面刷新后生成已中断，请重新生成。',
+              generationStartedAt: 100,
+            },
+          }],
+          connections: [],
+          groups: [],
+          chatSessions: [],
+          activeChatId: null,
+          backgroundMode: 'lines',
+          showImageInfo: false,
+          viewport: { x: 0, y: 0, k: 1 },
+        },
+        files: [],
+      }],
+    } as ExportData), { importConfig: false, importCanvasProjects: true })
+
+    const node = useCanvasStore.getState().projects[0]?.nodes[0]
+    expect(imported).toBe(true)
+    expect(node?.metadata?.status).toBe('error')
+    expect(node?.metadata?.errorDetails).toBe('同步数据中的生成任务不会继续，请重新生成。')
+    expect(node?.metadata?.generationStartedAt).toBeUndefined()
   })
 
 })

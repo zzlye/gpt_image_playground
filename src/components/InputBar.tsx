@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getImageModelSubmitCostText, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeSettings } from '../lib/apiProfiles'
+import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getImageModelSubmitCostText, getImageSizeTiersForProfile, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeImageSizeForProfile, normalizeSettings } from '../lib/apiProfiles'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeImageSize } from '../lib/size'
@@ -628,8 +628,9 @@ export default function InputBar() {
     : isFalProvider
     ? `fal.ai 最大请求数量为 ${outputImageLimit}`
     : `OpenAI 最大请求数量为 ${outputImageLimit}`
-  const normalizedDisplaySize = normalizeImageSize(params.size)
+  const normalizedDisplaySize = normalizeImageSizeForProfile(normalizeImageSize(params.size), activeProfile.id)
   const displaySize = normalizedDisplaySize === 'auto' ? DEFAULT_PARAMS.size : normalizedDisplaySize || DEFAULT_PARAMS.size
+  const imageSizeTiers = getImageSizeTiersForProfile(activeProfile.id)
   const modelOptions = activeProfile.id === LOCKED_PUBLIC_PROFILE_ID
     ? FIXED_IMAGE_MODEL_OPTIONS.filter((option) => option.value === DEFAULT_IMAGES_MODEL)
     : [...FIXED_IMAGE_MODEL_OPTIONS]
@@ -640,6 +641,11 @@ export default function InputBar() {
       setSettings({ model: DEFAULT_IMAGES_MODEL })
     }
   }, [activeProfile.id, activeProfile.model, setSettings])
+
+  useEffect(() => {
+    const nextSize = normalizeImageSizeForProfile(normalizeImageSize(params.size), activeProfile.id)
+    if (nextSize && nextSize !== params.size) setParams({ size: nextSize })
+  }, [activeProfile.id, params.size, setParams])
 
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
   const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
@@ -1813,6 +1819,7 @@ export default function InputBar() {
       {showSizePicker && (
         <SizePickerModal
           currentSize={displaySize}
+          allowedTiers={imageSizeTiers}
           onSelect={(size) => setParams({ size })}
           onClose={() => setShowSizePicker(false)}
         />

@@ -14,11 +14,13 @@ import {
   getBananaPricedImageModel,
   getFixedImageRequestModel,
   getFixedImageModelUnitCostText,
+  getImageSizeTiersForProfile,
   importCustomProviderDefinitionFromJson,
   importCustomProviderSettingsFromJson,
   LOCKED_PUBLIC_PROFILE_ID,
   LOCKED_WENYUN_PROFILE_ID,
   mergeImportedSettings,
+  normalizeImageSizeForProfile,
   normalizeSettings,
   setApiBalanceSnapshot,
   switchApiProfileProvider,
@@ -662,6 +664,13 @@ describe('custom providers', () => {
     expect(FIXED_IMAGE_MODEL_OPTIONS.map((option) => String(option.value))).toContain('gpt-image-2-4k')
     expect(settings.profiles[0].model).toBe('gpt-image-2-4k')
     expect(settings.profiles[1].model).toBe(DEFAULT_IMAGES_MODEL)
+  })
+
+  it('only exposes 1K image sizes on public site', () => {
+    expect(getImageSizeTiersForProfile(LOCKED_PUBLIC_PROFILE_ID)).toEqual(['1K'])
+    expect(getImageSizeTiersForProfile(LOCKED_WENYUN_PROFILE_ID)).toEqual(['1K', '2K', '4K'])
+    expect(normalizeImageSizeForProfile('3840x2160', LOCKED_PUBLIC_PROFILE_ID)).toBe('1280x720')
+    expect(normalizeImageSizeForProfile('3840x2160', LOCKED_WENYUN_PROFILE_ID)).toBe('3840x2160')
   })
 
   it('uses fixed display prices for built-in image models', () => {

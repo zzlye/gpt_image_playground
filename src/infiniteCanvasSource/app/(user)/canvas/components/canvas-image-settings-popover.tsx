@@ -9,9 +9,11 @@ import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { getActiveApiProfile, getImageSizeTiersForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from "../../../../../lib/size";
+import { useStore } from "../../../../../store";
 
-const TIERS: SizeTier[] = ["1K", "2K", "4K"];
+const ALL_TIERS: SizeTier[] = ["1K", "2K", "4K"];
 const RATIOS = [
     { label: "1:1", value: "1:1" },
     { label: "3:2", value: "3:2" },
@@ -36,12 +38,15 @@ type CanvasImageSettingsPopoverProps = {
 
 export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChange, buttonClassName, placement = "topLeft" }: CanvasImageSettingsPopoverProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const settings = useStore((state) => state.settings);
+    const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
+    const allowedTiers = useMemo(() => getImageSizeTiersForProfile(activeProfile.id), [activeProfile.id]);
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const activeSize = normalizeImageSize(config.size || "1024x1024");
+    const activeSize = normalizeImageSizeForProfile(normalizeImageSize(config.size || "1024x1024"), activeProfile.id);
 
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -69,7 +74,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         };
     }, [open]);
 
-    const panel = open && buttonRect ? <ImageSizePortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
+    const panel = open && buttonRect ? <ImageSizePortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} allowedTiers={allowedTiers} onConfigChange={onConfigChange} /> : null;
 
     return (
         <>
@@ -91,6 +96,7 @@ function ImageSizePortal({
     placement,
     theme,
     config,
+    allowedTiers,
     onConfigChange,
 }: {
     buttonRect: DOMRect;
@@ -98,6 +104,7 @@ function ImageSizePortal({
     placement: CanvasImageSettingsPopoverProps["placement"];
     theme: CanvasTheme;
     config: AiConfig;
+    allowedTiers: SizeTier[];
     onConfigChange: (key: keyof AiConfig, value: string) => void;
 }) {
     const width = 356;
@@ -132,17 +139,19 @@ function ImageSizePortal({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            <CanvasImageSizePanel config={config} onConfigChange={onConfigChange} theme={theme} />
+            <CanvasImageSizePanel config={config} allowedTiers={allowedTiers} onConfigChange={onConfigChange} theme={theme} />
         </div>,
         document.body,
     );
 }
 
-function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiConfig; onConfigChange: (key: keyof AiConfig, value: string) => void; theme: CanvasTheme }) {
-    const currentPreset = useMemo(() => findPresetForSize(config.size || "1024x1024"), [config.size]);
+function CanvasImageSizePanel({ config, allowedTiers, onConfigChange, theme }: { config: AiConfig; allowedTiers: SizeTier[]; onConfigChange: (key: keyof AiConfig, value: string) => void; theme: CanvasTheme }) {
+    const tiers = allowedTiers.length ? allowedTiers : ALL_TIERS;
+    const tierKey = tiers.join("|");
+    const currentPreset = useMemo(() => findPresetForSize(config.size || "1024x1024", tiers), [config.size, tierKey]);
     const currentCustomRatio = useMemo(() => readRatioFromSize(config.size || ""), [config.size]);
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
-    const [tier, setTier] = useState<SizeTier>(currentPreset?.tier || "1K");
+    const [tier, setTier] = useState<SizeTier>(currentPreset?.tier || tiers[0] || "1K");
     const [ratio, setRatio] = useState(currentPreset?.ratio || (currentCustomRatio ? "custom" : "1:1"));
     const [customRatio, setCustomRatio] = useState(currentPreset?.ratio || currentCustomRatio || "16:9");
     const activeRatio = ratio === "custom" ? customRatio : ratio;
@@ -151,6 +160,14 @@ function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiCon
         return size ? normalizeImageSize(size) : "";
     }, [activeRatio, tier]);
     const customRatioValid = ratio !== "custom" || Boolean(parseRatio(customRatio));
+
+    useEffect(() => {
+        if (tiers.includes(tier)) return;
+        const nextTier = tiers[0] || "1K";
+        setTier(nextTier);
+        const size = calculateImageSize(nextTier, activeRatio);
+        if (size) onConfigChange("size", normalizeImageSize(size));
+    }, [activeRatio, onConfigChange, tier, tierKey]);
 
     const applySize = (nextTier: SizeTier, nextRatio: string) => {
         const size = calculateImageSize(nextTier, nextRatio);
@@ -183,7 +200,7 @@ function CanvasImageSizePanel({ config, onConfigChange, theme }: { config: AiCon
                 <div className="text-lg font-semibold">图像设置</div>
                 <SettingGroup title="基准分辨率" color={theme.node.muted}>
                     <div className="grid grid-cols-3 gap-2.5">
-                        {TIERS.map((item) => (
+                        {tiers.map((item) => (
                             <OptionPill key={item} selected={tier === item} theme={theme} onClick={() => selectTier(item)}>
                                 {item}
                             </OptionPill>
@@ -296,10 +313,10 @@ function SettingGroup({ title, color, children }: { title: string; color: string
     );
 }
 
-function findPresetForSize(size: string) {
+function findPresetForSize(size: string, tiers = ALL_TIERS) {
     const normalized = normalizeImageSize(size);
     // 画布尺寸选择沿用文运工坊的 1K/2K/4K 计算规则，但交互改为即时生效。
-    for (const tier of TIERS) {
+    for (const tier of tiers) {
         for (const ratio of RATIOS) {
             if (calculateImageSize(tier, ratio.value) === normalized) return { tier, ratio: ratio.value };
         }

@@ -19,7 +19,7 @@ import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
 import { useAssetStore } from "@/stores/use-asset-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getApiBalanceSnapshot, setApiBalanceSnapshot, normalizeImageModelForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { copyImageSourceToClipboard, getClipboardFailureMessage } from "../../../../../lib/clipboard";
 import { storeImage } from "../../../../../lib/db";
 import { queryNewApiBalance } from "../../../../../lib/newApi";
@@ -2546,7 +2546,7 @@ function InfiniteCanvasPage() {
                           model: savedImageModel,
                           imageModel: savedImageModel,
                           quality: savedImageMetadata.quality || effectiveConfig.quality,
-                          size: savedImageMetadata.size || effectiveConfig.size,
+                          size: normalizeImageSizeForProfile(savedImageMetadata.size || effectiveConfig.size, activeProfile.id),
                           count: "1",
                     }
                     : { ...buildGenerationConfig(effectiveConfig, sourceNode, node.type === CanvasNodeType.Text ? "text" : node.type === CanvasNodeType.Video ? "video" : "image", activeProfile.id), count: "1" };
@@ -3696,7 +3696,7 @@ function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | undefine
         textModel: mode === "text" ? resolvedModel : config.textModel,
         videoModel: mode === "video" ? resolvedModel : config.videoModel,
         quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
-        size: node?.metadata?.size || config.size || defaultConfig.size,
+        size: normalizeImageSizeForProfile(node?.metadata?.size || config.size || defaultConfig.size, activeProfileId),
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
         count: String(node?.metadata?.count || (mode === "image" ? 1 : config.count) || defaultConfig.count),

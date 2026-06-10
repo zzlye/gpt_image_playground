@@ -18,6 +18,7 @@ const RATIOS = [
 
 interface Props {
   currentSize: string
+  allowedTiers?: SizeTier[]
   onSelect: (size: string) => void
   onClose: () => void
 }
@@ -30,9 +31,9 @@ function parseSize(size: string) {
   return { width: match[1], height: match[2] }
 }
 
-function findPresetForSize(size: string) {
+function findPresetForSize(size: string, tiers = TIERS) {
   const normalized = normalizeImageSize(size)
-  for (const tier of TIERS) {
+  for (const tier of tiers) {
     for (const ratio of RATIOS) {
       if (calculateImageSize(tier, ratio.value) === normalized) {
         return { tier, ratio: ratio.value }
@@ -42,8 +43,9 @@ function findPresetForSize(size: string) {
   return null
 }
 
-export default function SizePickerModal({ currentSize, onSelect, onClose }: Props) {
+export default function SizePickerModal({ currentSize, allowedTiers, onSelect, onClose }: Props) {
   usePreventBackgroundScroll(true)
+  const tiers = allowedTiers?.length ? allowedTiers : TIERS
 
   const modalRef = useRef<HTMLDivElement>(null)
   const mouseDownTargetRef = useRef<EventTarget | null>(null)
@@ -68,10 +70,10 @@ export default function SizePickerModal({ currentSize, onSelect, onClose }: Prop
     mouseDownTargetRef.current = null
   }
 
-  const currentPreset = findPresetForSize(currentSize)
+  const currentPreset = findPresetForSize(currentSize, tiers)
   const [mode] = useState<Mode>('ratio')
 
-  const [tier, setTier] = useState<SizeTier>(currentPreset?.tier ?? '1K')
+  const [tier, setTier] = useState<SizeTier>(currentPreset?.tier ?? tiers[0] ?? '1K')
   const [ratio, setRatio] = useState(currentPreset?.ratio ?? '1:1')
   const [customRatio, setCustomRatio] = useState('16:9')
 
@@ -168,7 +170,7 @@ export default function SizePickerModal({ currentSize, onSelect, onClose }: Prop
                 <section>
                   <div className="mb-2 text-xs font-medium text-gray-400 dark:text-gray-500">基准分辨率</div>
                   <div className="grid grid-cols-3 gap-2">
-                    {TIERS.map((item) => (
+                    {tiers.map((item) => (
                       <button key={item} className={buttonClass(tier === item)} onClick={() => setTier(item)}>
                         {item}
                       </button>

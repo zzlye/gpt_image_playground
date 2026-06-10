@@ -4342,6 +4342,28 @@ type StoredBinaryFile = {
   bytes: number
 }
 
+const CANVAS_SYNC_RESET_ERROR = '同步数据中的生成任务不会继续，请重新生成。'
+
+function resetCanvasLoadingNodesForSync(project: CanvasProject): CanvasProject {
+  let changed = false
+  const nodes = project.nodes.map((node) => {
+    if (node.metadata?.status !== 'loading') return node
+    changed = true
+    // 同步备份无法携带浏览器内存里的后台生成任务，导入前先改成可重试状态，避免打开画布时误报页面中断。
+    return {
+      ...node,
+      metadata: {
+        ...node.metadata,
+        status: 'error' as const,
+        errorDetails: CANVAS_SYNC_RESET_ERROR,
+        generationStartedAt: undefined,
+        generationElapsedMs: undefined,
+      },
+    }
+  })
+  return changed ? { ...project, nodes } : project
+}
+
 function collectStorageKeys(value: unknown, keys = new Set<string>()) {
   if (!value || typeof value !== 'object') return [...keys]
   if ('storageKey' in value && typeof value.storageKey === 'string' && value.storageKey.includes(':')) keys.add(value.storageKey)
@@ -4377,9 +4399,10 @@ async function getStoredBlob(storageKey: string) {
 async function buildCanvasProjectExport(projects: CanvasProject[], zipFiles: ZipEntries): Promise<CanvasProjectExportItem[]> {
   return Promise.all(
     projects.map(async (project) => {
+      const exportProject = resetCanvasLoadingNodesForSync(project)
       const files: CanvasExportAsset[] = []
       await Promise.all(
-        collectStorageKeys(project).map(async (storageKey) => {
+        collectStorageKeys(exportProject).map(async (storageKey) => {
           const blob = await getStoredBlob(storageKey)
           if (!blob) return
           const mimeType = blob.type || 'application/octet-stream'
@@ -4388,7 +4411,7 @@ async function buildCanvasProjectExport(projects: CanvasProject[], zipFiles: Zip
           await addBlobToZip(zipFiles, path, blob, new Date(project.updatedAt || project.createdAt || Date.now()))
         }),
       )
-      return { project, files }
+      return { project: exportProject, files }
     }),
   )
 }
@@ -4586,7 +4609,7 @@ export interface ImportOptions {
 
 async function importCanvasProjectsFromPackage(unzipped: Record<string, Uint8Array>, data: Pick<CanvasExportFile, 'projects'>) {
   await Promise.all(data.projects.flatMap((item) => item.files.map((file) => restoreStoredFiles(unzipped, [file]))))
-  data.projects.forEach((item) => useCanvasStore.getState().importProject(item.project))
+  data.projects.forEach((item) => useCanvasStore.getState().importProject(resetCanvasLoadingNodesForSync(item.project)))
   return data.projects.length
 }
 

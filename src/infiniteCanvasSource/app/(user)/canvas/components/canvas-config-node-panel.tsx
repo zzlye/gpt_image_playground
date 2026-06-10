@@ -10,7 +10,7 @@ import { defaultConfig, useConfigStore, useEffectiveConfig, type AiConfig } from
 import { CreditSymbol, requestCreditCost } from "@/constant/credits";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { getActiveApiProfile, getImageModelSubmitCostText, normalizeImageModelForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import { CanvasImageSettingsPopover } from "./canvas-image-settings-popover";
 import { CanvasVideoSettingsPopover } from "./canvas-video-settings-popover";
@@ -339,7 +339,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
         textModel: mode === "text" ? resolvedModel : globalConfig.textModel,
         videoModel: mode === "video" ? resolvedModel : globalConfig.videoModel,
         quality: node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
-        size: node.metadata?.size || globalConfig.size || defaultConfig.size,
+        size: normalizeImageSizeForProfile(node.metadata?.size || globalConfig.size || defaultConfig.size, activeProfileId),
         videoSeconds: node.metadata?.seconds || globalConfig.videoSeconds || defaultConfig.videoSeconds,
         vquality: node.metadata?.vquality || globalConfig.vquality || defaultConfig.vquality,
         count: String(node.metadata?.count || (mode === "image" ? 1 : globalConfig.count) || defaultConfig.count),
