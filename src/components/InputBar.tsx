@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, useLayoutEffect, typ
 import { createPortal } from 'react-dom'
 import { useStore, submitTask, submitAgentMessage, stopAgentResponse, addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, updateTaskInStore, removeMultipleTasks, getCachedImage, ensureImageCached, getActiveAgentRounds } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, getActiveApiProfile, getImageModelSubmitCostText, getImageSizeTiersForProfile, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeImageSizeForProfile, normalizeSettings } from '../lib/apiProfiles'
+import { DEFAULT_IMAGES_MODEL, FIXED_IMAGE_MODEL_OPTIONS, allowsCustomImageRatioForProfile, getActiveApiProfile, getImageModelSubmitCostText, getImageSizeTiersForProfile, isBananaImageModel, LOCKED_PUBLIC_PROFILE_ID, normalizeImageSizeForProfile, normalizeSettings } from '../lib/apiProfiles'
 import { getChangedParams, getOutputImageLimitForSettings, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, insertTextMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { normalizeImageSize } from '../lib/size'
@@ -631,6 +631,7 @@ export default function InputBar() {
   const normalizedDisplaySize = normalizeImageSizeForProfile(normalizeImageSize(params.size), activeProfile.id)
   const displaySize = normalizedDisplaySize === 'auto' ? DEFAULT_PARAMS.size : normalizedDisplaySize || DEFAULT_PARAMS.size
   const imageSizeTiers = getImageSizeTiersForProfile(activeProfile.id)
+  const allowCustomImageRatio = allowsCustomImageRatioForProfile(activeProfile.id)
   const modelOptions = activeProfile.id === LOCKED_PUBLIC_PROFILE_ID
     ? FIXED_IMAGE_MODEL_OPTIONS.filter((option) => option.value === DEFAULT_IMAGES_MODEL)
     : [...FIXED_IMAGE_MODEL_OPTIONS]
@@ -1820,6 +1821,7 @@ export default function InputBar() {
         <SizePickerModal
           currentSize={displaySize}
           allowedTiers={imageSizeTiers}
+          allowCustomRatio={allowCustomImageRatio}
           onSelect={(size) => setParams({ size })}
           onClose={() => setShowSizePicker(false)}
         />

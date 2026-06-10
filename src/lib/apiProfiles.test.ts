@@ -6,6 +6,7 @@ import {
   DEFAULT_OPENAI_PROFILE_ID,
   DEFAULT_SETTINGS,
   FIXED_IMAGE_MODEL_OPTIONS,
+  allowsCustomImageRatioForProfile,
   createDefaultOpenAIProfile,
   createDefaultFalProfile,
   findEquivalentApiProfile,
@@ -669,7 +670,10 @@ describe('custom providers', () => {
   it('only exposes 1K image sizes on public site', () => {
     expect(getImageSizeTiersForProfile(LOCKED_PUBLIC_PROFILE_ID)).toEqual(['1K'])
     expect(getImageSizeTiersForProfile(LOCKED_WENYUN_PROFILE_ID)).toEqual(['1K', '2K', '4K'])
+    expect(allowsCustomImageRatioForProfile(LOCKED_PUBLIC_PROFILE_ID)).toBe(false)
+    expect(allowsCustomImageRatioForProfile(LOCKED_WENYUN_PROFILE_ID)).toBe(true)
     expect(normalizeImageSizeForProfile('3840x2160', LOCKED_PUBLIC_PROFILE_ID)).toBe('1280x720')
+    expect(normalizeImageSizeForProfile('1280x1024', LOCKED_PUBLIC_PROFILE_ID)).toBe('1024x1024')
     expect(normalizeImageSizeForProfile('3840x2160', LOCKED_WENYUN_PROFILE_ID)).toBe('3840x2160')
   })
 

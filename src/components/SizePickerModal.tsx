@@ -19,6 +19,7 @@ const RATIOS = [
 interface Props {
   currentSize: string
   allowedTiers?: SizeTier[]
+  allowCustomRatio?: boolean
   onSelect: (size: string) => void
   onClose: () => void
 }
@@ -43,7 +44,7 @@ function findPresetForSize(size: string, tiers = TIERS) {
   return null
 }
 
-export default function SizePickerModal({ currentSize, allowedTiers, onSelect, onClose }: Props) {
+export default function SizePickerModal({ currentSize, allowedTiers, allowCustomRatio = true, onSelect, onClose }: Props) {
   usePreventBackgroundScroll(true)
   const tiers = allowedTiers?.length ? allowedTiers : TIERS
 
@@ -83,6 +84,11 @@ export default function SizePickerModal({ currentSize, allowedTiers, onSelect, o
   useEffect(() => () => {
     if (hintTimerRef.current != null) window.clearTimeout(hintTimerRef.current)
   }, [])
+
+  useEffect(() => {
+    if (allowCustomRatio || ratio !== 'custom') return
+    setRatio('1:1')
+  }, [allowCustomRatio, ratio])
 
   const activeRatio = ratio === 'custom' ? customRatio : ratio
   const parsedCustomRatio = parseRatio(customRatio)
@@ -204,13 +210,15 @@ export default function SizePickerModal({ currentSize, allowedTiers, onSelect, o
                         </button>
                       )
                     })}
-                    <button className={`${buttonClass(ratio === 'custom')} col-span-4`} onClick={() => setRatio('custom')}>
-                      自定义比例
-                    </button>
+                    {allowCustomRatio && (
+                      <button className={`${buttonClass(ratio === 'custom')} col-span-4`} onClick={() => setRatio('custom')}>
+                        自定义比例
+                      </button>
+                    )}
                   </div>
                 </section>
 
-                {ratio === 'custom' && (
+                {allowCustomRatio && ratio === 'custom' && (
                   <label className="block animate-fade-in">
                     <span className="mb-2 block text-xs font-medium text-gray-400 dark:text-gray-500">输入自定义比例</span>
                     <input

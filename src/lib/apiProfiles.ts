@@ -20,7 +20,7 @@ import { DEFAULT_AGENT_MAX_TOOL_ROUNDS, DEFAULT_STREAM_PARTIAL_IMAGES } from '..
 import { normalizeBaseUrl, shouldUseApiProxy } from './devProxy'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isImportableConfigUrl } from './customProviderConfigUrl'
-import { normalizeImageSizeForMaxTier, type SizeTier } from './size'
+import { calculateImageSize, normalizeImageSizeForMaxTier, type SizeTier } from './size'
 import {
   DEFAULT_IMAGES_MODEL,
   FIXED_IMAGE_MODEL_OPTIONS,
@@ -77,8 +77,23 @@ export function getImageSizeTiersForProfile(profileId: string): SizeTier[] {
   return profileId === LOCKED_PUBLIC_PROFILE_ID ? ['1K'] : ['1K', '2K', '4K']
 }
 
+export function allowsCustomImageRatioForProfile(profileId: string): boolean {
+  return profileId !== LOCKED_PUBLIC_PROFILE_ID
+}
+
+const PUBLIC_IMAGE_RATIO_PRESETS = ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9'] as const
+
+function normalizePublicImageSize(size: string): string {
+  const normalized = normalizeImageSizeForMaxTier(size, '1K')
+  const fixedPreset = PUBLIC_IMAGE_RATIO_PRESETS
+    .map((ratio) => calculateImageSize('1K', ratio))
+    .find((preset) => preset === normalized)
+
+  return fixedPreset || calculateImageSize('1K', '1:1') || '1024x1024'
+}
+
 export function normalizeImageSizeForProfile(size: string, profileId: string): string {
-  return profileId === LOCKED_PUBLIC_PROFILE_ID ? normalizeImageSizeForMaxTier(size, '1K') : size
+  return profileId === LOCKED_PUBLIC_PROFILE_ID ? normalizePublicImageSize(size) : size
 }
 
 export function getApiModelUnitCostText(_settings: AppSettings, _profileId: string, model: string): string | null {

@@ -9,7 +9,7 @@ import { ImageSettingsTheme } from "@/components/image-settings-panel";
 import { canvasThemes, type CanvasTheme } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
-import { getActiveApiProfile, getImageSizeTiersForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
+import { allowsCustomImageRatioForProfile, getActiveApiProfile, getImageSizeTiersForProfile, normalizeImageSizeForProfile, normalizeSettings } from "../../../../../lib/apiProfiles";
 import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from "../../../../../lib/size";
 import { useStore } from "../../../../../store";
 
@@ -41,6 +41,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const settings = useStore((state) => state.settings);
     const activeProfile = useMemo(() => getActiveApiProfile(normalizeSettings(settings)), [settings]);
     const allowedTiers = useMemo(() => getImageSizeTiersForProfile(activeProfile.id), [activeProfile.id]);
+    const allowCustomRatio = useMemo(() => allowsCustomImageRatioForProfile(activeProfile.id), [activeProfile.id]);
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
@@ -74,7 +75,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         };
     }, [open]);
 
-    const panel = open && buttonRect ? <ImageSizePortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} allowedTiers={allowedTiers} onConfigChange={onConfigChange} /> : null;
+    const panel = open && buttonRect ? <ImageSizePortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} allowedTiers={allowedTiers} allowCustomRatio={allowCustomRatio} onConfigChange={onConfigChange} /> : null;
 
     return (
         <>
@@ -97,6 +98,7 @@ function ImageSizePortal({
     theme,
     config,
     allowedTiers,
+    allowCustomRatio,
     onConfigChange,
 }: {
     buttonRect: DOMRect;
@@ -105,6 +107,7 @@ function ImageSizePortal({
     theme: CanvasTheme;
     config: AiConfig;
     allowedTiers: SizeTier[];
+    allowCustomRatio: boolean;
     onConfigChange: (key: keyof AiConfig, value: string) => void;
 }) {
     const width = 356;
@@ -139,20 +142,20 @@ function ImageSizePortal({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            <CanvasImageSizePanel config={config} allowedTiers={allowedTiers} onConfigChange={onConfigChange} theme={theme} />
+            <CanvasImageSizePanel config={config} allowedTiers={allowedTiers} allowCustomRatio={allowCustomRatio} onConfigChange={onConfigChange} theme={theme} />
         </div>,
         document.body,
     );
 }
 
-function CanvasImageSizePanel({ config, allowedTiers, onConfigChange, theme }: { config: AiConfig; allowedTiers: SizeTier[]; onConfigChange: (key: keyof AiConfig, value: string) => void; theme: CanvasTheme }) {
+function CanvasImageSizePanel({ config, allowedTiers, allowCustomRatio, onConfigChange, theme }: { config: AiConfig; allowedTiers: SizeTier[]; allowCustomRatio: boolean; onConfigChange: (key: keyof AiConfig, value: string) => void; theme: CanvasTheme }) {
     const tiers = allowedTiers.length ? allowedTiers : ALL_TIERS;
     const tierKey = tiers.join("|");
     const currentPreset = useMemo(() => findPresetForSize(config.size || "1024x1024", tiers), [config.size, tierKey]);
     const currentCustomRatio = useMemo(() => readRatioFromSize(config.size || ""), [config.size]);
     const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const [tier, setTier] = useState<SizeTier>(currentPreset?.tier || tiers[0] || "1K");
-    const [ratio, setRatio] = useState(currentPreset?.ratio || (currentCustomRatio ? "custom" : "1:1"));
+    const [ratio, setRatio] = useState(currentPreset?.ratio || (allowCustomRatio && currentCustomRatio ? "custom" : "1:1"));
     const [customRatio, setCustomRatio] = useState(currentPreset?.ratio || currentCustomRatio || "16:9");
     const activeRatio = ratio === "custom" ? customRatio : ratio;
     const previewSize = useMemo(() => {
@@ -161,18 +164,24 @@ function CanvasImageSizePanel({ config, allowedTiers, onConfigChange, theme }: {
     }, [activeRatio, tier]);
     const customRatioValid = ratio !== "custom" || Boolean(parseRatio(customRatio));
 
-    useEffect(() => {
-        if (tiers.includes(tier)) return;
-        const nextTier = tiers[0] || "1K";
-        setTier(nextTier);
-        const size = calculateImageSize(nextTier, activeRatio);
-        if (size) onConfigChange("size", normalizeImageSize(size));
-    }, [activeRatio, onConfigChange, tier, tierKey]);
-
     const applySize = (nextTier: SizeTier, nextRatio: string) => {
         const size = calculateImageSize(nextTier, nextRatio);
         if (size) onConfigChange("size", normalizeImageSize(size));
     };
+
+    useEffect(() => {
+        if (tiers.includes(tier)) return;
+        const nextTier = tiers[0] || "1K";
+        setTier(nextTier);
+        const nextRatio = allowCustomRatio ? activeRatio : "1:1";
+        applySize(nextTier, nextRatio);
+    }, [activeRatio, allowCustomRatio, tier, tierKey]);
+
+    useEffect(() => {
+        if (allowCustomRatio || ratio !== "custom") return;
+        setRatio("1:1");
+        applySize(tier, "1:1");
+    }, [allowCustomRatio, ratio, tier]);
 
     const selectTier = (nextTier: SizeTier) => {
         setTier(nextTier);
@@ -212,18 +221,20 @@ function CanvasImageSizePanel({ config, allowedTiers, onConfigChange, theme }: {
                         {RATIOS.map((item) => (
                             <RatioButton key={item.value} selected={ratio === item.value} theme={theme} label={item.label} value={item.value} onClick={() => selectRatio(item.value)} />
                         ))}
-                        <button
-                            type="button"
-                            className="col-span-4 h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80"
-                            style={{ background: "transparent", borderColor: ratio === "custom" ? theme.node.text : theme.node.stroke, color: theme.node.text }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={selectCustomRatio}
-                        >
-                            自定义比例
-                        </button>
+                        {allowCustomRatio ? (
+                            <button
+                                type="button"
+                                className="col-span-4 h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80"
+                                style={{ background: "transparent", borderColor: ratio === "custom" ? theme.node.text : theme.node.stroke, color: theme.node.text }}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={selectCustomRatio}
+                            >
+                                自定义比例
+                            </button>
+                        ) : null}
                     </div>
                 </SettingGroup>
-                {ratio === "custom" ? (
+                {allowCustomRatio && ratio === "custom" ? (
                     <SettingGroup title="自定义比例" color={theme.node.muted}>
                         <input
                             value={customRatio}
