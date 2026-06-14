@@ -11,6 +11,7 @@ import {
   fetchImageUrlAsDataUrl,
   getImageRequestTimeoutSeconds,
   getApiErrorMessage,
+  getSafeImageDisplayUrl,
   getDataUrlDecodedByteSize,
   getDataUrlEncodedByteSize,
   isDataUrl,
@@ -355,7 +356,7 @@ async function parseImagesApiResponse(payload: ImageApiResponse, mime: string, s
           images.push(await fetchImageUrlAsDataUrl(item.url, mime, signal))
         } catch (err) {
           // 远程图片已生成但浏览器下载失败时，保留原始 URL 避免把整次任务判失败。
-          images.push(item.url)
+          images.push(getSafeImageDisplayUrl(item.url))
         }
         revisedPrompts.push(typeof item.revised_prompt === 'string' ? item.revised_prompt : undefined)
       }
@@ -931,6 +932,7 @@ async function pollCustomTaskResult(
   signal?: AbortSignal,
 ): Promise<CallApiResult> {
   const proxyConfig = readClientDevProxyConfig()
+  const useApiProxy = shouldUseApiProxyForBaseUrl(profile.apiProxy, profile.baseUrl, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   let isFirstPoll = true
 
@@ -946,7 +948,8 @@ async function pollCustomTaskResult(
     const taskPath = appendQuery(buildTaskPath(poll.path, taskId), poll.query)
     let taskPayload: unknown
     try {
-      const taskResponse = await fetch(buildApiUrl(profile.baseUrl, taskPath, proxyConfig, false), {
+      // 异步任务轮询要沿用提交请求的固定站点代理，避免浏览器直连非标准端口或裸域。
+      const taskResponse = await fetch(buildApiUrl(profile.baseUrl, taskPath, proxyConfig, useApiProxy), {
         method: poll.method ?? 'GET',
         headers: requestHeaders,
         cache: 'no-store',

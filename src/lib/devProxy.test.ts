@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildApiUrl, shouldUseApiProxyForBaseUrl } from './devProxy'
+import { buildApiUrl, getLockedAssetProxyUrl, getLockedNewApiProxyUrl, shouldUseApiProxyForBaseUrl } from './devProxy'
 
 describe('buildApiUrl', () => {
   it('uses the same-origin proxy prefix when API proxy is enabled', () => {
@@ -45,6 +45,15 @@ describe('buildApiUrl', () => {
 
   it('uses the locked Wenyun proxy even when the generic proxy is unavailable', () => {
     expect(shouldUseApiProxyForBaseUrl(false, 'https://zzlye.xyz:60/v1', null)).toBe(true)
+  })
+
+  it('routes Wenyun root-domain asset URLs through the same-origin proxy', () => {
+    expect(getLockedNewApiProxyUrl('https://zzlye.xyz/files/final.png?token=1')).toBe(
+      '/newapi-proxy/wenyun/files/final.png?token=1',
+    )
+    expect(getLockedAssetProxyUrl('https://zzlye.xyz/files/final.png')).toBe(
+      '/newapi-proxy/wenyun/files/final.png',
+    )
   })
 
   it('does not force custom API URLs through the proxy when the generic proxy is unavailable', () => {

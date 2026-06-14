@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { GENERIC_QUOTA_ERROR_MESSAGE, getApiErrorMessage, getImageRequestTimeoutSeconds, isLongImageRequest, sanitizeApiErrorMessage } from './imageApiShared'
+import { fetchImageUrlAsDataUrl, GENERIC_QUOTA_ERROR_MESSAGE, getApiErrorMessage, getImageRequestTimeoutSeconds, getSafeImageDisplayUrl, isLongImageRequest, sanitizeApiErrorMessage } from './imageApiShared'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('sanitizeApiErrorMessage', () => {
   it('hides NewAPI pre-charge quota details', () => {
@@ -26,6 +30,24 @@ describe('getApiErrorMessage', () => {
     })
 
     await expect(getApiErrorMessage(response)).resolves.toBe(GENERIC_QUOTA_ERROR_MESSAGE)
+  })
+})
+
+describe('fetchImageUrlAsDataUrl', () => {
+  it('downloads Wenyun root-domain image URLs through the same-origin proxy', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Blob(['image'], { type: 'image/png' }), {
+      status: 200,
+    }))
+
+    await fetchImageUrlAsDataUrl('https://zzlye.xyz/files/final.png', 'image/png')
+
+    expect(fetchMock).toHaveBeenCalledWith('/newapi-proxy/wenyun/files/final.png', expect.any(Object))
+  })
+})
+
+describe('getSafeImageDisplayUrl', () => {
+  it('keeps Wenyun root-domain fallback image URLs on the same-origin proxy', () => {
+    expect(getSafeImageDisplayUrl('https://zzlye.xyz/files/final.png')).toBe('/newapi-proxy/wenyun/files/final.png')
   })
 })
 

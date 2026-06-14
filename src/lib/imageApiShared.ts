@@ -1,4 +1,5 @@
 import type { AppSettings, TaskParams } from '../types'
+import { getLockedAssetProxyUrl } from './devProxy'
 import { normalizeImageSize } from './size'
 
 export const MIME_MAP: Record<string, string> = {
@@ -133,16 +134,17 @@ async function probeNoCorsReachability(url: string, timeoutMs = 8000): Promise<'
 
 export async function fetchImageUrlAsDataUrl(url: string, fallbackMime: string, signal?: AbortSignal): Promise<string> {
   if (isDataUrl(url)) return url
+  const fetchUrl = getLockedAssetProxyUrl(url)
 
   let response: Response
   try {
-    response = await fetch(url, {
+    response = await fetch(fetchUrl, {
       cache: 'no-store',
       signal,
     })
   } catch (err) {
     if (err instanceof TypeError) {
-      const probe = await probeNoCorsReachability(url)
+      const probe = await probeNoCorsReachability(fetchUrl)
       if (probe === 'opaque') {
         throw new Error(`图片已生成，但因服务商未允许跨域，图片链接下载失败。${IMAGE_FETCH_CORS_HINT}`)
       }
@@ -160,6 +162,10 @@ export async function fetchImageUrlAsDataUrl(url: string, fallbackMime: string, 
 
   const blob = await response.blob()
   return blobToDataUrl(blob, fallbackMime)
+}
+
+export function getSafeImageDisplayUrl(url: string): string {
+  return isHttpUrl(url) ? getLockedAssetProxyUrl(url) : url
 }
 
 export async function getApiErrorMessage(response: Response): Promise<string> {
