@@ -21,6 +21,38 @@ function loadDevProxyConfig() {
 export default defineConfig(({ command }) => {
   const devProxyConfig = command === 'serve' ? loadDevProxyConfig() : null
   const publicProxy = {
+    '/api-proxy/wenyun': {
+      target: 'https://zzlye.xyz:60',
+      changeOrigin: true,
+      secure: true,
+      timeout: 900_000,
+      proxyTimeout: 900_000,
+      rewrite: (path: string) => path.replace(/^\/api-proxy\/wenyun/, '/v1'),
+    },
+    '/api-proxy/public': {
+      target: 'https://1520635.xyz:3901',
+      changeOrigin: true,
+      secure: true,
+      timeout: 900_000,
+      proxyTimeout: 900_000,
+      rewrite: (path: string) => path.replace(/^\/api-proxy\/public/, '/v1'),
+    },
+    '/newapi-proxy/wenyun': {
+      target: 'https://zzlye.xyz:60',
+      changeOrigin: true,
+      secure: true,
+      timeout: 900_000,
+      proxyTimeout: 900_000,
+      rewrite: (path: string) => path.replace(/^\/newapi-proxy\/wenyun/, ''),
+    },
+    '/newapi-proxy/public': {
+      target: 'https://1520635.xyz:3901',
+      changeOrigin: true,
+      secure: true,
+      timeout: 900_000,
+      proxyTimeout: 900_000,
+      rewrite: (path: string) => path.replace(/^\/newapi-proxy\/public/, ''),
+    },
     '/wy-public/wenyun': {
       target: 'https://zzlye.xyz:60',
       changeOrigin: true,

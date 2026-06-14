@@ -49,7 +49,7 @@ describe("canvas image api", () => {
         );
 
         expect(fetchMock).toHaveBeenCalledWith(
-            "/api-proxy/images/generations",
+            "/api-proxy/wenyun/images/generations",
             expect.objectContaining({ method: "POST" }),
         );
         expect(images).toEqual([{ id: expect.any(String), dataUrl: "data:image/png;base64,ZmluYWw=" }]);

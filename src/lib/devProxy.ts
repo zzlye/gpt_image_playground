@@ -9,6 +9,20 @@ export interface DevProxyConfig {
 }
 
 const DEFAULT_PROXY_PREFIX = '/api-proxy'
+const LOCKED_PROXY_TARGETS = [
+  {
+    baseUrl: 'https://zzlye.xyz:60/v1',
+    origin: 'https://zzlye.xyz:60',
+    apiPrefix: '/api-proxy/wenyun',
+    newApiPrefix: '/newapi-proxy/wenyun',
+  },
+  {
+    baseUrl: 'https://1520635.xyz:3901/v1',
+    origin: 'https://1520635.xyz:3901',
+    apiPrefix: '/api-proxy/public',
+    newApiPrefix: '/newapi-proxy/public',
+  },
+] as const
 
 export function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim()
@@ -54,6 +68,31 @@ export function normalizeDevProxyConfig(input: unknown): DevProxyConfig | null {
   }
 }
 
+export function getLockedApiProxyPrefix(baseUrl: string): string | null {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl).toLowerCase()
+  return LOCKED_PROXY_TARGETS.find((target) => target.baseUrl.toLowerCase() === normalizedBaseUrl)?.apiPrefix ?? null
+}
+
+export function getLockedNewApiProxyUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    const target = LOCKED_PROXY_TARGETS.find((item) => item.origin.toLowerCase() === parsed.origin.toLowerCase())
+    if (!target) return null
+    return `${target.newApiPrefix}${parsed.pathname}${parsed.search}`
+  } catch {
+    return null
+  }
+}
+
+export function shouldUseApiProxyForBaseUrl(
+  apiProxy: boolean,
+  baseUrl: string,
+  proxyConfig: DevProxyConfig | null = readClientDevProxyConfig(),
+): boolean {
+  // 两个内置站点在 Docker 里固定走各自同源代理，避免浏览器直连非标准端口失败。
+  return isApiProxyAvailable(proxyConfig) && (apiProxy || Boolean(getLockedApiProxyPrefix(baseUrl)))
+}
+
 export function buildApiUrl(
   baseUrl: string,
   path: string,
@@ -64,7 +103,7 @@ export function buildApiUrl(
   const endpointPath = path.replace(/^\/+/, '')
 
   if (useApiProxy) {
-    return `${proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${endpointPath}`
+    return `${getLockedApiProxyPrefix(normalizedBaseUrl) ?? proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${endpointPath}`
   }
 
   const apiPath = normalizedBaseUrl.endsWith('/v1')

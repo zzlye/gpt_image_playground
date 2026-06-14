@@ -1,5 +1,6 @@
 import type { ApiProfile } from '../types'
 import { getFixedImageRequestModel } from './apiProfiles'
+import { getLockedNewApiProxyUrl } from './devProxy'
 
 export interface NewApiBalanceResult {
   text: string
@@ -81,7 +82,7 @@ function getApiRoot(baseUrl: string): string {
 }
 
 async function fetchJson(url: string, apiKey?: string): Promise<unknown> {
-  const response = await fetch(url, {
+  const response = await fetch(getLockedNewApiProxyUrl(url) ?? url, {
     cache: 'no-store',
     headers: apiKey?.trim()
       ? { Authorization: `Bearer ${apiKey.trim()}` }
@@ -95,7 +96,7 @@ async function fetchJsonWithTimeout(url: string, apiKey?: string, timeoutMs = PU
   const controller = new AbortController()
   const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(url, {
+    const response = await fetch(getLockedNewApiProxyUrl(url) ?? url, {
       cache: 'no-store',
       signal: controller.signal,
       headers: apiKey?.trim()
@@ -138,6 +139,9 @@ async function fetchPublicPriceJson(url: string, apiKey?: string, timeoutMs = 25
 }
 
 function getWenyunPublicProxyUrl(url: string): string | null {
+  const lockedProxyUrl = getLockedNewApiProxyUrl(url)
+  if (lockedProxyUrl) return lockedProxyUrl
+
   try {
     const parsed = new URL(url)
     if (parsed.origin !== 'https://zzlye.xyz:60') return null

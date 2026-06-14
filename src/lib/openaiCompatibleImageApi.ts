@@ -1,7 +1,7 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
 import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
 import { getFixedImageRequestModel, isBananaImageModel } from './apiProfiles'
-import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
+import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxyForBaseUrl } from './devProxy'
 import { formatImageRatio, normalizeImageSize } from './size'
 import {
   assertImageInputPayloadSize,
@@ -599,7 +599,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
-  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
+  const useApiProxy = shouldUseApiProxyForBaseUrl(profile.apiProxy, profile.baseUrl, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   const paths = createOpenAICompatiblePaths(customProvider)
   const timeoutSeconds = getImageRequestTimeoutSeconds(profile.model, params, profile.timeout)
@@ -1001,7 +1001,7 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
 
   try {
     const proxyConfig = readClientDevProxyConfig()
-    const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
+    const useApiProxy = shouldUseApiProxyForBaseUrl(profile.apiProxy, profile.baseUrl, proxyConfig)
     const submitMapping = isEdit && customProvider.editSubmit ? customProvider.editSubmit : customProvider.submit
     if (useApiProxy && (submitMapping.method ?? 'POST') !== 'POST') {
       throw new Error('API 代理暂不支持使用 GET 提交的自定义服务商。请关闭 API 代理，或改用 POST 提交的自定义服务商配置。')
@@ -1074,7 +1074,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
   const { prompt, params, inputImageDataUrls } = opts
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
-  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
+  const useApiProxy = shouldUseApiProxyForBaseUrl(profile.apiProxy, profile.baseUrl, proxyConfig)
   const requestHeaders = createRequestHeaders(profile)
   const controller = new AbortController()
   const timeoutSeconds = getImageRequestTimeoutSeconds(profile.model, params, profile.timeout)

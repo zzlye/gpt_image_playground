@@ -31,6 +31,18 @@ describe('buildApiUrl', () => {
     ).toBe('/openai-proxy/responses')
   })
 
+  it('routes the locked Wenyun site through its dedicated same-origin proxy', () => {
+    expect(buildApiUrl('https://zzlye.xyz:60/v1', 'images/generations', null, true)).toBe(
+      '/api-proxy/wenyun/images/generations',
+    )
+  })
+
+  it('routes the locked public site through its dedicated same-origin proxy', () => {
+    expect(buildApiUrl('https://1520635.xyz:3901/v1', 'models', null, true)).toBe(
+      '/api-proxy/public/models',
+    )
+  })
+
   it('uses the configured API URL directly when API proxy is disabled', () => {
     expect(buildApiUrl('http://api.example.com/v1', 'responses', null, false)).toBe(
       'http://api.example.com/v1/responses',

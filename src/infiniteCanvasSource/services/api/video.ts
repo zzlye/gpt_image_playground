@@ -6,7 +6,7 @@ import { imageToDataUrl } from "@/services/image-storage";
 import type { AiConfig } from "@/stores/use-config-store";
 import { useUserStore } from "@/stores/use-user-store";
 import type { ReferenceImage } from "@/types/image";
-import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from "../../../lib/devProxy";
+import { buildApiUrl as buildDevApiUrl, readClientDevProxyConfig, shouldUseApiProxyForBaseUrl } from "../../../lib/devProxy";
 import { sanitizeApiErrorMessage } from "../../../lib/imageApiShared";
 
 type VideoResponse = { id?: string; status?: string; url?: string; video_url?: string; videoUrl?: string; output?: unknown; error?: { message?: string } };
@@ -81,7 +81,7 @@ function aiApiUrl(config: AiConfig, source: VideoApiSource, path: string) {
     if (config.channelMode === "remote") return `/api/v1${path}`;
 
     const proxyConfig = readClientDevProxyConfig();
-    if (shouldUseApiProxy(source.apiProxy, proxyConfig)) return buildDevApiUrl(source.baseUrl, path, proxyConfig, true);
+    if (shouldUseApiProxyForBaseUrl(source.apiProxy, source.baseUrl, proxyConfig)) return buildDevApiUrl(source.baseUrl, path, proxyConfig, true);
     if (source.versioned) return buildDevApiUrl(source.baseUrl, path, proxyConfig, false);
     const endpointPath = path.replace(/^\/+/, "");
     return source.baseUrl ? `${source.baseUrl}/${endpointPath}` : `/${endpointPath}`;
