@@ -90,7 +90,8 @@ export function shouldUseApiProxyForBaseUrl(
   proxyConfig: DevProxyConfig | null = readClientDevProxyConfig(),
 ): boolean {
   // 两个内置站点在 Docker 里固定走各自同源代理，避免浏览器直连非标准端口失败。
-  return isApiProxyAvailable(proxyConfig) && (apiProxy || Boolean(getLockedApiProxyPrefix(baseUrl)))
+  if (getLockedApiProxyPrefix(baseUrl)) return true
+  return isApiProxyAvailable(proxyConfig) && apiProxy
 }
 
 export function buildApiUrl(

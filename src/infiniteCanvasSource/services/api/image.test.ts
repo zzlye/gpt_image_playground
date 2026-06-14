@@ -91,7 +91,7 @@ describe("canvas image api", () => {
 
         const [url, init] = fetchMock.mock.calls[0];
         const body = JSON.parse(String((init as RequestInit).body));
-        expect(String(url)).toMatch(/\/v1\/images\/generations$/);
+        expect(String(url)).toBe("/api-proxy/wenyun/images/generations");
         expect(body).toMatchObject({
             model: "nano-banana-2",
             prompt: "改成穿赤霖高中校服",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildApiUrl } from './devProxy'
+import { buildApiUrl, shouldUseApiProxyForBaseUrl } from './devProxy'
 
 describe('buildApiUrl', () => {
   it('uses the same-origin proxy prefix when API proxy is enabled', () => {
@@ -41,6 +41,14 @@ describe('buildApiUrl', () => {
     expect(buildApiUrl('https://1520635.xyz:3901/v1', 'models', null, true)).toBe(
       '/api-proxy/public/models',
     )
+  })
+
+  it('uses the locked Wenyun proxy even when the generic proxy is unavailable', () => {
+    expect(shouldUseApiProxyForBaseUrl(false, 'https://zzlye.xyz:60/v1', null)).toBe(true)
+  })
+
+  it('does not force custom API URLs through the proxy when the generic proxy is unavailable', () => {
+    expect(shouldUseApiProxyForBaseUrl(true, 'https://api.example.com/v1', null)).toBe(false)
   })
 
   it('uses the configured API URL directly when API proxy is disabled', () => {
